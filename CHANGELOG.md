@@ -514,6 +514,13 @@
 * separate build image ([73d72e1](https://github.com/BePing/beping-backends/commit/73d72e1526c9443fa5fc165ec752d300a9be0193))
 * sync lock ([2464dbd](https://github.com/BePing/beping-backends/commit/2464dbdd190ccdc7ac946526dedddbbc8935d001))
 
+## [4.0.4](https://github.com/BePing/beping-backends/compare/tabt-rest-v4.0.3...tabt-rest-v4.0.4) (2025-09-13)
+
+
+### Miscellaneous
+
+* enhance Docker image tagging in GitHub Actions workflow ([668029d](https://github.com/BePing/beping-backends/commit/668029d7824c5e1d82fe1c7270705de9afa9d34d))
+
 ## [4.0.3](https://github.com/BePing/beping-backends/compare/tabt-rest-v4.0.2...tabt-rest-v4.0.3) (2025-09-13)
 
 
