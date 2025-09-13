@@ -68,11 +68,11 @@ RUN mkdir -p /usr/src/app/logs && \
 USER nestjs
 
 # Expose port
-EXPOSE 3000
+EXPOSE 3050
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
-    CMD wget --no-verbose --tries=1 --spider http://localhost:3000/health || exit 1
+    CMD wget --no-verbose --tries=1 --spider http://localhost:3050/health || exit 1
 
 # Use dumb-init to handle signals properly
 ENTRYPOINT ["dumb-init", "--"]
