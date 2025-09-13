@@ -32,6 +32,7 @@ jobs:
         with:
           config-file: release-please-config.json
           manifest-file: .release-please-manifest.json
+          target-branch: release/v2
 
   build-docker-images:
     needs: release-please
