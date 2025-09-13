@@ -514,6 +514,13 @@
 * separate build image ([73d72e1](https://github.com/BePing/beping-backends/commit/73d72e1526c9443fa5fc165ec752d300a9be0193))
 * sync lock ([2464dbd](https://github.com/BePing/beping-backends/commit/2464dbdd190ccdc7ac946526dedddbbc8935d001))
 
+## [4.0.1](https://github.com/BePing/beping-backends/compare/tabt-rest-v4.0.0...tabt-rest-v4.0.1) (2025-09-13)
+
+
+### Code Refactoring
+
+* update Dockerfiles for app-notifications, data-aftt-importer, and tabt-rest ([13ae946](https://github.com/BePing/beping-backends/commit/13ae9462dff2964f1b50ef0fb5a521eb9c48d33c))
+
 ## [1.20.89](https://github.com/Fllorent0D/tabt-rest/compare/v1.20.88...v1.20.89) (2024-03-17)
 
 
