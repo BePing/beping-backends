@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.2.0](https://github.com/BePing/beping-backends/compare/data-aftt-importer-v1.1.2...data-aftt-importer-v1.2.0) (2025-09-13)
+
+
+### Features
+
+* implement data import optimizations for small VPS environments ([efdc414](https://github.com/BePing/beping-backends/commit/efdc41451e72060d138bb50d3fc1ccc106f1ffa7))
+
 ## [1.1.2](https://github.com/BePing/beping-backends/compare/data-aftt-importer-v1.1.1...data-aftt-importer-v1.1.2) (2025-09-13)
 
 
