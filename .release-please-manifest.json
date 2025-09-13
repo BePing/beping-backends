@@ -1,3 +1,6 @@
 {
-  ".": "0.0.0"
+  "apps/tabt-rest": "1.0.0",
+  "apps/data-aftt-importer": "1.0.0",
+  "apps/app-notifications": "1.0.0",
+  ".": "3.0.0"
 }

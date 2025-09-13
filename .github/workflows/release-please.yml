@@ -23,11 +23,15 @@ jobs:
       app-notifications--release_created: ${{ steps.release.outputs['apps/app-notifications--release_created'] }}
       app-notifications--tag_name: ${{ steps.release.outputs['apps/app-notifications--tag_name'] }}
     steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
       - name: Run Release Please
         id: release
         uses: google-github-actions/release-please-action@v4
         with:
           config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
 
   build-docker-images:
     needs: release-please
