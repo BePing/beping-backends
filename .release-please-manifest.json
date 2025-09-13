@@ -1,6 +1,6 @@
 {
   "apps/tabt-rest": "1.0.0",
-  "apps/data-aftt-importer": "1.2.1",
-  "apps/app-notifications": "1.2.1",
-  ".": "4.1.1"
+  "apps/data-aftt-importer": "1.2.2",
+  "apps/app-notifications": "1.2.2",
+  ".": "4.1.2"
 }

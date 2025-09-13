@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.2.2](https://github.com/BePing/beping-backends/compare/data-aftt-importer-v1.2.1...data-aftt-importer-v1.2.2) (2025-09-13)
+
+
+### Bug Fixes
+
+* update database readiness check in startup scripts for app-notifications, data-aftt-importer, and tabt-rest ([45e0cbd](https://github.com/BePing/beping-backends/commit/45e0cbd1d245c1ce85bd47efb7461563ecb674cd))
+
 ## [1.2.1](https://github.com/BePing/beping-backends/compare/data-aftt-importer-v1.2.0...data-aftt-importer-v1.2.1) (2025-09-13)
 
 
