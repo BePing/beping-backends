@@ -81,6 +81,20 @@ jobs:
           VERSION=$(echo "${{ matrix.tag_name }}" | sed 's/.*-v//')
           echo "version=$VERSION" >> $GITHUB_OUTPUT
 
+      - name: Docker meta
+        if: matrix.release_created == 'true'
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ matrix.image_name }}
+          tags: |
+            type=ref,event=branch
+            type=ref,event=pr
+            type=semver,pattern={{version}},value=${{ steps.version.outputs.version }}
+            type=semver,pattern={{major}}.{{minor}},value=${{ steps.version.outputs.version }}
+            type=semver,pattern={{major}},value=${{ steps.version.outputs.version }}
+            type=raw,value=latest,enable={{is_default_branch}}
+
       - name: Build and push Docker image
         if: matrix.release_created == 'true'
         uses: docker/build-push-action@v5
@@ -89,8 +103,7 @@ jobs:
           context: .
           platforms: linux/arm64/v8,linux/amd64
           file: ./apps/${{ matrix.app }}/Dockerfile
-          tags: |
-            ${{ matrix.image_name }}:latest
-            ${{ matrix.image_name }}:${{ steps.version.outputs.version }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
