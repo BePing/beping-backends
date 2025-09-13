@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.1.2](https://github.com/BePing/beping-backends/compare/app-notifications-v1.1.1...app-notifications-v1.1.2) (2025-09-13)
+
+
+### Code Refactoring
+
+* update Dockerfiles for app-notifications, data-aftt-importer, and tabt-rest ([e180617](https://github.com/BePing/beping-backends/commit/e180617c1cb19a65d1128b4a9d46461724d1fb08))
+
 ## [1.1.1](https://github.com/BePing/beping-backends/compare/app-notifications-v1.1.0...app-notifications-v1.1.1) (2025-09-13)
 
 
