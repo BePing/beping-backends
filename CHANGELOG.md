@@ -514,6 +514,14 @@
 * separate build image ([73d72e1](https://github.com/BePing/beping-backends/commit/73d72e1526c9443fa5fc165ec752d300a9be0193))
 * sync lock ([2464dbd](https://github.com/BePing/beping-backends/commit/2464dbdd190ccdc7ac946526dedddbbc8935d001))
 
+## [4.1.0](https://github.com/BePing/beping-backends/compare/tabt-rest-v4.0.4...tabt-rest-v4.1.0) (2025-09-13)
+
+
+### Features
+
+* enhance multi-category member dashboard and update Docker configuration ([c067b9c](https://github.com/BePing/beping-backends/commit/c067b9c73ac3536cebb8482b19cfa1ad171dcd69))
+* implement data import optimizations for small VPS environments ([efdc414](https://github.com/BePing/beping-backends/commit/efdc41451e72060d138bb50d3fc1ccc106f1ffa7))
+
 ## [4.0.4](https://github.com/BePing/beping-backends/compare/tabt-rest-v4.0.3...tabt-rest-v4.0.4) (2025-09-13)
 
 
