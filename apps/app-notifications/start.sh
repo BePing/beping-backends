@@ -1,0 +1,21 @@
+#!/bin/bash
+set -e
+
+echo "Starting app-notifications application..."
+
+# Wait for database to be ready
+echo "Waiting for database to be ready..."
+until npx prisma db ping --schema /usr/src/app/prisma/schema.prisma; do
+  echo "Database is not ready yet. Waiting..."
+  sleep 2
+done
+
+echo "Database is ready. Running Prisma migrations..."
+
+# Run Prisma migrations
+npx prisma migrate deploy --schema /usr/src/app/prisma/schema.prisma
+
+echo "Migrations completed successfully. Starting the application..."
+
+# Start the application
+exec node dist/apps/app-notifications/main

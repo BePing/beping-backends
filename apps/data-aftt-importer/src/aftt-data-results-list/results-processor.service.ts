@@ -16,17 +16,16 @@ import { PrismaService } from '../prisma.service';
 import { CacheService } from '../cache/cache.service';
 import { createHash } from 'crypto';
 
-const BATCH_SIZE = 200;
-const TRANSACTION_BATCH_SIZE = 150;
-const MAX_RETRIES = 3;
-const TRANSACTION_TIMEOUT = 120000;
-const PREFETCH_BATCH_SIZE = 1000;
+// Import small VPS configuration
+import { SMALL_VPS_CONFIG, ResourceMonitor } from '../config/small-vps.config';
 
 @Processor('results')
 export class ResultsProcessorService {
   private readonly logger = new Logger(ResultsProcessorService.name);
+  private readonly config = SMALL_VPS_CONFIG;
   private readonly competitionCache = new Map<string, { id: string; type: CompetitionType }>();
   private readonly memberCache = new Map<string, Member>();
+  private resourceMonitor: ResourceMonitor;
   private performanceMetrics = {
     downloadTime: 0,
     processingTime: 0,
@@ -34,20 +33,26 @@ export class ResultsProcessorService {
     totalRecords: 0,
     validRecords: 0,
     recordsPerSecond: 0,
-    memoryUsage: 0
+    memoryUsage: 0,
+    peakMemory: 0,
+    batchesProcessed: 0
   };
+  private startMemory: number = 0;
 
   constructor(
     private readonly httpService: HttpService,
     private readonly prismaService: PrismaService,
     private readonly cacheService: CacheService
-  ) {}
+  ) {
+    this.resourceMonitor = new ResourceMonitor(this.config);
+  }
 
   @OnQueueActive()
   onActive(job: Job) {
     this.logger.log(
-      `Processing job ${job.id} of type ${job.name} with data ${job.data}...`,
+      `[Small VPS Mode] Processing job ${job.id} with ultra-conservative settings for ${job.data.playerCategory}`,
     );
+    this.startMemory = process.memoryUsage().heapUsed;
   }
 
   @Process()
@@ -64,23 +69,48 @@ export class ResultsProcessorService {
       
       this.logger.log(`Processing ${lines.length} lines`);
 
-      // Process in batches
-      for (let i = 0; i < lines.length; i += BATCH_SIZE) {
-        this.logger.debug(
-          `Processing batch ${i / BATCH_SIZE + 1}/${Math.ceil(lines.length / BATCH_SIZE)}...`,
-        );
+      // Process in ultra-small batches sequentially for VPS stability
+      const totalBatches = Math.ceil(lines.length / this.config.BATCH_SIZE);
 
-        const batch = lines.slice(i, i + BATCH_SIZE);
-        const parsedResults = batch.map(line => this.parseLine(line, job.data.playerCategory));
-        
-        // Pre-fetch all competitions and members for the batch
-        await this.prefetchCompetitions(parsedResults);
-        await this.prefetchMembers(parsedResults, job.data.playerCategory);
+      for (let i = 0; i < lines.length; i += this.config.BATCH_SIZE) {
+        const batchNumber = i / this.config.BATCH_SIZE + 1;
+        const batch = lines.slice(i, i + this.config.BATCH_SIZE);
 
-        // Process in smaller transaction batches
-        for (let j = 0; j < parsedResults.length; j += TRANSACTION_BATCH_SIZE) {
-          const transactionBatch = parsedResults.slice(j, j + TRANSACTION_BATCH_SIZE);
-          await this.processTransactionBatch(transactionBatch, job.data.playerCategory);
+        this.logger.debug(`Processing batch ${batchNumber}/${totalBatches} (${batch.length} records)`);
+
+        try {
+          const parsedResults = batch.map(line => this.parseLine(line, job.data.playerCategory));
+
+          // Pre-fetch data for this small batch only
+          await this.prefetchCompetitions(parsedResults);
+          await this.prefetchMembers(parsedResults, job.data.playerCategory);
+
+          // Process in even smaller transaction batches
+          for (let j = 0; j < parsedResults.length; j += this.config.POINTS_BATCH_SIZE) {
+            const transactionBatch = parsedResults.slice(j, j + this.config.POINTS_BATCH_SIZE);
+            await this.processTransactionBatch(transactionBatch, job.data.playerCategory);
+
+            // Small delay between transactions
+            if (j + this.config.POINTS_BATCH_SIZE < parsedResults.length) {
+              await this.resourceMonitor.sleep(this.config.TRANSACTION_DELAY);
+            }
+          }
+
+          this.performanceMetrics.batchesProcessed++;
+
+          // Memory monitoring and cleanup
+          if (batchNumber % this.config.MEMORY_CHECK_FREQUENCY === 0) {
+            await this.checkMemoryAndCleanup(batchNumber, totalBatches);
+          }
+
+          // Strategic delay for CPU breathing room
+          if (i + this.config.BATCH_SIZE < lines.length) {
+            await this.resourceMonitor.sleep(this.config.BATCH_DELAY);
+          }
+
+        } catch (error) {
+          this.logger.error(`Failed to process batch ${batchNumber}/${totalBatches}`, error);
+          throw error;
         }
       }
 
@@ -89,7 +119,12 @@ export class ResultsProcessorService {
       // Store the new import record
       await this.storeImport(lines, job.data.playerCategory);
       
-      this.logger.log(`Processing done. (${lines.length} lines)`);
+      this.logger.log(`Small VPS results processing completed. Performance:`, {
+        totalRecords: lines.length,
+        validRecords: this.performanceMetrics.validRecords,
+        batchesProcessed: this.performanceMetrics.batchesProcessed,
+        peakMemory: `${Math.round(this.performanceMetrics.peakMemory / 1024 / 1024)}MB`
+      });
 
     } catch (e) {
       this.logger.error("Failed to finish results job", e);
@@ -217,85 +252,79 @@ export class ResultsProcessorService {
   }
 
   private async processTransactionBatch(parsedResults: any[], playerCategory: PlayerCategory) {
-    let retries = 0;
-    while (retries < MAX_RETRIES) {
-      try {
-        await this.prismaService.$transaction(async (prisma) => {
-          const validResults = parsedResults.filter(parsed => {
-            const member = this.memberCache.get(`${parsed.memberLicence}-${playerCategory}`);
-            const opponent = this.memberCache.get(`${parsed.opponentLicence}-${playerCategory}`);
-            const competition = this.competitionCache.get(parsed.competition.name);
-            return member && opponent && competition;
-          }).map(parsed => {
-            const member = this.memberCache.get(`${parsed.memberLicence}-${playerCategory}`);
-            const opponent = this.memberCache.get(`${parsed.opponentLicence}-${playerCategory}`);
-            const competition = this.competitionCache.get(parsed.competition.name);
-            return {
-              ...parsed.result,
-              competitionId: competition.id,
-              memberId: member.id,
-              memberLicence: member.licence,
-              opponentId: opponent.id,
-              opponentLicence: opponent.licence,
-            };
+    // Process each result individually for maximum stability on small VPS
+    for (let i = 0; i < parsedResults.length; i++) {
+      const parsed = parsedResults[i];
+
+      // Validate that all required data is available
+      const member = this.memberCache.get(`${parsed.memberLicence}-${playerCategory}`);
+      const opponent = this.memberCache.get(`${parsed.opponentLicence}-${playerCategory}`);
+      const competition = this.competitionCache.get(parsed.competition.name);
+
+      if (!member || !opponent || !competition) {
+        this.logger.warn(`Skipping result ${parsed.result.id} - missing references`);
+        continue;
+      }
+
+      const validResult = {
+        ...parsed.result,
+        competitionId: competition.id,
+        memberId: member.id,
+        memberLicence: member.licence,
+        opponentId: opponent.id,
+        opponentLicence: opponent.licence,
+      };
+
+      let retries = 0;
+      while (retries < this.config.MAX_RETRIES) {
+        try {
+          await this.prismaService.individualResult.upsert({
+            where: {
+              id_playerCategory: {
+                id: validResult.id,
+                playerCategory: validResult.playerCategory
+              }
+            },
+            update: {
+              date: validResult.date,
+              memberRanking: validResult.memberRanking,
+              memberPoints: validResult.memberPoints,
+              opponentRanking: validResult.opponentRanking,
+              opponentPoints: validResult.opponentPoints,
+              result: validResult.result,
+              score: validResult.score,
+              diffPoints: validResult.diffPoints,
+              pointsToAdd: validResult.pointsToAdd,
+              looseFactor: validResult.looseFactor,
+              definitivePointsToAdd: validResult.definitivePointsToAdd,
+              competitionId: validResult.competitionId,
+              memberId: validResult.memberId,
+              memberLicence: validResult.memberLicence,
+              opponentId: validResult.opponentId,
+              opponentLicence: validResult.opponentLicence,
+            },
+            create: validResult
           });
 
-          if (validResults.length === 0) return;
+          this.performanceMetrics.validRecords++;
+          break; // Success, exit retry loop
 
-          await prisma.$executeRaw`
-            INSERT INTO "IndividualResult" (
-              id, "playerCategory", date, "memberRanking", "memberPoints",
-              "opponentRanking", "opponentPoints", result, score,
-              "diffPoints", "pointsToAdd", "looseFactor", "definitivePointsToAdd",
-              "competitionId", "memberId", "memberLicence", "opponentId", "opponentLicence"
-            )
-            SELECT * FROM UNNEST(
-              ${validResults.map(r => r.id)}::integer[],
-              ${validResults.map(r => r.playerCategory)}::"PlayerCategory"[],
-              ${validResults.map(r => r.date)}::timestamp[],
-              ${validResults.map(r => r.memberRanking)}::text[],
-              ${validResults.map(r => r.memberPoints)}::double precision[],
-              ${validResults.map(r => r.opponentRanking)}::text[],
-              ${validResults.map(r => r.opponentPoints)}::double precision[],
-              ${validResults.map(r => r.result)}::"Result"[],
-              ${validResults.map(r => r.score)}::text[],
-              ${validResults.map(r => r.diffPoints)}::double precision[],
-              ${validResults.map(r => r.pointsToAdd)}::double precision[],
-              ${validResults.map(r => r.looseFactor)}::double precision[],
-              ${validResults.map(r => r.definitivePointsToAdd)}::double precision[],
-              ${validResults.map(r => r.competitionId)}::text[],
-              ${validResults.map(r => r.memberId)}::integer[],
-              ${validResults.map(r => r.memberLicence)}::integer[],
-              ${validResults.map(r => r.opponentId)}::integer[],
-              ${validResults.map(r => r.opponentLicence)}::integer[]
-            )
-            ON CONFLICT (id, "playerCategory") DO UPDATE SET
-              date = EXCLUDED.date,
-              "memberRanking" = EXCLUDED."memberRanking",
-              "memberPoints" = EXCLUDED."memberPoints",
-              "opponentRanking" = EXCLUDED."opponentRanking",
-              "opponentPoints" = EXCLUDED."opponentPoints",
-              result = EXCLUDED.result,
-              score = EXCLUDED.score,
-              "diffPoints" = EXCLUDED."diffPoints",
-              "pointsToAdd" = EXCLUDED."pointsToAdd",
-              "looseFactor" = EXCLUDED."looseFactor",
-              "definitivePointsToAdd" = EXCLUDED."definitivePointsToAdd",
-              "competitionId" = EXCLUDED."competitionId",
-              "memberId" = EXCLUDED."memberId",
-              "memberLicence" = EXCLUDED."memberLicence",
-              "opponentId" = EXCLUDED."opponentId",
-              "opponentLicence" = EXCLUDED."opponentLicence"
-          `;
-        }, { timeout: TRANSACTION_TIMEOUT, maxWait: TRANSACTION_TIMEOUT });
-        break; // Success, exit retry loop
-      } catch (e) {
-        retries++;
-        if (retries === MAX_RETRIES) {
-          throw e;
+        } catch (error) {
+          retries++;
+          if (retries === this.config.MAX_RETRIES) {
+            this.logger.warn(`Failed to process result ${validResult.id} after ${this.config.MAX_RETRIES} attempts, skipping`);
+            break; // Skip this record instead of failing entire import
+          }
+
+          const delay = this.config.RETRY_DELAY_BASE * retries; // Exponential backoff
+          this.logger.warn(`Result processing failed, attempt ${retries}/${this.config.MAX_RETRIES}, retrying in ${delay}ms`);
+          await this.resourceMonitor.sleep(delay);
         }
-        this.logger.warn(`Transaction failed, attempt ${retries}/${MAX_RETRIES}`);
-        await new Promise(resolve => setTimeout(resolve, 1000 * retries));
+      }
+
+      // Small delay between individual result operations
+      if (i < parsedResults.length - 1 && i % 3 === 2) {
+        await this.resourceMonitor.sleep(50);
       }
     }
   }
@@ -342,7 +371,7 @@ export class ResultsProcessorService {
   private async storeImport(lines: string[], playerCategory: PlayerCategory): Promise<void> {
     // create a master hash of all the lines
     const masterHash = createHash('sha256').update(lines.join('')).digest('hex');
-    
+
     await this.prismaService.dataImport.create({
       data: {
         type: ImportType.RESULT,
@@ -350,5 +379,31 @@ export class ResultsProcessorService {
         hash: masterHash,
       },
     });
+  }
+
+  private async checkMemoryAndCleanup(batchNumber: number, totalBatches: number): Promise<void> {
+    const currentMemory = process.memoryUsage();
+    this.performanceMetrics.peakMemory = Math.max(this.performanceMetrics.peakMemory, currentMemory.heapUsed);
+
+    if (currentMemory.heapUsed > this.config.MAX_MEMORY_THRESHOLD) {
+      this.logger.warn(`High memory usage detected: ${Math.round(currentMemory.heapUsed / 1024 / 1024)}MB`);
+
+      // Clear caches to free memory
+      this.competitionCache.clear();
+      this.memberCache.clear();
+
+      // Force garbage collection if available
+      if (this.config.FORCE_GC_AFTER_BATCH && global.gc) {
+        global.gc();
+        this.logger.debug('Forced garbage collection and cache cleanup');
+      }
+
+      // Extended delay for memory recovery
+      await this.resourceMonitor.sleep(this.config.BATCH_DELAY * 2);
+    }
+
+    // Progress logging
+    const progress = Math.round((batchNumber / totalBatches) * 100);
+    this.logger.log(`Results import progress: ${progress}% (${batchNumber}/${totalBatches} batches, Memory: ${Math.round(currentMemory.heapUsed / 1024 / 1024)}MB, Valid: ${this.performanceMetrics.validRecords})`);
   }
 }

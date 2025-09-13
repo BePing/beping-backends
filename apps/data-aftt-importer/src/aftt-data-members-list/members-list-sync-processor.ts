@@ -11,11 +11,14 @@ import { createReadStream } from 'fs';
 import { createInterface } from 'readline';
 import { pipeline } from 'stream/promises';
 
-const BATCH_SIZE = 500;
-const UPDATE_CHUNK_SIZE = 10;
-const POINTS_BATCH_SIZE = 200;
-const TRANSACTION_TIMEOUT = 120000;
-const DOWNLOAD_CHUNK_SIZE = 1024 * 1024;
+// Small VPS optimized constants - prioritize stability over speed
+const BATCH_SIZE = 25;                    // Ultra-small batches for memory efficiency
+const POINTS_BATCH_SIZE = 10;             // Even smaller for points processing
+const TRANSACTION_TIMEOUT = 15000;        // Shorter transactions (15s)
+const CONCURRENCY = 1;                    // Sequential processing only
+const BATCH_DELAY = 500;                  // 500ms delay between batches
+const MEMORY_CHECK_FREQUENCY = 5;         // Check memory every 5 batches
+const MAX_MEMORY_THRESHOLD = 64 * 1024 * 1024; // 64MB threshold
 
 @Processor('members')
 export class MembersListProcessingService {
@@ -25,8 +28,11 @@ export class MembersListProcessingService {
     processingTime: 0,
     totalRecords: 0,
     recordsPerSecond: 0,
-    memoryUsage: 0
+    memoryUsage: 0,
+    peakMemory: 0,
+    batchesProcessed: 0
   };
+  private startMemory: number = 0;
 
   constructor(
     private readonly httpService: HttpService,
@@ -36,7 +42,8 @@ export class MembersListProcessingService {
 
   @OnQueueActive()
   onActive(job: Job) {
-    this.logger.log(`Processing job ${job.id} with data ${job.data}...`);
+    this.logger.log(`[Small VPS Mode] Processing job ${job.id} with ultra-conservative settings`);
+    this.startMemory = process.memoryUsage().heapUsed;
   }
 
   @Process()
@@ -76,13 +83,15 @@ export class MembersListProcessingService {
       this.performanceMetrics.recordsPerSecond = Math.round(lines.length / (totalTime / 1000));
       this.performanceMetrics.memoryUsage = finalMemory.heapUsed - initialMemory.heapUsed;
       
-      this.logger.log(`Import completed successfully. Performance metrics:`, {
+      this.logger.log(`Small VPS import completed successfully. Performance metrics:`, {
         downloadTime: `${this.performanceMetrics.downloadTime}ms`,
         processingTime: `${this.performanceMetrics.processingTime}ms`,
-        totalTime: `${totalTime}ms`,
+        totalTime: `${Math.round(totalTime / 1000)}s`,
         totalRecords: this.performanceMetrics.totalRecords,
+        batchesProcessed: this.performanceMetrics.batchesProcessed,
         recordsPerSecond: this.performanceMetrics.recordsPerSecond,
-        memoryDelta: `${Math.round(this.performanceMetrics.memoryUsage / 1024 / 1024)}MB`
+        memoryDelta: `${Math.round(this.performanceMetrics.memoryUsage / 1024 / 1024)}MB`,
+        peakMemory: `${Math.round(this.performanceMetrics.peakMemory / 1024 / 1024)}MB`
       });
       
     } catch (e) {
@@ -144,35 +153,31 @@ export class MembersListProcessingService {
     const totalBatches = Math.ceil(lines.length / BATCH_SIZE);
     this.logger.log(`Processing ${lines.length} lines in ${totalBatches} batches with parallel processing`);
     
-    // Process batches in parallel with controlled concurrency
-    const concurrency = 3; // Limit concurrent database operations
-    const promises: Promise<void>[] = [];
-    
+    // Process batches sequentially for small VPS stability
     for (let i = 0; i < lines.length; i += BATCH_SIZE) {
       const batch = lines.slice(i, i + BATCH_SIZE);
       const batchNumber = i / BATCH_SIZE + 1;
-      
-      const batchPromise = this.processBatch(batch, playerCategory)
-        .then(() => {
-          this.logger.debug(`Completed batch ${batchNumber}/${totalBatches}`);
-        })
-        .catch(error => {
-          this.logger.error(`Failed to process batch ${batchNumber}/${totalBatches}`, error);
-          throw error;
-        });
-      
-      promises.push(batchPromise);
-      
-      // Control concurrency
-      if (promises.length >= concurrency) {
-        await Promise.all(promises);
-        promises.length = 0; // Clear the array
+
+      this.logger.debug(`Processing batch ${batchNumber}/${totalBatches} (${batch.length} records)`);
+
+      try {
+        await this.processBatch(batch, playerCategory);
+        this.performanceMetrics.batchesProcessed++;
+
+        // Memory monitoring and cleanup
+        if (batchNumber % MEMORY_CHECK_FREQUENCY === 0) {
+          await this.checkMemoryAndCleanup(batchNumber, totalBatches);
+        }
+
+        // Strategic delay for CPU breathing room
+        if (i + BATCH_SIZE < lines.length) {
+          await this.sleep(BATCH_DELAY);
+        }
+
+      } catch (error) {
+        this.logger.error(`Failed to process batch ${batchNumber}/${totalBatches}`, error);
+        throw error;
       }
-    }
-    
-    // Wait for remaining batches
-    if (promises.length > 0) {
-      await Promise.all(promises);
     }
     
     this.logger.log(`Processing done. (${lines.length} lines)`);
@@ -210,60 +215,50 @@ export class MembersListProcessingService {
 
   private async processMembers(members: Member[]) {
     if (members.length === 0) return;
-    
+
     const startTime = Date.now();
-    const batchSize = Math.min(500, members.length); // Dynamic batch sizing
-    
-    try {
-      // Use a single transaction with optimized UNNEST query
-      await this.prismaService.$transaction(async (tx) => {
-        // Batch the members into smaller chunks for better memory usage
-        for (let i = 0; i < members.length; i += batchSize) {
-          const chunk = members.slice(i, i + batchSize);
-          
-          await tx.$executeRaw`
-            INSERT INTO "Member" (
-              id, licence, "playerCategory", firstname, lastname, ranking, 
-              club, category, "worldRanking", nationality, email, 
-              "createdAt", "updatedAt"
-            )
-            SELECT * FROM UNNEST(
-              ${chunk.map(m => m.id)}::integer[],
-              ${chunk.map(m => m.licence)}::integer[],
-              ${chunk.map(m => m.playerCategory)}::"PlayerCategory"[],
-              ${chunk.map(m => m.firstname)}::text[],
-              ${chunk.map(m => m.lastname)}::text[],
-              ${chunk.map(m => m.ranking)}::text[],
-              ${chunk.map(m => m.club)}::text[],
-              ${chunk.map(m => m.category)}::text[],
-              ${chunk.map(m => m.worldRanking)}::integer[],
-              ${chunk.map(m => m.nationality)}::text[],
-              ${chunk.map(m => m.email)}::text[],
-              ${chunk.map(() => new Date())}::timestamp[],
-              ${chunk.map(() => new Date())}::timestamp[]
-            )
-            ON CONFLICT (id, licence) DO UPDATE SET
-              "playerCategory" = EXCLUDED."playerCategory",
-              firstname = EXCLUDED.firstname,
-              lastname = EXCLUDED.lastname,
-              ranking = EXCLUDED.ranking,
-              club = EXCLUDED.club,
-              category = EXCLUDED.category,
-              "worldRanking" = EXCLUDED."worldRanking",
-              nationality = EXCLUDED.nationality,
-              "updatedAt" = EXCLUDED."updatedAt"
-          `;
+
+    // Process members in micro-batches for ultra-small transactions
+    const microBatchSize = Math.min(10, members.length);
+
+    for (let i = 0; i < members.length; i += microBatchSize) {
+      const microBatch = members.slice(i, i + microBatchSize);
+
+      try {
+        await this.prismaService.$transaction(async (tx) => {
+          for (const member of microBatch) {
+            await tx.member.upsert({
+              where: { id_licence: { id: member.id, licence: member.licence } },
+              update: {
+                playerCategory: member.playerCategory,
+                firstname: member.firstname,
+                lastname: member.lastname,
+                ranking: member.ranking,
+                club: member.club,
+                category: member.category,
+                worldRanking: member.worldRanking,
+                nationality: member.nationality,
+                updatedAt: new Date()
+              },
+              create: member
+            });
+          }
+        }, {
+          timeout: TRANSACTION_TIMEOUT,
+          isolationLevel: 'ReadCommitted'
+        });
+
+        // Small delay between micro-transactions
+        if (i + microBatchSize < members.length) {
+          await this.sleep(100);
         }
-      }, { 
-        timeout: TRANSACTION_TIMEOUT, 
-        maxWait: TRANSACTION_TIMEOUT,
-        isolationLevel: 'ReadCommitted' // Optimize isolation level
-      });
-    } catch (error) {
-      this.logger.error(`Failed to process ${members.length} members`, error);
-      throw error;
+
+      } catch (error) {
+        this.logger.error(`Failed to process member micro-batch`, error);
+        throw error;
+      }
     }
-    
+
     const duration = Date.now() - startTime;
     const recordsPerSecond = Math.round(members.length / (duration / 1000));
     this.logger.debug(`Processed ${members.length} members in ${duration}ms (${recordsPerSecond} records/sec)`);
@@ -302,34 +297,51 @@ export class MembersListProcessingService {
 
   private async processPoints(points: NumericPoints[]) {
     const startTime = Date.now();
-    
-    for (let i = 0; i < points.length; i += POINTS_BATCH_SIZE) {
-      const batch = points.slice(i, i + POINTS_BATCH_SIZE);
-      const pointsToUpsert = await this.filterPointsForUpsert(batch);
-      
-      if (pointsToUpsert.length > 0) {
-        await this.prismaService.$transaction(async (tx) => {
-          await tx.$executeRaw`
-            INSERT INTO "NumericPoints" (
-              "memberId", "memberLicence", date, points, ranking,
-              "rankingLetterEstimation", "rankingWI"
-            )
-            SELECT * FROM UNNEST(
-              ${pointsToUpsert.map(p => p.memberId)}::integer[],
-              ${pointsToUpsert.map(p => p.memberLicence)}::integer[],
-              ${pointsToUpsert.map(p => p.date)}::timestamp[],
-              ${pointsToUpsert.map(p => p.points)}::double precision[],
-              ${pointsToUpsert.map(p => p.ranking)}::integer[],
-              ${pointsToUpsert.map(p => p.rankingLetterEstimation)}::text[],
-              ${pointsToUpsert.map(p => p.rankingWI)}::integer[]
-            )
-            ON CONFLICT ("memberId", "memberLicence", date) DO UPDATE SET
-              points = EXCLUDED.points,
-              ranking = EXCLUDED.ranking,
-              "rankingLetterEstimation" = EXCLUDED."rankingLetterEstimation",
-              "rankingWI" = EXCLUDED."rankingWI"
-          `;
-        }, { timeout: TRANSACTION_TIMEOUT, maxWait: TRANSACTION_TIMEOUT });
+
+    // Process points individually for maximum stability
+    for (let i = 0; i < points.length; i++) {
+      const point = points[i];
+
+      try {
+        // Check if this point already exists with same values
+        const existing = await this.prismaService.numericPoints.findUnique({
+          where: {
+            memberId_memberLicence_date: {
+              memberId: point.memberId,
+              memberLicence: point.memberLicence,
+              date: point.date
+            }
+          }
+        });
+
+        // Only update if values have changed
+        if (!existing || existing.points !== point.points || existing.ranking !== point.ranking) {
+          await this.prismaService.numericPoints.upsert({
+            where: {
+              memberId_memberLicence_date: {
+                memberId: point.memberId,
+                memberLicence: point.memberLicence,
+                date: point.date
+              }
+            },
+            update: {
+              points: point.points,
+              ranking: point.ranking,
+              rankingLetterEstimation: point.rankingLetterEstimation,
+              rankingWI: point.rankingWI
+            },
+            create: point
+          });
+        }
+
+      } catch (error) {
+        this.logger.warn(`Failed to process point for member ${point.memberId}, skipping`);
+        // Continue processing other points instead of failing entire batch
+      }
+
+      // Small delay between individual point operations
+      if (i < points.length - 1 && i % 5 === 4) {
+        await this.sleep(50);
       }
     }
 
@@ -418,7 +430,7 @@ export class MembersListProcessingService {
   private async storeImport(lines: string[], playerCategory: PlayerCategory): Promise<void> {
     // create a master hash of all the lines
     const masterHash = createHash('sha256').update(lines.join('')).digest('hex');
-    
+
     await this.prismaService.dataImport.create({
       data: {
         type: ImportType.MEMBER,
@@ -426,6 +438,32 @@ export class MembersListProcessingService {
         hash: masterHash,
       },
     });
+  }
+
+  private async checkMemoryAndCleanup(batchNumber: number, totalBatches: number): Promise<void> {
+    const currentMemory = process.memoryUsage();
+    this.performanceMetrics.peakMemory = Math.max(this.performanceMetrics.peakMemory, currentMemory.heapUsed);
+
+    if (currentMemory.heapUsed > MAX_MEMORY_THRESHOLD) {
+      this.logger.warn(`High memory usage detected: ${Math.round(currentMemory.heapUsed / 1024 / 1024)}MB`);
+
+      // Force garbage collection if available
+      if (global.gc) {
+        global.gc();
+        this.logger.debug('Forced garbage collection');
+      }
+
+      // Extended delay for memory recovery
+      await this.sleep(BATCH_DELAY * 2);
+    }
+
+    // Progress logging
+    const progress = Math.round((batchNumber / totalBatches) * 100);
+    this.logger.log(`Import progress: ${progress}% (${batchNumber}/${totalBatches} batches, Memory: ${Math.round(currentMemory.heapUsed / 1024 / 1024)}MB)`);
+  }
+
+  private async sleep(ms: number): Promise<void> {
+    return new Promise(resolve => setTimeout(resolve, ms));
   }
 }
 

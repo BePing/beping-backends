@@ -47,8 +47,9 @@ WORKDIR /usr/src/app
 COPY --from=builder --chown=nestjs:nodejs /usr/src/app/package*.json ./
 COPY --from=builder --chown=nestjs:nodejs /usr/src/app/prisma ./prisma
 
-# Install only production dependencies
+# Install only production dependencies and Prisma CLI
 RUN npm install --omit=dev --legacy-peer-deps && \
+    npm install -g prisma@latest && \
     npm cache clean --force
 
 # Copy built application
@@ -56,8 +57,12 @@ COPY --from=builder --chown=nestjs:nodejs /usr/src/app/dist ./dist
 COPY --from=builder --chown=nestjs:nodejs /usr/src/app/node_modules/@prisma ./node_modules/@prisma
 COPY --from=builder --chown=nestjs:nodejs /usr/src/app/node_modules/.prisma ./node_modules/.prisma
 
-# Create logs directory
+# Copy startup script
+COPY --chown=nestjs:nodejs apps/app-notifications/start.sh ./start.sh
+
+# Create logs directory and make startup script executable
 RUN mkdir -p /usr/src/app/logs && \
+    chmod +x /usr/src/app/start.sh && \
     chown -R nestjs:nodejs /usr/src/app
 
 # Switch to non-root user
@@ -72,4 +77,4 @@ HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
 
 # Use dumb-init to handle signals properly
 ENTRYPOINT ["dumb-init", "--"]
-CMD ["sh", "-c", "prisma migrate deploy && node dist/apps/app-notifications/main"]
+CMD ["./start.sh"]
