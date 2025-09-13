@@ -9,15 +9,8 @@ on:
 permissions:
   contents: write
   pull-requests: write
-  actions: write
-  checks: write
-  deployments: write
-  issues: write
   packages: write
-  pages: write
-  repository-projects: write
-  security-events: write
-  statuses: write
+  id-token: write
 
 jobs:
   release-please:
@@ -54,15 +47,15 @@ jobs:
           - app: tabt-rest
             release_created: ${{ needs.release-please.outputs.tabt-rest--release_created }}
             tag_name: ${{ needs.release-please.outputs.tabt-rest--tag_name }}
-            image_name: ghcr.io/fllorent0d/tabt-rest
+            image_name: ghcr.io/beping/tabt-rest/tabt-rest
           - app: data-aftt-importer
             release_created: ${{ needs.release-please.outputs.data-aftt-importer--release_created }}
             tag_name: ${{ needs.release-please.outputs.data-aftt-importer--tag_name }}
-            image_name: ghcr.io/fllorent0d/aftt-data-importer
+            image_name: ghcr.io/beping/tabt-rest/data-aftt-importer
           - app: app-notifications
             release_created: ${{ needs.release-please.outputs.app-notifications--release_created }}
             tag_name: ${{ needs.release-please.outputs.app-notifications--tag_name }}
-            image_name: ghcr.io/fllorent0d/app-notifications
+            image_name: ghcr.io/beping/tabt-rest/app-notifications
     steps:
       - name: Checkout Repository
         if: matrix.release_created == 'true'
