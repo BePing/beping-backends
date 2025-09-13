@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.1.1](https://github.com/BePing/beping-backends/compare/data-aftt-importer-v1.1.0...data-aftt-importer-v1.1.1) (2025-09-13)
+
+
+### Code Refactoring
+
+* update Dockerfiles for app-notifications, data-aftt-importer, and tabt-rest ([13ae946](https://github.com/BePing/beping-backends/commit/13ae9462dff2964f1b50ef0fb5a521eb9c48d33c))
+
 ## [1.1.0](https://github.com/BePing/beping-backends/compare/data-aftt-importer-v1.0.0...data-aftt-importer-v1.1.0) (2025-09-13)
 
 
