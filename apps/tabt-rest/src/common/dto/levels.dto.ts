@@ -2,25 +2,25 @@ import { Level } from "../../entity/tabt-input.interface";
 
 export enum LevelDTO {
     // National levels
-    SUPER = 'SUPER',          // Level.SUPER_DIVISION
+    SUPER = 'SUPER_DIVISION',          // Level.SUPER_DIVISION
     NATIONAL = 'NATIONAL',    // Level.NATIONAL
     
     // Regional level
-    REGIONAL = 'REGIONAL',    // Level.REGION_VTTL
+    REGIONAL = 'REGION_VTTL',    // Level.REGION_VTTL
     
     // Flanders provinces
     ANTWERP = 'ANTWERP',           // Level.ANTWERP
     LIMBURG = 'LIMBURG',           // Level.LIMBURG
-    EAST_FLANDERS = 'EAST_FLANDERS', // Level.OOST_VLANDEREN
-    WEST_FLANDERS = 'WEST_FLANDERS', // Level.WEST_VLAANDEREN
-    FLEMISH_BRABANT = 'FLEMISH_BRABANT', // Level.VLAAMS_BRABANT_BR
+    EAST_FLANDERS = 'OOST_VLANDEREN', // Level.OOST_VLANDEREN
+    WEST_FLANDERS = 'WEST_VLAANDEREN', // Level.WEST_VLAANDEREN
+    FLEMISH_BRABANT = 'VLAAMS_BRABANT_BR', // Level.VLAAMS_BRABANT_BR
     
     // Wallonia provinces
     HAINAUT = 'HAINAUT',           // Level.HAINAUT
     LIEGE = 'LIEGE',               // Level.LIEGE
     LUXEMBOURG = 'LUXEMBOURG',     // Level.LUXEMBOURG
     NAMUR = 'NAMUR',               // Level.NAMUR
-    WALLOON_BRABANT = 'WALLOON_BRABANT', // Part of Level.BRUSSELS_BRABANT_WALLON
+    WALLOON_BRABANT = 'BRUSSELS_BRABANT_WALLON', // Part of Level.BRUSSELS_BRABANT_WALLON
     
     // Brussels
     BRUSSELS = 'BRUSSELS',         // Part of Level.BRUSSELS_BRABANT_WALLON

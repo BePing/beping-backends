@@ -76,10 +76,15 @@ export class NumericRankingService {
 
         // Get the ranking estimation table based on total players
 
-        // Find the ranking letter for each points value
-        const numericRankingHistory = await Promise.all(actualPoints.map(async (p) => {
+        // Get the ranking table once for all points to avoid cache stampede
+        const totalPlayers = await this.rankingDistributionService.getMembersWithRankingCount(category);
+        const rankingTable = this.rankingDistributionService.getRankingTable(totalPlayers, category);
+        
+        // Find the ranking letter for each points value (optimized single pass)
+        const numericRankingHistory = actualPoints.map((p) => {
           const points = p?.points ?? 0;
-          const rankingLetter = await this.rankingDistributionService.getLetterRankingEstimationFromNumericPoints(p.ranking, category);
+          const rankingLetter = Object.entries(rankingTable)
+            .find(([_, threshold]) => p.ranking <= threshold)?.[0] || 'NC';
 
           return {
             numericRanking: p.rankingWI,
@@ -87,7 +92,7 @@ export class NumericRankingService {
             numericPoints: points,
             date: p.date.toISOString(),
           };
-        }));
+        });
 
         return {
           perDateHistory: history,

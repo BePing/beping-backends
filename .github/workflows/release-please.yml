@@ -1,0 +1,87 @@
+name: Release Please
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  release-please:
+    runs-on: ubuntu-latest
+    outputs:
+      releases_created: ${{ steps.release.outputs.releases_created }}
+      paths_released: ${{ steps.release.outputs.paths_released }}
+      tabt-rest--release_created: ${{ steps.release.outputs['apps/tabt-rest--release_created'] }}
+      tabt-rest--tag_name: ${{ steps.release.outputs['apps/tabt-rest--tag_name'] }}
+      data-aftt-importer--release_created: ${{ steps.release.outputs['apps/data-aftt-importer--release_created'] }}
+      data-aftt-importer--tag_name: ${{ steps.release.outputs['apps/data-aftt-importer--tag_name'] }}
+      app-notifications--release_created: ${{ steps.release.outputs['apps/app-notifications--release_created'] }}
+      app-notifications--tag_name: ${{ steps.release.outputs['apps/app-notifications--tag_name'] }}
+    steps:
+      - name: Run Release Please
+        id: release
+        uses: google-github-actions/release-please-action@v4
+        with:
+          config-file: release-please-config.json
+
+  build-docker-images:
+    needs: release-please
+    if: needs.release-please.outputs.releases_created == 'true'
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - app: tabt-rest
+            release_created: ${{ needs.release-please.outputs.tabt-rest--release_created }}
+            tag_name: ${{ needs.release-please.outputs.tabt-rest--tag_name }}
+            image_name: ghcr.io/fllorent0d/tabt-rest
+          - app: data-aftt-importer
+            release_created: ${{ needs.release-please.outputs.data-aftt-importer--release_created }}
+            tag_name: ${{ needs.release-please.outputs.data-aftt-importer--tag_name }}
+            image_name: ghcr.io/fllorent0d/aftt-data-importer
+          - app: app-notifications
+            release_created: ${{ needs.release-please.outputs.app-notifications--release_created }}
+            tag_name: ${{ needs.release-please.outputs.app-notifications--tag_name }}
+            image_name: ghcr.io/fllorent0d/app-notifications
+    steps:
+      - name: Checkout Repository
+        if: matrix.release_created == 'true'
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        if: matrix.release_created == 'true'
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to GitHub Container Registry
+        if: matrix.release_created == 'true'
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract version from tag
+        if: matrix.release_created == 'true'
+        id: version
+        run: |
+          # Extract version from tag (e.g., tabt-rest-v1.0.0 -> 1.0.0)
+          VERSION=$(echo "${{ matrix.tag_name }}" | sed 's/.*-v//')
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+
+      - name: Build and push Docker image
+        if: matrix.release_created == 'true'
+        uses: docker/build-push-action@v5
+        with:
+          push: true
+          context: .
+          platforms: linux/arm64/v8,linux/amd64
+          file: ./apps/${{ matrix.app }}/Dockerfile
+          tags: |
+            ${{ matrix.image_name }}:latest
+            ${{ matrix.image_name }}:${{ steps.version.outputs.version }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

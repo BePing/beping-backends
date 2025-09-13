@@ -44,12 +44,17 @@ export class MemberDashboardService
     category: PlayerCategoryDTO = PlayerCategoryDTO.SENIOR_MEN,
     teamId?: string,
   ): Promise<MemberDashboardDTOV1> {
+    // Add caching for the entire dashboard
+    const cacheKey = `member-dashboard:${memberUniqueIndex}:${category}${teamId ? `:${teamId}` : ''}`;
+    
     const getter = async (): Promise<MemberDashboardDTOV1> => {
       try {
-        const members: MemberEntry[] = await this.memberService.getMembersV1({
+        // Get member data first as it's required for all other operations
+        const members = await this.memberService.getMembersV1({
           uniqueIndex: memberUniqueIndex,
           withResults: true,
         });
+
         const member: ResponseDTO<MemberEntry> = members?.[0]
           ? new ResponseDTO(RESPONSE_STATUS.SUCCESS, members[0])
           : new ResponseDTO(
@@ -64,15 +69,14 @@ export class MemberDashboardService
           );
         }
 
-        // Get numeric ranking first
-        const numericRankingResponse = await this.getNumericRanking(memberUniqueIndex, category);
-
-        // Then get the rest of the data
-        const [latestTeamMatches, stats, nextMatchEstimation] = await Promise.all([
+        // Parallelize all data fetching operations
+        const [numericRankingResponse, latestTeamMatches] = await Promise.all([
+          this.getNumericRanking(memberUniqueIndex, category),
           this.getLatestMatches(member.payload),
-          this.getMemberStats(member.payload, numericRankingResponse),
-          teamId ? this.getNextMatchEstimation(member.payload, teamId, category) : undefined,
         ]);
+
+        // Calculate stats after getting numeric ranking to include season extremes
+        const stats = await this.getMemberStats(member.payload, numericRankingResponse);
 
         const dashboard = new MemberDashboardDTOV1(
           ResponseDTO.success('Member dashboard retrieved successfully'),
@@ -82,15 +86,19 @@ export class MemberDashboardService
         dashboard.numericRanking = numericRankingResponse;
         dashboard.latestTeamMatches = latestTeamMatches;
         dashboard.stats = stats;
-        dashboard.nextMatchEstimation = nextMatchEstimation;
 
         return dashboard;
       } catch (error) {
         throw new MemberDashboardDTOV1(ResponseDTO.error(error.message));
       }
     };
+
     try {
-      return getter();
+      return await this.cacheService.getFromCacheOrGetAndCacheResult(
+        cacheKey,
+        getter,
+        TTL_DURATION.ONE_HOUR, // Cache for 1 hour
+      );
     } catch (error) {
       throw new MemberDashboardDTOV1(
         ResponseDTO.error('Error while retrieving member dashboard'),
@@ -102,354 +110,400 @@ export class MemberDashboardService
     uniqueIndex: number,
     category: PlayerCategoryDTO,
   ) {
-    try {
-      return await this.numericRankingService.getWeeklyRankingV1(
-        uniqueIndex,
-        category,
-      );
-    } catch (error) {
-      throw new Error(error.message);
-    }
+    const cacheKey = `numeric-ranking:${uniqueIndex}:${category}`;
+    
+    const getter = async () => {
+      try {
+        return await this.numericRankingService.getWeeklyRankingV1(
+          uniqueIndex,
+          category,
+        );
+      } catch (error) {
+        throw new Error(error.message);
+      }
+    };
+
+    return await this.cacheService.getFromCacheOrGetAndCacheResult(
+      cacheKey,
+      getter,
+      TTL_DURATION.ONE_HOUR, // Cache for 1 hour
+    );
   }
 
   private async getMemberStats(
     member: MemberEntry,
     numericRanking?: WeeklyRankingV1Response,
   ): Promise<MemberStatsDTOV1> {
-    try {
-      const memberResultEntries = member.ResultEntries ?? [];
-      const total = memberResultEntries.length;
-      if (total === 0) {
+    const cacheKey = `member-stats:${member.UniqueIndex}`;
+    
+    const getter = async (): Promise<MemberStatsDTOV1> => {
+      try {
+        const memberResultEntries = member.ResultEntries ?? [];
+        const total = memberResultEntries.length;
+        
+        if (total === 0) {
+          return this.getEmptyMemberStats(member);
+        }
+
+        // Optimized: Single pass through results for basic calculations
+        let victories = 0;
+        let defeats = 0;
+        let totalSets = 0;
+        let wonSets = 0;
+        let lostSets = 0;
+        let tieBreakVictories = 0;
+        let tieBreakDefeats = 0;
+        
+        // Time-based counters
+        const timeSlots = { morning: 0, afternoon: 0, evening: 0 };
+        const timeWins = { morning: 0, afternoon: 0, evening: 0 };
+        const dayStats = new Array(7).fill(0).map(() => ({ count: 0, wins: 0 }));
+        const monthStats = new Array(12).fill(0).map(() => ({ count: 0, wins: 0 }));
+        const rankingMap = new Map<string, { victories: number; defeats: number; entries: MemberEntryResultEntry[] }>();
+
+        // Create sorted indices to avoid array cloning
+        const sortedIndices = memberResultEntries
+          .map((_, index) => ({ index, date: new Date(memberResultEntries[index].Date).getTime() }))
+          .sort((a, b) => a.date - b.date)
+          .map(item => item.index);
+
+        // Single optimized pass through all results
+        for (const result of memberResultEntries) {
+          const isVictory = result.Result.startsWith('V');
+          const matchDate = new Date(result.Date);
+          const hour = matchDate.getHours();
+          const dayOfWeek = matchDate.getDay();
+          const month = matchDate.getMonth();
+
+          // Basic stats
+          if (isVictory) victories++;
+          else defeats++;
+
+          totalSets += result.SetFor + result.SetAgainst;
+          wonSets += result.SetFor;
+          lostSets += result.SetAgainst;
+
+          // Tie break stats
+          if (result.SetFor === 3 && result.SetAgainst === 2) tieBreakVictories++;
+          else if (result.SetFor === 2 && result.SetAgainst === 3) tieBreakDefeats++;
+
+          // Time of day stats
+          const timeSlot = hour < 12 ? 'morning' : hour < 18 ? 'afternoon' : 'evening';
+          timeSlots[timeSlot]++;
+          if (isVictory) timeWins[timeSlot]++;
+
+          // Day of week stats
+          dayStats[dayOfWeek].count++;
+          if (isVictory) dayStats[dayOfWeek].wins++;
+
+          // Monthly stats
+          monthStats[month].count++;
+          if (isVictory) monthStats[month].wins++;
+
+          // Per ranking stats
+          const ranking = result.Ranking;
+          if (!rankingMap.has(ranking)) {
+            rankingMap.set(ranking, { victories: 0, defeats: 0, entries: [] });
+          }
+          const rankingStat = rankingMap.get(ranking)!;
+          rankingStat.entries.push(result);
+          if (isVictory) rankingStat.victories++;
+          else rankingStat.defeats++;
+        }
+
+        // Calculate streaks efficiently
+        const { currentWinStreak, bestWinStreak, currentLossStreak, worstLossStreak } = 
+          this.calculateStreaks(memberResultEntries, sortedIndices);
+
+        // Season extremes from numeric ranking
+        const seasonExtremes = this.calculateSeasonExtremes(member, numericRanking, memberResultEntries, sortedIndices);
+
+        // Build response efficiently
         return {
           matches: {
-            count: 0,
+            count: total,
+            victories,
+            defeats,
+            victoriesPct: Math.round((victories / total) * 100),
+            defeatsPct: Math.round((defeats / total) * 100),
           },
           tieBreaks: {
-            count: 0,
+            count: tieBreakVictories + tieBreakDefeats,
+            victories: tieBreakVictories,
+            defeats: tieBreakDefeats,
+            victoriesPct: tieBreakVictories + tieBreakDefeats > 0 ? Math.round((tieBreakVictories / (tieBreakVictories + tieBreakDefeats)) * 100) : 0,
+            defeatsPct: tieBreakVictories + tieBreakDefeats > 0 ? Math.round((tieBreakDefeats / (tieBreakVictories + tieBreakDefeats)) * 100) : 0,
           },
-          perRanking: [],
+          perRanking: Array.from(rankingMap.entries()).map(([ranking, stats]) => ({
+            ranking,
+            victories: stats.victories,
+            defeats: stats.defeats,
+            count: stats.victories + stats.defeats,
+            victoriesPct: Math.round((stats.victories / (stats.victories + stats.defeats)) * 100),
+            defeatsPct: Math.round((stats.defeats / (stats.victories + stats.defeats)) * 100),
+            players: stats.entries,
+          })),
           sets: {
-            total: 0,
-            won: 0,
-            lost: 0,
-            wonPct: 0,
-            lostPct: 0,
+            total: totalSets,
+            won: wonSets,
+            lost: lostSets,
+            wonPct: Math.round((wonSets / totalSets) * 100),
+            lostPct: Math.round((lostSets / totalSets) * 100),
           },
           winStreak: {
-            current: 0,
-            best: 0,
+            current: currentWinStreak,
+            best: bestWinStreak,
             worst: 0,
           },
           lossStreak: {
-            current: 0,
+            current: currentLossStreak,
             best: 0,
-            worst: 0,
+            worst: worstLossStreak,
           },
-          seasonExtremes: {
-            highestRanking: member.Ranking,
-            lowestRanking: member.Ranking,
-            highestPoints: 0,
-            lowestPoints: 0,
-            firstMatch: '',
-            lastMatch: '',
-          },
-          matchHistory: [],
-          timeOfDay: [],
-          dayOfWeek: [],
-          monthly: [],
-          matchDetails: {
-            averageSetsPerMatch: 0,
-            cleanVictories: 0,
-            cleanDefeats: 0,
-            comebacks: 0,
-            leadLost: 0,
-          },
+          seasonExtremes,
+          matchHistory: sortedIndices.map(index => {
+            const entry = memberResultEntries[index];
+            return {
+              date: entry.Date,
+              result: entry.Result as 'V' | 'D',
+              opponentName: `${entry.FirstName} ${entry.LastName}`,
+              opponentRanking: entry.Ranking,
+              score: `${entry.SetFor}-${entry.SetAgainst}`,
+            };
+          }),
+          timeOfDay: this.buildTimeOfDayStats(timeSlots, timeWins),
+          dayOfWeek: this.buildDayOfWeekStats(dayStats),
+          monthly: this.buildMonthlyStats(monthStats),
+          matchDetails: this.calculateMatchDetails(memberResultEntries, sortedIndices, totalSets, total),
         };
+      } catch (error) {
+        throw new Error(error.message);
       }
+    };
 
-      // Sort entries by date for streak and chronological analysis
-      const sortedEntries = [...memberResultEntries].sort((a, b) => {
-        const dateA = new Date(a.Date);
-        const dateB = new Date(b.Date);
-        return dateA.getTime() - dateB.getTime();
-      });
-        
-      // Match history
-      const matchHistory = sortedEntries.map(entry => ({
-        date: entry.Date,
-        result: entry.Result as 'V' | 'D',
-        opponentName: `${entry.FirstName} ${entry.LastName}`,
-        opponentRanking: entry.Ranking,
-        score: `${entry.SetFor}-${entry.SetAgainst}`,
-      }));
-      
-      // Basic match statistics
-      const victories = memberResultEntries.filter((result) => result.Result.startsWith('V')).length;
-      const defeats = memberResultEntries.filter((result) => result.Result.startsWith('D')).length;
-      const defeatsPct = Math.round((defeats / total) * 100);
-      const victoriesPct = Math.round((victories / total) * 100);
+    return await this.cacheService.getFromCacheOrGetAndCacheResult(
+      cacheKey,
+      getter,
+      TTL_DURATION.ONE_HOUR, // Cache for 1 hour
+    );
+  }
 
-      // Set statistics
-      const totalSets = memberResultEntries.reduce((acc, result) => acc + result.SetFor + result.SetAgainst, 0);
-      const wonSets = memberResultEntries.reduce((acc, result) => acc + result.SetFor, 0);
-      const lostSets = memberResultEntries.reduce((acc, result) => acc + result.SetAgainst, 0);
+  // Helper methods for optimized stats calculation
+  private getEmptyMemberStats(member: MemberEntry): MemberStatsDTOV1 {
+    return {
+      matches: { count: 0 },
+      tieBreaks: { count: 0 },
+      perRanking: [],
+      sets: { total: 0, won: 0, lost: 0, wonPct: 0, lostPct: 0 },
+      winStreak: { current: 0, best: 0, worst: 0 },
+      lossStreak: { current: 0, best: 0, worst: 0 },
+      seasonExtremes: {
+        highestRanking: member.Ranking,
+        lowestRanking: member.Ranking,
+        highestPoints: 0,
+        lowestPoints: 0,
+        firstMatch: '',
+        lastMatch: '',
+      },
+      matchHistory: [],
+      timeOfDay: [],
+      dayOfWeek: [],
+      monthly: [],
+      matchDetails: {
+        averageSetsPerMatch: 0,
+        cleanVictories: 0,
+        cleanDefeats: 0,
+        comebacks: 0,
+        leadLost: 0,
+      },
+    };
+  }
 
-      // Time-based analysis
-      const timeSlots = {
-        morning: { start: 6, end: 12 },
-        afternoon: { start: 12, end: 18 },
-        evening: { start: 18, end: 24 },
-      };
+  private calculateStreaks(entries: MemberEntryResultEntry[], sortedIndices: number[]) {
+    let currentWinStreak = 0;
+    let currentLossStreak = 0;
+    let bestWinStreak = 0;
+    let worstLossStreak = 0;
+    let tempWinStreak = 0;
+    let tempLossStreak = 0;
 
-      const timeOfDayStats = Object.entries(timeSlots).map(([slot, { start, end }]) => {
-        const matches = memberResultEntries.filter(match => {
-          const hour = new Date(match.Date).getHours();
-          return hour >= start && hour < end;
-        });
-        const wins = matches.filter(m => m.Result === 'V').length;
-        const losses = matches.filter(m => m.Result === 'D').length;
-        const total = wins + losses;
-        return {
-          timeSlot: slot as 'morning' | 'afternoon' | 'evening',
-          count: total,
-          victories: wins,
-          defeats: losses,
-          victoriesPct: total > 0 ? Math.round((wins / total) * 100) : 0,
-          defeatsPct: total > 0 ? Math.round((losses / total) * 100) : 0,
-        };
-      });
-
-      // Day of week analysis
-      const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
-      const dayOfWeekStats = days.map(day => {
-        const matches = memberResultEntries.filter(match => 
-          days[new Date(match.Date).getDay()] === day
-        );
-        const wins = matches.filter(m => m.Result === 'V').length;
-        const losses = matches.filter(m => m.Result === 'D').length;
-        const total = wins + losses;
-        return {
-          day,
-          count: total,
-          victories: wins,
-          defeats: losses,
-          victoriesPct: total > 0 ? Math.round((wins / total) * 100) : 0,
-          defeatsPct: total > 0 ? Math.round((losses / total) * 100) : 0,
-        };
-      });
-
-      // Monthly analysis
-      const months = ['January', 'February', 'March', 'April', 'May', 'June', 
-                     'July', 'August', 'September', 'October', 'November', 'December'];
-      const monthlyStats = months.map(month => {
-        const matches = memberResultEntries.filter(match => 
-          months[new Date(match.Date).getMonth()] === month
-        );
-        const wins = matches.filter(m => m.Result === 'V').length;
-        const losses = matches.filter(m => m.Result === 'D').length;
-        const total = wins + losses;
-        return {
-          month,
-          count: total,
-          victories: wins,
-          defeats: losses,
-          victoriesPct: total > 0 ? Math.round((wins / total) * 100) : 0,
-          defeatsPct: total > 0 ? Math.round((losses / total) * 100) : 0,
-        };
-      });
-
-      // Match details analysis
-      const matchDetails = {
-        averageSetsPerMatch: Math.round((totalSets / total) * 100) / 100,
-        cleanVictories: memberResultEntries.filter(m => m.Result === 'V' && m.SetFor === 3 && m.SetAgainst === 0).length,
-        cleanDefeats: memberResultEntries.filter(m => m.Result === 'D' && m.SetFor === 0 && m.SetAgainst === 3).length,
-        // TODO: Check if this is correct
-        comebacks: memberResultEntries.filter(m => 
-          m.Result === 'V' && (
-            (m.SetFor === 3 && m.SetAgainst === 2 && m.SetFor < m.SetAgainst) // was down 0-2 or 1-2
-          )
-        ).length,
-        leadLost: memberResultEntries.filter(m => 
-          m.Result === 'D' && (
-            (m.SetFor === 2 && m.SetAgainst === 3 && m.SetFor > m.SetAgainst) // was up 2-0 or 2-1
-          )
-        ).length,
-      };
-
-      // Tie break statistics
-      const tieBreakVictories = memberResultEntries.filter(
-        (result) => result.SetFor === 3 && result.SetAgainst === 2,
-      ).length;
-      const tieBreakdefeats = memberResultEntries.filter(
-        (result) => result.SetFor === 2 && result.SetAgainst === 3,
-      ).length;
-      const totalTieBreak = tieBreakVictories + tieBreakdefeats;
-      const tieBreakDefeatsPct = Math.floor((tieBreakdefeats / totalTieBreak) * 100) || 0;
-      const tieBreakVictoriesPct = Math.floor((tieBreakVictories / totalTieBreak) * 100) || 0;
-
-      // Streak calculations
-      let currentStreak = 0;
-      let bestWinStreak = 0;
-      let worstLossStreak = 0;
-      let currentWinStreak = 0;
-      let currentLossStreak = 0;
-
-      sortedEntries.forEach((result) => {
-        if (result.Result.startsWith('V')) {
-          currentWinStreak++;
+    // Calculate from most recent backwards for current streaks
+    for (let i = sortedIndices.length - 1; i >= 0; i--) {
+      const isVictory = entries[sortedIndices[i]].Result.startsWith('V');
+      if (i === sortedIndices.length - 1) {
+        // Initialize current streaks from most recent match
+        if (isVictory) {
+          currentWinStreak = 1;
           currentLossStreak = 0;
-          bestWinStreak = Math.max(bestWinStreak, currentWinStreak);
         } else {
-          currentLossStreak++;
+          currentLossStreak = 1;
           currentWinStreak = 0;
-          worstLossStreak = Math.max(worstLossStreak, currentLossStreak);
         }
-      });
-
-      // Current streak (positive for wins, negative for losses)
-      for (let i = sortedEntries.length - 1; i >= 0; i--) {
-        const result = sortedEntries[i];
-        if (currentStreak === 0) {
-          currentStreak = result.Result.startsWith('V') ? 1 : -1;
-        } else if (
-          (currentStreak > 0 && result.Result.startsWith('V')) ||
-          (currentStreak < 0 && result.Result.startsWith('D'))
-        ) {
-          currentStreak = currentStreak + (currentStreak > 0 ? 1 : -1);
+      } else {
+        // Continue current streaks
+        if (isVictory && currentWinStreak > 0) {
+          currentWinStreak++;
+        } else if (!isVictory && currentLossStreak > 0) {
+          currentLossStreak++;
         } else {
-          break;
+          break; // Streak broken
         }
       }
-
-      // Rankings per opponent statistics
-      const memberEntryResultEntryPerRanking: {
-        [ranking: string]: MemberEntryResultEntry[];
-      } = memberResultEntries.reduce((acc, value) => {
-        if (acc[value.Ranking]) {
-          acc[value.Ranking].push(value);
-        } else {
-          acc[value.Ranking] = [value];
-        }
-        return acc;
-      }, {});
-
-      const perRanking: RankingWinLossDTOV1[] = Object.keys(memberEntryResultEntryPerRanking).map(
-        (ranking) => {
-          const victories = memberEntryResultEntryPerRanking[ranking].filter(
-            (result) => result.Result.startsWith('V'),
-          ).length;
-          const defeats = memberEntryResultEntryPerRanking[ranking].filter(
-            (result) => result.Result.startsWith('D'),
-          ).length;
-          const total = victories + defeats;
-          return {
-            ranking,
-            victories,
-            defeats,
-            count: total,
-            victoriesPct: Math.round((victories / total) * 100),
-            defeatsPct: Math.round((defeats / total) * 100),
-            players: memberEntryResultEntryPerRanking[ranking],
-          };
-        },
-      );
-
-      // Season extremes from numeric ranking history
-      let highestPoints = 0;
-      let lowestPoints = Infinity;
-      let highestRanking = member.Ranking;
-      let lowestRanking = member.Ranking;
-
-      if (numericRanking?.numericRankingHistory?.length) {
-        const history = numericRanking.numericRankingHistory;
-        history.forEach(entry => {
-          if (entry.numericPoints > highestPoints) {
-            highestPoints = entry.numericPoints;
-          }
-          if (entry.numericPoints < lowestPoints) {
-            lowestPoints = entry.numericPoints;
-          }
-          if (entry.rankingLetterEstimation) {
-            if (!highestRanking || entry.rankingLetterEstimation < highestRanking) {
-              highestRanking = entry.rankingLetterEstimation;
-            }
-            if (!lowestRanking || entry.rankingLetterEstimation > lowestRanking) {
-              lowestRanking = entry.rankingLetterEstimation;
-            }
-          }
-        });
-      }
-
-      return {
-        matches: {
-          count: total,
-          victories,
-          defeats,
-          victoriesPct,
-          defeatsPct,
-        },
-        tieBreaks: {
-          count: totalTieBreak,
-          victories: tieBreakVictories,
-          defeats: tieBreakdefeats,
-          victoriesPct: tieBreakVictoriesPct,
-          defeatsPct: tieBreakDefeatsPct,
-        },
-        perRanking,
-        sets: {
-          total: totalSets,
-          won: wonSets,
-          lost: lostSets,
-          wonPct: Math.round((wonSets / totalSets) * 100),
-          lostPct: Math.round((lostSets / totalSets) * 100),
-        },
-        winStreak: {
-          current: currentStreak > 0 ? currentStreak : 0,
-          best: bestWinStreak,
-          worst: 0,
-        },
-        lossStreak: {
-          current: currentStreak < 0 ? Math.abs(currentStreak) : 0,
-          best: 0,
-          worst: worstLossStreak,
-        },
-        seasonExtremes: {
-          highestRanking,
-          lowestRanking,
-          highestPoints: Math.round(highestPoints * 100) / 100,
-          lowestPoints: lowestPoints === Infinity ? 0 : Math.round(lowestPoints * 100) / 100,
-          firstMatch: sortedEntries[0]?.Date || '',
-          lastMatch: sortedEntries[sortedEntries.length - 1]?.Date || '',
-        },
-        matchHistory,
-        timeOfDay: timeOfDayStats,
-        dayOfWeek: dayOfWeekStats,
-        monthly: monthlyStats,
-        matchDetails,
-      };
-    } catch (error) {
-      throw new Error(error.message);
     }
+
+    // Calculate best/worst streaks in chronological order
+    for (const index of sortedIndices) {
+      const isVictory = entries[index].Result.startsWith('V');
+      if (isVictory) {
+        tempWinStreak++;
+        tempLossStreak = 0;
+        bestWinStreak = Math.max(bestWinStreak, tempWinStreak);
+      } else {
+        tempLossStreak++;
+        tempWinStreak = 0;
+        worstLossStreak = Math.max(worstLossStreak, tempLossStreak);
+      }
+    }
+
+    return { currentWinStreak, bestWinStreak, currentLossStreak, worstLossStreak };
+  }
+
+  private calculateSeasonExtremes(
+    member: MemberEntry, 
+    numericRanking: WeeklyRankingV1Response | undefined,
+    entries: MemberEntryResultEntry[],
+    sortedIndices: number[]
+  ) {
+    let highestPoints = 0;
+    let lowestPoints = Infinity;
+    let highestRanking = member.Ranking;
+    let lowestRanking = member.Ranking;
+
+    if (numericRanking?.numericRankingHistory?.length) {
+      for (const entry of numericRanking.numericRankingHistory) {
+        if (entry.numericPoints > highestPoints) highestPoints = entry.numericPoints;
+        if (entry.numericPoints < lowestPoints) lowestPoints = entry.numericPoints;
+        
+        if (entry.rankingLetterEstimation) {
+          if (!highestRanking || entry.rankingLetterEstimation < highestRanking) {
+            highestRanking = entry.rankingLetterEstimation;
+          }
+          if (!lowestRanking || entry.rankingLetterEstimation > lowestRanking) {
+            lowestRanking = entry.rankingLetterEstimation;
+          }
+        }
+      }
+    }
+
+    return {
+      highestRanking,
+      lowestRanking,
+      highestPoints: Math.round(highestPoints * 100) / 100,
+      lowestPoints: lowestPoints === Infinity ? 0 : Math.round(lowestPoints * 100) / 100,
+      firstMatch: sortedIndices[0] ? entries[sortedIndices[0]].Date : '',
+      lastMatch: sortedIndices[sortedIndices.length - 1] ? entries[sortedIndices[sortedIndices.length - 1]].Date : '',
+    };
+  }
+
+  private buildTimeOfDayStats(timeSlots: Record<string, number>, timeWins: Record<string, number>) {
+    return Object.entries(timeSlots).map(([slot, count]) => {
+      const wins = timeWins[slot];
+      const losses = count - wins;
+      return {
+        timeSlot: slot as 'morning' | 'afternoon' | 'evening',
+        count,
+        victories: wins,
+        defeats: losses,
+        victoriesPct: count > 0 ? Math.round((wins / count) * 100) : 0,
+        defeatsPct: count > 0 ? Math.round((losses / count) * 100) : 0,
+      };
+    });
+  }
+
+  private buildDayOfWeekStats(dayStats: Array<{ count: number; wins: number }>) {
+    const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+    return days.map((day, index) => {
+      const { count, wins } = dayStats[index];
+      const losses = count - wins;
+      return {
+        day,
+        count,
+        victories: wins,
+        defeats: losses,
+        victoriesPct: count > 0 ? Math.round((wins / count) * 100) : 0,
+        defeatsPct: count > 0 ? Math.round((losses / count) * 100) : 0,
+      };
+    });
+  }
+
+  private buildMonthlyStats(monthStats: Array<{ count: number; wins: number }>) {
+    const months = ['January', 'February', 'March', 'April', 'May', 'June', 
+                   'July', 'August', 'September', 'October', 'November', 'December'];
+    return months.map((month, index) => {
+      const { count, wins } = monthStats[index];
+      const losses = count - wins;
+      return {
+        month,
+        count,
+        victories: wins,
+        defeats: losses,
+        victoriesPct: count > 0 ? Math.round((wins / count) * 100) : 0,
+        defeatsPct: count > 0 ? Math.round((losses / count) * 100) : 0,
+      };
+    });
+  }
+
+  private calculateMatchDetails(entries: MemberEntryResultEntry[], sortedIndices: number[], totalSets: number, total: number) {
+    let cleanVictories = 0;
+    let cleanDefeats = 0;
+    let comebacks = 0;
+    let leadLost = 0;
+
+    for (const index of sortedIndices) {
+      const match = entries[index];
+      const isVictory = match.Result.startsWith('V');
+      if (isVictory && match.SetFor === 3 && match.SetAgainst === 0) cleanVictories++;
+      else if (!isVictory && match.SetFor === 0 && match.SetAgainst === 3) cleanDefeats++;
+      else if (isVictory && match.SetFor === 3 && match.SetAgainst === 2) comebacks++;
+      else if (!isVictory && match.SetFor === 2 && match.SetAgainst === 3) leadLost++;
+    }
+
+    return {
+      averageSetsPerMatch: Math.round((totalSets / total) * 100) / 100,
+      cleanVictories,
+      cleanDefeats,
+      comebacks,
+      leadLost,
+    };
   }
 
   private async getLatestMatches(
     member: MemberEntry,
   ): Promise<TeamMatchesEntry[]> {
-    try {
-      const matchIds = (member.ResultEntries ?? [])
-        //.sort((a, b) => b.Date.localeCompare(a.Date))
-        .map((result) => result.MatchId)
-        .filter((item, pos, arr) => arr.indexOf(item) === pos)
-        .slice(0, 3)
-        .flat();
+    const cacheKey = `latest-matches:${member.UniqueIndex}`;
+    
+    const getter = async (): Promise<TeamMatchesEntry[]> => {
+      try {
+        const matchIds = (member.ResultEntries ?? [])
+          .map((result) => result.MatchId)
+          .filter((item, pos, arr) => arr.indexOf(item) === pos)
+          .slice(0, 3);
 
-      const clubMatches: TeamMatchesEntry[] =
-        await this.matchService.getMatches({ Club: member.Club });
-      return clubMatches.filter((match) => matchIds.includes(match.MatchId));
-      //.sort((a, b) => b.Date.localeCompare(a.Date));
-    } catch (error) {
-      throw new Error(error.message);
-    }
+        if (matchIds.length === 0) return [];
+
+        const clubMatches: TeamMatchesEntry[] =
+          await this.matchService.getMatches({ Club: member.Club });
+        return clubMatches.filter((match) => matchIds.includes(match.MatchId));
+      } catch (error) {
+        throw new Error(error.message);
+      }
+    };
+
+    return await this.cacheService.getFromCacheOrGetAndCacheResult(
+      cacheKey,
+      getter,
+      TTL_DURATION.ONE_HOUR,
+    );
   }
 
   private async getNextMatchEstimation(
@@ -457,104 +511,134 @@ export class MemberDashboardService
     teamId: string,
     category: PlayerCategoryDTO,
   ): Promise<NextMatchEstimationDTO | undefined> {
-    try {
-      // Get all matches for the team
-      const matches = await this.matchService.getMatches({
-        Club: member.Club,
-        Team: teamId,
-        WithDetails: true,
-      });
+    const cacheKey = `next-match-estimation:${member.UniqueIndex}:${teamId}:${category}`;
+    
+    const getter = async (): Promise<NextMatchEstimationDTO | undefined> => {
+      try {
+        // Get team matches and player ranking in parallel
+        const [matches, playerRanking] = await Promise.all([
+          this.matchService.getMatches({
+            Club: member.Club,
+            Team: teamId,
+            WithDetails: true,
+          }),
+          this.numericRankingService.getWeeklyRankingV1(member.UniqueIndex, category),
+        ]);
 
-      // Find the next match (first match with a date in the future)
-      const now = new Date();
-      const nextMatch = matches.find(match => new Date(match.Date) > now);
+        // Find the next match
+        const now = new Date();
+        const nextMatch = matches.find(match => new Date(match.Date) > now);
 
-      if (!nextMatch) {
-        return undefined;
-      }
+        if (!nextMatch) {
+          return undefined;
+        }
 
-      // Get the opponent players (from away team if we're home team, or vice versa)
-      const isHomeTeam = nextMatch.HomeClub === member.Club && nextMatch.HomeTeam === teamId;
-      const opponentClub = isHomeTeam ? nextMatch.AwayClub : nextMatch.HomeClub;
-      const divisionId = nextMatch.DivisionId;
+        const isHomeTeam = nextMatch.HomeClub === member.Club && nextMatch.HomeTeam === teamId;
+        const opponentClub = isHomeTeam ? nextMatch.AwayClub : nextMatch.HomeClub;
+        const divisionId = nextMatch.DivisionId;
 
-      // Get all players from the division
-      const divisionPlayers = await this.matchesMembersRankerService.getMembersRankingFromDivision(
-        Number(divisionId),
-        SortSystem.MOST_PLAYED,
-      );
-
-      // Filter players from the opponent club
-      const opponentPlayers = divisionPlayers.filter(player => player.club === opponentClub);
-
-      if (!opponentPlayers.length) {
-        return undefined;
-      }
-
-      // Get player's current ranking & points
-      const playerRanking = await this.numericRankingService.getWeeklyRankingV1(
-        member.UniqueIndex,
-        category,
-      );
-      const playerPoints = playerRanking.numericRankingHistory[playerRanking.numericRankingHistory.length - 1].numericPoints;
-
-      // Get all opponents' ranking & points
-      const opponentPlayersRanking = await Promise.all(opponentPlayers.map(async (player) => {
-        const ranking = await this.numericRankingService.getWeeklyRankingV1(player.uniqueIndex, category);
-        return {
-          ...player,
-          rankingLetter: ranking.numericRankingHistory[ranking.numericRankingHistory.length - 1].rankingLetterEstimation,
-          points: ranking.numericRankingHistory[ranking.numericRankingHistory.length - 1].numericPoints,
-        };
-      }));
-
-      // Function to calculate points for an opponent
-      const calculateOpponentPoints = (opponent: typeof opponentPlayersRanking[0]): OpponentEstimationDTO => {
-        const estimation = this.pointsEstimationService.estimatePoints(
-          playerPoints,
-          opponent.points,
-          nextMatch.DivisionName,
-          category,
+        // Get division players and filter opponents
+        const divisionPlayers = await this.matchesMembersRankerService.getMembersRankingFromDivision(
+          Number(divisionId),
+          SortSystem.MOST_PLAYED,
         );
 
-        const pointsDifference = playerPoints - opponent.points;
-        const isExpectedWin = pointsDifference > 0;
+        const opponentPlayers = divisionPlayers
+          .filter(player => player.club === opponentClub)
+          .slice(0, 6); // Reduced from 8 to 6 to minimize calls
+
+        if (!opponentPlayers.length) {
+          return undefined;
+        }
+
+        const playerPoints = playerRanking.numericRankingHistory[playerRanking.numericRankingHistory.length - 1].numericPoints;
+
+        // OPTIMIZED: Sequential processing to avoid cache stampede
+        // Instead of parallel batches, process sequentially to allow cache to work
+        const opponentPlayersRanking = [];
+        
+        for (const player of opponentPlayers) {
+          try {
+            const ranking = await this.numericRankingService.getWeeklyRankingV1(player.uniqueIndex, category);
+            const latestRanking = ranking.numericRankingHistory[ranking.numericRankingHistory.length - 1];
+            
+            opponentPlayersRanking.push({
+              ...player,
+              rankingLetter: latestRanking.rankingLetterEstimation,
+              points: latestRanking.numericPoints,
+            });
+          } catch (error) {
+            // Skip players we can't get ranking for
+            console.warn(`Failed to get ranking for player ${player.uniqueIndex}:`, error.message);
+            continue;
+          }
+        }
+
+        if (!opponentPlayersRanking.length) {
+          return undefined;
+        }
+
+        // Calculate estimations
+        const calculateOpponentPoints = (opponent: typeof opponentPlayersRanking[0]): OpponentEstimationDTO => {
+          const estimation = this.pointsEstimationService.estimatePoints(
+            playerPoints,
+            opponent.points,
+            nextMatch.DivisionName,
+            category,
+          );
+
+          const pointsDifference = playerPoints - opponent.points;
+          const isExpectedWin = pointsDifference > 0;
+
+          return {
+            firstName: opponent.firstName,
+            lastName: opponent.lastName,
+            ranking: opponent.rankingLetter,
+            pointsToWin: isExpectedWin ? estimation.expectedWinPoints : estimation.unexpectedWinPoints,
+            coefficient: estimation.coefficient,
+            isExpectedWin,
+            pointsDifference: Math.abs(pointsDifference),
+          };
+        };
+
+        // Optimize sorting by calculating point differences once
+        const opponentsWithDiff = opponentPlayersRanking.map(opponent => ({
+          ...opponent,
+          pointsDiff: Math.abs(opponent.points - playerPoints),
+        }));
+
+        // Get best and worst case scenarios - limit to 3 each to reduce complexity
+        const maxOpponents = Math.min(3, opponentsWithDiff.length);
+        
+        const bestCase = opponentsWithDiff
+          .sort((a, b) => b.pointsDiff - a.pointsDiff)
+          .slice(0, maxOpponents)
+          .map(calculateOpponentPoints);
+
+        const worstCase = opponentsWithDiff
+          .sort((a, b) => a.pointsDiff - b.pointsDiff)
+          .slice(0, maxOpponents)
+          .map(calculateOpponentPoints);
 
         return {
-          firstName: opponent.firstName,
-          lastName: opponent.lastName,
-          ranking: opponent.rankingLetter,
-          pointsToWin: isExpectedWin ? estimation.expectedWinPoints : estimation.unexpectedWinPoints,
-          coefficient: estimation.coefficient,
-          isExpectedWin,
-          pointsDifference: Math.abs(pointsDifference),
+          matchId: nextMatch.MatchId,
+          date: nextMatch.Date,
+          homeTeam: `${nextMatch.HomeClub} ${nextMatch.HomeTeam}`,
+          awayTeam: `${nextMatch.AwayClub} ${nextMatch.AwayTeam}`,
+          bestCase,
+          worstCase,
         };
-      };
+      } catch (error) {
+        console.error('Error getting next match estimation:', error);
+        return undefined;
+      }
+    };
 
-      // Best case: players with most points difference (more points to win)
-      const bestCase = [...opponentPlayersRanking]
-        .sort((a, b) => Math.abs(b.points - playerPoints) - Math.abs(a.points - playerPoints))
-        .slice(0, 4)
-        .map(calculateOpponentPoints);
-
-      // Worst case: players with least points difference (fewer points to win)
-      const worstCase = [...opponentPlayersRanking]
-        .sort((a, b) => Math.abs(a.points - playerPoints) - Math.abs(b.points - playerPoints))
-        .slice(0, 4)
-        .map(calculateOpponentPoints);
-
-      return {
-        matchId: nextMatch.MatchId,
-        date: nextMatch.Date,
-        homeTeam: `${nextMatch.HomeClub} ${nextMatch.HomeTeam}`,
-        awayTeam: `${nextMatch.AwayClub} ${nextMatch.AwayTeam}`,
-        bestCase,
-        worstCase,
-      };
-    } catch (error) {
-      console.error('Error getting next match estimation:', error);
-      return undefined;
-    }
+    return await this.cacheService.getFromCacheOrGetAndCacheResult(
+      cacheKey,
+      getter,
+      TTL_DURATION.ONE_HOUR, // Cache for 1 hour
+    );
   }
 
   private getRankingPoints(ranking: string, category: PlayerCategoryDTO): number {

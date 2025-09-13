@@ -15,7 +15,7 @@ RUN apt-get update && apt-get install -y openssl && npm install --legacy-peer-de
 COPY . .
 
 # Creates a "dist" folder with the production build
-RUN npm run prisma:generate && npm run build:tabt-rest
+RUN npm run prisma:generate && npm run build:app-notifications
 
 FROM node:${NODE_VERSION} as production
 

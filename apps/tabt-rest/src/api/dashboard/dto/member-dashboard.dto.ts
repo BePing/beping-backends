@@ -202,17 +202,17 @@ export class OpponentEstimationDTO {
 }
 
 export class NextMatchEstimationDTO {
-  @ApiProperty({ type: String })
+  @ApiPropertyOptional({ type: String })
   matchId?: string;
 
-  @ApiProperty({ type: String })
-  date: string;
+  @ApiPropertyOptional({ type: String })
+  date?: string;
 
-  @ApiProperty({ type: String })
+  @ApiPropertyOptional({ type: String })
   homeTeam: string;
 
-  @ApiProperty({ type: String })
-  awayTeam: string;
+  @ApiPropertyOptional({ type: String })
+  awayTeam?: string;
 
   @ApiProperty({ type: () => OpponentEstimationDTO, isArray: true, description: 'Best case scenario - most points to win' })
   bestCase: OpponentEstimationDTO[];

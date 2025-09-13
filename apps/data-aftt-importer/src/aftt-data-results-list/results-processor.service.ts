@@ -16,16 +16,26 @@ import { PrismaService } from '../prisma.service';
 import { CacheService } from '../cache/cache.service';
 import { createHash } from 'crypto';
 
-const BATCH_SIZE = 100;
-const TRANSACTION_BATCH_SIZE = 100;
+const BATCH_SIZE = 200;
+const TRANSACTION_BATCH_SIZE = 150;
 const MAX_RETRIES = 3;
 const TRANSACTION_TIMEOUT = 120000;
+const PREFETCH_BATCH_SIZE = 1000;
 
 @Processor('results')
 export class ResultsProcessorService {
   private readonly logger = new Logger(ResultsProcessorService.name);
   private readonly competitionCache = new Map<string, { id: string; type: CompetitionType }>();
   private readonly memberCache = new Map<string, Member>();
+  private performanceMetrics = {
+    downloadTime: 0,
+    processingTime: 0,
+    prefetchTime: 0,
+    totalRecords: 0,
+    validRecords: 0,
+    recordsPerSecond: 0,
+    memoryUsage: 0
+  };
 
   constructor(
     private readonly httpService: HttpService,
@@ -134,13 +144,23 @@ export class ResultsProcessorService {
   }
 
   private async prefetchCompetitions(parsedResults: any[]) {
+    // Filter out any results with undefined competition names and create unique map
     const uniqueCompetitions = new Map(
-      parsedResults.map(r => [r.competition.name, r.competition])
+      parsedResults
+        .filter(r => r.competition?.name) // Filter out undefined or null names
+        .map(r => [r.competition.name, r.competition])
     );
+
+    if (uniqueCompetitions.size === 0) {
+      this.logger.warn('No valid competition names found in parsed results');
+      return;
+    }
 
     const competitions = await this.prismaService.competition.findMany({
       where: {
-        name: { in: Array.from(uniqueCompetitions.keys()) },
+        name: { 
+          in: Array.from(uniqueCompetitions.keys())
+        },
       },
     });
 
@@ -154,21 +174,28 @@ export class ResultsProcessorService {
       .filter(comp => !this.competitionCache.has(comp.name));
 
     if (missingCompetitions.length > 0) {
-      const createdCompetitions = await this.prismaService.competition.createMany({
-        data: missingCompetitions,
-        skipDuplicates: true,
-      });
+      this.logger.debug(`Creating ${missingCompetitions.length} new competitions`);
       
-      // Fetch and cache the newly created competitions
-      const newCompetitions = await this.prismaService.competition.findMany({
-        where: {
-          name: { in: missingCompetitions.map(c => c.name) },
-        },
-      });
-      
-      newCompetitions.forEach(comp => {
-        this.competitionCache.set(comp.name, { id: comp.id, type: comp.type });
-      });
+      try {
+        await this.prismaService.competition.createMany({
+          data: missingCompetitions,
+          skipDuplicates: true,
+        });
+        
+        // Fetch and cache the newly created competitions
+        const newCompetitions = await this.prismaService.competition.findMany({
+          where: {
+            name: { in: missingCompetitions.map(c => c.name) },
+          },
+        });
+        
+        newCompetitions.forEach(comp => {
+          this.competitionCache.set(comp.name, { id: comp.id, type: comp.type });
+        });
+      } catch (error) {
+        this.logger.error('Failed to create new competitions:', error);
+        throw error;
+      }
     }
   }
 

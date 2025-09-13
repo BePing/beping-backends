@@ -1,16 +1,14 @@
 import { Module } from '@nestjs/common';
 import { ScheduleModule } from '@nestjs/schedule';
-import { ApiModule, Configuration } from './common/tabt-client';
 import { ConfigModule } from '@nestjs/config';
 import { LoggerModule } from 'nestjs-pino';
 import { TerminusModule } from '@nestjs/terminus';
 import { HealthController } from './controllers/health.controller';
-import { TeamMatchEventController } from './controllers/team-match-event.controller';
 import { CommonModule } from './common/common.module';
 import { AuthModule } from './auth/auth.module';
-import { NumericRankingEventController } from './controllers/numeric-ranking-event.controller';
 import { NotificationsModule } from './notifications/notifications.module';
 import { PrismaService } from './common/prisma.service';
+import { NotificationsController } from './controllers/notifications.controller';
 
 @Module({
   imports: [
@@ -24,16 +22,11 @@ import { PrismaService } from './common/prisma.service';
       },
     }),
     ConfigModule.forRoot(),
-    ApiModule.forRoot(
-      () => new Configuration({ basePath: 'https://api.beping.be' }),
-    ),
-    AuthModule,
     NotificationsModule,
   ],
   controllers: [
     HealthController,
-    TeamMatchEventController,
-    NumericRankingEventController,
+    NotificationsController,
   ],
   providers: [PrismaService],
 })

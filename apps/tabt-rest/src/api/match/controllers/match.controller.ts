@@ -26,6 +26,7 @@ import { GetMatch, GetMatches } from '../dto/match.dto';
 import { TeamMatchesEntryDTO } from '../dto/match-model.dto';
 import { mapDivisionCategoryDTOToDivisionCategory } from '../../../common/dto/division-category.dto';
 import { mapLevelDTOToLevels } from '../../../common/dto/levels.dto';
+import { WeeklyPerformanceMetricsDTO } from '../dto/performance-metrics.dto';
 
 @ApiTags('Matches')
 @Controller({
@@ -130,5 +131,22 @@ export class MatchController {
       return TeamMatchesEntryDTO.fromTabT(found[0]);
     }
     throw new NotFoundException();
+  }
+
+  @Get('player/:playerUniqueIndex/performance')
+  @ApiOperation({
+    operationId: 'getWeeklyPerformanceMetrics',
+    description: 'Get weekly performance metrics for a player including load score, fatigue resistance, and recovery score',
+  })
+  @ApiOkResponse({
+    type: WeeklyPerformanceMetricsDTO,
+    description: 'Weekly performance metrics for the player',
+  })
+  @ApiNotFoundResponse()
+  async getWeeklyPerformanceMetrics(
+    @Param('playerUniqueIndex', ParseIntPipe) playerUniqueIndex: number,
+    @Query('weekName') weekName: string,
+  ): Promise<WeeklyPerformanceMetricsDTO> {
+    return this.matchService.getWeeklyPerformanceMetrics(playerUniqueIndex, weekName);
   }
 }

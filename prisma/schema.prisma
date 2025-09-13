@@ -139,4 +139,55 @@ model DataImport {
 enum NotificationType {
   MATCH
   RANKING
+  CUSTOM
+}
+
+model DeviceSubscription {
+  id                String           @id @default(cuid())
+  userId            String?          // Optional user ID for authenticated users
+  deviceToken       String           @unique
+  platform          DevicePlatform
+  appVersion        String?
+  active            Boolean          @default(true)
+  notificationTypes NotificationType[]
+  metadata          Json?            // Additional device/user metadata
+  createdAt         DateTime         @default(now())
+  updatedAt         DateTime         @updatedAt
+  lastUsed          DateTime         @default(now())
+  notificationLogs  NotificationLog[]
+
+  @@index([userId])
+  @@index([active])
+  @@index([platform])
+}
+
+model NotificationLog {
+  id                    String               @id @default(cuid())
+  deviceSubscriptionId  String?
+  notificationType      NotificationType
+  title                 String
+  body                  String
+  data                  Json?                // Additional payload data
+  fcmMessageId          String?              // FCM response message ID
+  status                NotificationStatus
+  errorMessage          String?
+  sentAt                DateTime             @default(now())
+  deviceSubscription    DeviceSubscription?  @relation(fields: [deviceSubscriptionId], references: [id], onDelete: SetNull)
+
+  @@index([notificationType])
+  @@index([status])
+  @@index([sentAt])
+}
+
+enum DevicePlatform {
+  ANDROID
+  IOS
+  WEB
+}
+
+enum NotificationStatus {
+  PENDING
+  SENT
+  FAILED
+  DELIVERED
 }
