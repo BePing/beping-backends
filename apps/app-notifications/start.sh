@@ -5,7 +5,7 @@ echo "Starting app-notifications application..."
 
 # Wait for database to be ready
 echo "Waiting for database to be ready..."
-until npx prisma db ping --schema /usr/src/app/prisma/schema.prisma; do
+until echo "SELECT 1;" | npx prisma db execute --stdin --schema /usr/src/app/prisma/schema.prisma >/dev/null 2>&1; do
   echo "Database is not ready yet. Waiting..."
   sleep 2
 done
