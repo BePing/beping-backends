@@ -30,6 +30,9 @@ model Member {
   updatedAt        DateTime          @updatedAt
 
   @@id([id, licence])
+  @@index([licence, playerCategory], name: "idx_member_licence_category")
+  @@index([playerCategory, ranking], name: "idx_member_category_ranking")
+  @@index([club, playerCategory], name: "idx_member_club_category")
 }
 
 enum PlayerCategory {

@@ -4,10 +4,7 @@ import {
   MemberEntryResultEntry,
   TeamMatchesEntry,
 } from '../../../entity/tabt-soap/TabTAPI_Port';
-import { WeeklyNumericPointsV1 } from '../../member/dto/member.dto';
-import { IsEnum } from 'class-validator';
 import { ResponseDTO } from './common.dto';
-import { PlayerCategoryDTO } from 'apps/tabt-rest/src/common/dto/player-category.dto';
 import { WeeklyRankingV1Response } from 'apps/tabt-rest/src/services/members/numeric-ranking.service';
 
 export class WinLossSummaryDTOV1 {
@@ -36,9 +33,6 @@ export class RankingWinLossDTOV1 extends WinLossSummaryDTOV1 {
 }
 
 export class WeeklyNumericRankingInputV2 {
-  @ApiProperty({ enum: PlayerCategoryDTO, default: PlayerCategoryDTO.SENIOR_MEN })
-  category: PlayerCategoryDTO = PlayerCategoryDTO.SENIOR_MEN;
-
   @ApiProperty({ required: false, description: 'Team ID to get next match estimation points' })
   teamId?: string;
 }
@@ -275,4 +269,37 @@ export class RankingDistributionDTOV1 {
 
   @ApiProperty({ type: () => RankingDistributionEntryDTOV1, isArray: true })
   distribution: RankingDistributionEntryDTOV1[];
+}
+
+export class MultiCategoryMemberDashboardDTOV1 {
+  @ApiProperty({
+    type: () => ResponseDTO,
+    description: 'The status of the response',
+  })
+  public status: ResponseDTO<string>;
+
+  @ApiProperty({
+    type: () => MemberDashboardDTOV1,
+    required: false,
+    description: 'Dashboard data for SENIOR_MEN category'
+  })
+  public SENIOR_MEN?: MemberDashboardDTOV1;
+
+  @ApiProperty({
+    type: () => MemberDashboardDTOV1,
+    required: false,
+    description: 'Dashboard data for SENIOR_WOMEN category'
+  })
+  public SENIOR_WOMEN?: MemberDashboardDTOV1;
+
+  @ApiProperty({
+    type: [String],
+    description: 'List of categories where the member exists'
+  })
+  public availableCategories: string[];
+
+  constructor(status: ResponseDTO<string>) {
+    this.status = status;
+    this.availableCategories = [];
+  }
 }

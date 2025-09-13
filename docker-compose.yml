@@ -6,7 +6,10 @@ services:
       dockerfile: apps/app-notifications/Dockerfile
     depends_on:
       - cache
+      - postgres
     environment:
+      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/tabt_rest
+      DIRECT_URL: postgresql://postgres:postgres@postgres:5432/tabt_rest
       REDIS_HOST: cache
       REDIS_PORT: 6379
   data-importer:
@@ -15,11 +18,10 @@ services:
       dockerfile: apps/data-aftt-importer/Dockerfile
     depends_on:
       - cache
+      - postgres
     environment:
-      DATABASE_URL: ${SUPABASE_URL}
-      DIRECT_URL: ${DIRECT_URL}
-      SUPABASE_URL: ${SUPABASE_URL}
-      SUPABASE_ANON_KEY: ${SUPABASE_ANON_KEY}
+      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/tabt_rest
+      DIRECT_URL: postgresql://postgres:postgres@postgres:5432/tabt_rest
       REDIS_HOST: cache
       REDIS_PORT: 6379
       SYNC_MEMBERS_ON_START: true
@@ -41,12 +43,11 @@ services:
       - 3050:3050
     depends_on:
       - cache
+      - postgres
       - torproxy
     environment:
-      DATABASE_URL: ${SUPABASE_URL}
-      DIRECT_URL: ${DIRECT_URL}
-      SUPABASE_URL: ${SUPABASE_URL}
-      SUPABASE_ANON_KEY: ${SUPABASE_ANON_KEY}
+      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/tabt_rest
+      DIRECT_URL: postgresql://postgres:postgres@postgres:5432/tabt_rest
       REDIS_HOST: cache
       REDIS_PORT: 6379
       AFTT_DATA_USERNAME: beping
@@ -77,6 +78,22 @@ services:
       - "6379:6379"
     volumes:
       - cache-data:/data
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_DB: tabt_rest
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d tabt_rest"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
 
 volumes:
   cache-data:
+  postgres-data:

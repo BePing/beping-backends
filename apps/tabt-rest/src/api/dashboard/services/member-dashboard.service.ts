@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import {
   MemberDashboardDTOV1,
   MemberStatsDTOV1,
+  MultiCategoryMemberDashboardDTOV1,
   NextMatchEstimationDTO,
   OpponentEstimationDTO,
   RankingWinLossDTOV1,
@@ -25,6 +26,8 @@ import { PlayerCategoryDTO } from 'apps/tabt-rest/src/common/dto/player-category
 import { MEN_RANKING_ESTIMATION, WOMAN_RANKING_ESTIMATION } from '../../../common/consts/ranking-estimation';
 import { MatchesMembersRankerService, SortSystem } from '../../../services/matches/matches-members-ranker.service';
 import { PointsEstimationService } from '../../../services/members/points-estimation.service';
+import { PrismaService } from '../../../common/prisma.service';
+import { PlayerCategory as PrismaPlayerCategory } from '@prisma/client';
 
 @Injectable()
 export class MemberDashboardService
@@ -37,7 +40,127 @@ export class MemberDashboardService
     private readonly numericRankingService: NumericRankingService,
     private readonly matchesMembersRankerService: MatchesMembersRankerService,
     private readonly pointsEstimationService: PointsEstimationService,
+    private readonly prismaService: PrismaService,
   ) {}
+
+  /**
+   * Find all player categories for a member by their unique index (licence)
+   */
+  private async findMemberCategoriesByLicence(licence: number): Promise<PrismaPlayerCategory[]> {
+    const cacheKey = `member-categories:${licence}`;
+
+    const getter = async (): Promise<PrismaPlayerCategory[]> => {
+      const members = await this.prismaService.member.findMany({
+        where: { licence },
+        select: { playerCategory: true },
+        distinct: ['playerCategory'],
+      });
+
+      return members.map(member => member.playerCategory);
+    };
+
+    return await this.cacheService.getFromCacheOrGetAndCacheResult(
+      cacheKey,
+      getter,
+      TTL_DURATION.ONE_HOUR,
+    );
+  }
+
+  /**
+   * Get dashboard data for all categories where the member exists - internal method
+   */
+  private async getDashboardForAllCategories(
+    memberUniqueIndex: number,
+    teamId?: string,
+  ): Promise<{ [key in PrismaPlayerCategory]?: MemberDashboardDTOV1 }> {
+    const cacheKey = `member-dashboard-all-categories:${memberUniqueIndex}${teamId ? `:${teamId}` : ''}`;
+
+    const getter = async (): Promise<{ [key in PrismaPlayerCategory]?: MemberDashboardDTOV1 }> => {
+      // Find all categories for this member
+      const categories = await this.findMemberCategoriesByLicence(memberUniqueIndex);
+
+      if (categories.length === 0) {
+        return {};
+      }
+
+      // Get dashboard for each category in parallel
+      const dashboardPromises = categories.map(async (category) => {
+        try {
+          const playerCategoryDTO = category === PrismaPlayerCategory.SENIOR_MEN
+            ? PlayerCategoryDTO.SENIOR_MEN
+            : PlayerCategoryDTO.SENIOR_WOMEN;
+
+          const dashboard = await this.getDashboard(memberUniqueIndex, playerCategoryDTO, teamId);
+          return { category, dashboard };
+        } catch (error) {
+          console.warn(`Failed to get dashboard for category ${category}:`, error.message);
+          return null;
+        }
+      });
+
+      const results = await Promise.all(dashboardPromises);
+
+      // Build response object
+      const response: { [key in PrismaPlayerCategory]?: MemberDashboardDTOV1 } = {};
+      results.forEach((result) => {
+        if (result) {
+          response[result.category] = result.dashboard;
+        }
+      });
+
+      return response;
+    };
+
+    try {
+      return await this.cacheService.getFromCacheOrGetAndCacheResult(
+        cacheKey,
+        getter,
+        TTL_DURATION.ONE_HOUR,
+      );
+    } catch (error) {
+      console.error('Error retrieving multi-category dashboard:', error);
+      return {};
+    }
+  }
+
+  /**
+   * Get formatted multi-category dashboard for public API
+   */
+  async getMultiCategoryDashboard(
+    memberUniqueIndex: number,
+    teamId?: string,
+  ): Promise<MultiCategoryMemberDashboardDTOV1> {
+    try {
+      const dashboards = await this.getDashboardForAllCategories(memberUniqueIndex, teamId);
+
+      if (Object.keys(dashboards).length === 0) {
+        return new MultiCategoryMemberDashboardDTOV1(
+          ResponseDTO.error('No member found for given id')
+        );
+      }
+
+      const response = new MultiCategoryMemberDashboardDTOV1(
+        ResponseDTO.success('Multi-category member dashboard retrieved successfully')
+      );
+
+      // Set dashboard data for each category
+      if (dashboards[PrismaPlayerCategory.SENIOR_MEN]) {
+        response.SENIOR_MEN = dashboards[PrismaPlayerCategory.SENIOR_MEN];
+        response.availableCategories.push('SENIOR_MEN');
+      }
+
+      if (dashboards[PrismaPlayerCategory.SENIOR_WOMEN]) {
+        response.SENIOR_WOMEN = dashboards[PrismaPlayerCategory.SENIOR_WOMEN];
+        response.availableCategories.push('SENIOR_WOMEN');
+      }
+
+      return response;
+    } catch (error) {
+      return new MultiCategoryMemberDashboardDTOV1(
+        ResponseDTO.error('Error while retrieving multi-category member dashboard')
+      );
+    }
+  }
 
   async getDashboard(
     memberUniqueIndex: number,
