@@ -22,7 +22,7 @@ import {
   TeamMatchesEntry,
 } from '../../../entity/tabt-soap/TabTAPI_Port';
 import { NumericRankingService, WeeklyRankingV1Response } from '../../../services/members/numeric-ranking.service';
-import { PlayerCategoryDTO } from 'apps/tabt-rest/src/common/dto/player-category.dto';
+import { PlayerCategoryDTO, mapPlayerCategoryToPlayerCategoryDTO } from 'apps/tabt-rest/src/common/dto/player-category.dto';
 import { MEN_RANKING_ESTIMATION, WOMAN_RANKING_ESTIMATION } from '../../../common/consts/ranking-estimation';
 import { MatchesMembersRankerService, SortSystem } from '../../../services/matches/matches-members-ranker.service';
 import { PointsEstimationService } from '../../../services/members/points-estimation.service';
@@ -86,9 +86,11 @@ export class MemberDashboardService
       // Get dashboard for each category in parallel
       const dashboardPromises = categories.map(async (category) => {
         try {
-          const playerCategoryDTO = category === PrismaPlayerCategory.SENIOR_MEN
-            ? PlayerCategoryDTO.SENIOR_MEN
-            : PlayerCategoryDTO.SENIOR_WOMEN;
+          // Convert PrismaPlayerCategory to PlayerCategory then to PlayerCategoryDTO
+          const tabtPlayerCategory = category === PrismaPlayerCategory.SENIOR_MEN
+            ? PlayerCategory.SENIOR_MEN
+            : PlayerCategory.SENIOR_WOMEN;
+          const playerCategoryDTO = mapPlayerCategoryToPlayerCategoryDTO(tabtPlayerCategory);
 
           const dashboard = await this.getDashboard(memberUniqueIndex, playerCategoryDTO, teamId);
           return { category, dashboard };
@@ -173,8 +175,10 @@ export class MemberDashboardService
     const getter = async (): Promise<MemberDashboardDTOV1> => {
       try {
         // Get member data first as it's required for all other operations
+        // IMPORTANT: Pass the category to get category-specific results
         const members = await this.memberService.getMembersV1({
           uniqueIndex: memberUniqueIndex,
+          playerCategory: category,
           withResults: true,
         });
 
@@ -195,11 +199,11 @@ export class MemberDashboardService
         // Parallelize all data fetching operations
         const [numericRankingResponse, latestTeamMatches] = await Promise.all([
           this.getNumericRanking(memberUniqueIndex, category),
-          this.getLatestMatches(member.payload),
+          this.getLatestMatches(member.payload, category),
         ]);
 
         // Calculate stats after getting numeric ranking to include season extremes
-        const stats = await this.getMemberStats(member.payload, numericRankingResponse);
+        const stats = await this.getMemberStats(member.payload, numericRankingResponse, category);
 
         const dashboard = new MemberDashboardDTOV1(
           ResponseDTO.success('Member dashboard retrieved successfully'),
@@ -256,8 +260,9 @@ export class MemberDashboardService
   private async getMemberStats(
     member: MemberEntry,
     numericRanking?: WeeklyRankingV1Response,
+    category?: PlayerCategoryDTO,
   ): Promise<MemberStatsDTOV1> {
-    const cacheKey = `member-stats:${member.UniqueIndex}`;
+    const cacheKey = `member-stats:${member.UniqueIndex}${category ? `:${category}` : ''}`;
     
     const getter = async (): Promise<MemberStatsDTOV1> => {
       try {
@@ -602,8 +607,9 @@ export class MemberDashboardService
 
   private async getLatestMatches(
     member: MemberEntry,
+    category?: PlayerCategoryDTO,
   ): Promise<TeamMatchesEntry[]> {
-    const cacheKey = `latest-matches:${member.UniqueIndex}`;
+    const cacheKey = `latest-matches:${member.UniqueIndex}${category ? `:${category}` : ''}`;
     
     const getter = async (): Promise<TeamMatchesEntry[]> => {
       try {
