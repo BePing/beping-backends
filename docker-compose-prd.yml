@@ -1,0 +1,168 @@
+version: '3.8'
+services:
+  data-importer:
+    image: 'ghcr.io/beping/tabt-rest/data-aftt-importer:1'
+    restart: unless-stopped
+    depends_on:
+      - cache
+      - postgres
+      - tabt-rest
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: '${DATABASE_URL}'
+      DIRECT_URL: '${DIRECT_URL}'
+      REDIS_HOST: cache
+      REDIS_PORT: 6379
+      REDIS_PASSWORD: '${REDIS_PASSWORD}'
+      SYNC_MEMBERS_ON_START: '${SYNC_MEMBERS_ON_START:-false}'
+      AFTT_DATA_BASE_URL: '${AFTT_DATA_BASE_URL:-https://data.aftt.be}'
+      AFTT_DATA_USERNAME: '${AFTT_DATA_USERNAME}'
+      AFTT_DATA_PASSWORD: '${AFTT_DATA_PASSWORD}'
+    labels:
+      - coolify.managed=true
+      - coolify.name=data-importer
+      - coolify.type=application
+    healthcheck:
+      test:
+        - CMD
+        - pgrep
+        - '-f'
+        - node
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: '3'
+  tabt-rest:
+    image: 'ghcr.io/beping/tabt-rest/tabt-rest:4'
+    restart: unless-stopped
+    depends_on:
+      - cache
+      - postgres
+      - torproxy
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: '${DATABASE_URL}'
+      DIRECT_URL: '${DIRECT_URL}'
+      REDIS_HOST: cache
+      REDIS_PORT: 6379
+      REDIS_PASSWORD: '${REDIS_PASSWORD}'
+      AFTT_DATA_USERNAME: '${AFTT_DATA_USERNAME}'
+      AFTT_DATA_PASSWORD: '${AFTT_DATA_PASSWORD}'
+      AFTT_WSDL: '${AFTT_WSDL:-https://api.aftt.be/?wsdl}'
+      VTLL_WSDL: '${VTLL_WSDL:-https://api.aftt.be/?wsdl}'
+      USE_SOCKS_PROXY: '${USE_SOCKS_PROXY:-false}'
+      PORT: 3051
+      SOCKS_PROXY_HOST: torproxy
+      SOCKS_PROXY_PORT: 9050
+      API_PREFIX: '${API_PREFIX:-api}'
+      CURRENT_SEASON: '${CURRENT_SEASON:-24}'
+      STATIC_PREFIX: '${STATIC_PREFIX:-static}'
+      HOST: '${HOST}'
+      BEPING_NOTIFICATION_URL: '${BEPING_NOTIFICATION_URL}'
+      BEPING_NOTIFICATION_CONSUMER_KEY: '${BEPING_NOTIFICATION_CONSUMER_KEY}'
+      BEPING_NOTIFICATION_CONSUMER_SECRET: '${BEPING_NOTIFICATION_CONSUMER_SECRET}'
+    labels:
+      - coolify.managed=true
+      - coolify.name=tabt-rest
+      - coolify.type=application
+      - coolify.expose=true
+      - coolify.port=3051
+    ports:
+      - '3051:3051'
+    healthcheck:
+      test:
+        - CMD
+        - wget
+        - '--spider'
+        - 'http://localhost:3051/health'
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: '3'
+  torproxy:
+    image: 'dockage/tor-privoxy:latest'
+    restart: unless-stopped
+    labels:
+      - coolify.managed=true
+      - coolify.name=tor-proxy
+      - coolify.type=service
+    healthcheck:
+      test:
+        - CMD
+        - curl
+        - '-f'
+        - 'http://localhost:8118'
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    logging:
+      driver: json-file
+      options:
+        max-size: 5m
+        max-file: '2'
+  cache:
+    image: 'redis:7-alpine'
+    restart: unless-stopped
+    command: 'redis-server --appendonly yes'
+    labels:
+      - coolify.managed=true
+      - coolify.name=redis-cache
+      - coolify.type=database
+    volumes:
+      - 'cache-data:/data'
+    healthcheck:
+      test:
+        - CMD
+        - redis-cli
+        - ping
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    logging:
+      driver: json-file
+      options:
+        max-size: 5m
+        max-file: '2'
+  postgres:
+    image: 'postgres:16-alpine'
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: '${POSTGRES_DB}'
+      POSTGRES_USER: '${POSTGRES_USER}'
+      POSTGRES_PASSWORD: '${POSTGRES_PASSWORD}'
+    labels:
+      - coolify.managed=true
+      - coolify.name=postgres-db
+      - coolify.type=database
+    volumes:
+      - 'postgres-data:/var/lib/postgresql/data'
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - 'pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}'
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: '3'
+volumes:
+  cache-data:
+    driver: local
+  postgres-data:
+    driver: local
