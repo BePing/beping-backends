@@ -514,6 +514,14 @@
 * separate build image ([73d72e1](https://github.com/BePing/beping-backends/commit/73d72e1526c9443fa5fc165ec752d300a9be0193))
 * sync lock ([2464dbd](https://github.com/BePing/beping-backends/commit/2464dbdd190ccdc7ac946526dedddbbc8935d001))
 
+## [4.2.3](https://github.com/BePing/beping-backends/compare/tabt-rest-v4.2.2...tabt-rest-v4.2.3) (2025-09-22)
+
+
+### Bug Fixes
+
+* optimize members list and results processing for improved performance ([d4b6f53](https://github.com/BePing/beping-backends/commit/d4b6f53c3827869119cbb35f2451b397901955f1))
+* streamline cache cleaning for member-related data ([e03ad34](https://github.com/BePing/beping-backends/commit/e03ad34d5ae728933d193a5e3aa1a4ee5fecb0ce))
+
 ## [4.2.2](https://github.com/BePing/beping-backends/compare/tabt-rest-v4.2.1...tabt-rest-v4.2.2) (2025-09-22)
 
 

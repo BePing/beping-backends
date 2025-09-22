@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.2.5](https://github.com/BePing/beping-backends/compare/data-aftt-importer-v1.2.4...data-aftt-importer-v1.2.5) (2025-09-22)
+
+
+### Bug Fixes
+
+* optimize members list and results processing for improved performance ([d4b6f53](https://github.com/BePing/beping-backends/commit/d4b6f53c3827869119cbb35f2451b397901955f1))
+* streamline cache cleaning for member-related data ([e03ad34](https://github.com/BePing/beping-backends/commit/e03ad34d5ae728933d193a5e3aa1a4ee5fecb0ce))
+
 ## [1.2.4](https://github.com/BePing/beping-backends/compare/data-aftt-importer-v1.2.3...data-aftt-importer-v1.2.4) (2025-09-22)
 
 
