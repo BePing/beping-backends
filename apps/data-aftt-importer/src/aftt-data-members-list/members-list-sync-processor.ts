@@ -81,17 +81,50 @@ export class MembersListProcessingService {
         return;
       }
 
+      // Parse entire file once (skip header inside parser)
       this.performanceMetrics.totalRecords = lines.length;
       this.logger.log(`Processing ${lines.length} lines`);
 
       const processingStart = Date.now();
-      await this.processBatches(lines, job.data.playerCategory);
+      const { membersToUpsert, pointsToCreate } = this.parseLines(
+        lines,
+        job.data.playerCategory,
+      );
+
+      // Deduplicate members by id to avoid redundant DB work
+      const uniqueMemberMap = new Map<number, Member>();
+      for (const m of membersToUpsert) uniqueMemberMap.set(m.id, m);
+      const uniqueMembers = Array.from(uniqueMemberMap.values());
+      this.logger.log(
+        `Parsed members: total=${membersToUpsert.length}, unique=${uniqueMembers.length}`,
+      );
+
+      // Load existing members and split create/update
+      const existingMembers = await this.prismaService.member.findMany({
+        where: { id: { in: uniqueMembers.map((m) => m.id) }, playerCategory: job.data.playerCategory },
+        select: { id: true },
+      });
+      const existingSet = new Set<number>(existingMembers.map((m) => m.id));
+      const toCreate = uniqueMembers.filter((m) => !existingSet.has(m.id));
+      const toUpdate = uniqueMembers.filter((m) => existingSet.has(m.id));
+      this.logger.log(
+        `Members upsert plan - toCreate: ${toCreate.length}, toUpdate: ${toUpdate.length}`,
+      );
+
+      await this.createMembersInChunks(toCreate);
+      await this.updateMembersInChunks(toUpdate);
+
+      // Process numeric points with change detection and chunked createMany
+      await this.processPointsOptimized(pointsToCreate);
+
       this.performanceMetrics.processingTime = Date.now() - processingStart;
       
       // Calculate lines processed (excluding header)
       const linesProcessed = lines.length > 1 ? lines.length - 1 : lines.length;
 
+      // Clean caches affected by member updates
       await this.cleanCache(job.data.playerCategory);
+      await this.batchCleanCache(uniqueMembers, job.data.playerCategory);
 
       // Clean global caches that are affected by member data updates
       await Promise.all([
@@ -203,55 +236,9 @@ export class MembersListProcessingService {
     return []; // This should never be reached
   }
 
-  private async processBatches(
-    lines: string[],
-    playerCategory: PlayerCategory,
-  ): Promise<void> {
-    const totalBatches = Math.ceil(lines.length / BATCH_SIZE);
-    this.logger.log(
-      `Processing ${lines.length} lines in ${totalBatches} batches with parallel processing`,
-    );
-
-    // Process batches sequentially for small VPS stability
-    for (let i = 0; i < lines.length; i += BATCH_SIZE) {
-      const batch = lines.slice(i, i + BATCH_SIZE);
-      const batchNumber = i / BATCH_SIZE + 1;
-
-      this.logger.debug(
-        `Processing batch ${batchNumber}/${totalBatches} (${batch.length} records)`,
-      );
-
-      try {
-        await this.processBatch(batch, playerCategory);
-        this.performanceMetrics.batchesProcessed++;
-
-      } catch (error) {
-        this.logger.error(
-          `Failed to process batch ${batchNumber}/${totalBatches}`,
-          error,
-        );
-        throw error;
-      }
-    }
-
-    this.logger.log(`Processing done. (${lines.length} lines)`);
-  }
-
   private async cleanCache(playerCategory: PlayerCategory): Promise<void> {
     const categoryId = playerCategory === PlayerCategory.SENIOR_MEN ? 1 : 2;
     await this.cacheService.cleanKeys(`numeric-ranking-v4:*:${categoryId}`);
-  }
-
-  private async processBatch(lines: string[], playerCategory: PlayerCategory) {
-    const { membersToUpsert, pointsToCreate } = this.parseLines(
-      lines,
-      playerCategory,
-    );
-    await this.processMembers(membersToUpsert);
-    await this.processPoints(pointsToCreate);
-
-    // Batch cache cleanup after processing entire batch to reduce Redis load
-    await this.batchCleanCache(membersToUpsert, playerCategory);
   }
 
   private parseLines(lines: string[], playerCategory: PlayerCategory) {
@@ -276,64 +263,48 @@ export class MembersListProcessingService {
     return { membersToUpsert, pointsToCreate };
   }
 
-  private async processMembers(members: Member[]) {
-    if (members.length === 0) return;
-
-    const startTime = Date.now();
-
-    // Process members in micro-batches for transactions
-    const microBatchSize = Math.min(50, members.length); // Increased from 10 to 50
-
-    for (let i = 0; i < members.length; i += microBatchSize) {
-      const microBatch = members.slice(i, i + microBatchSize);
-
-      try {
-        await this.prismaService.$transaction(
-          async (tx) => {
-            for (const member of microBatch) {
-              await tx.member.upsert({
-                where: {
-                  id_licence: { id: member.id, licence: member.licence },
-                },
-                update: {
-                  playerCategory: member.playerCategory,
-                  firstname: member.firstname,
-                  lastname: member.lastname,
-                  ranking: member.ranking,
-                  club: member.club,
-                  category: member.category,
-                  worldRanking: member.worldRanking,
-                  nationality: member.nationality,
-                  updatedAt: new Date(),
-                },
-                create: member,
-              });
-            }
-          },
-          {
-            timeout: TRANSACTION_TIMEOUT,
-            isolationLevel: 'ReadCommitted',
-          },
-        );
-
-        // Defer cache cleaning to reduce Redis load - clean only after entire batch
-        // Store member IDs for later batch cache cleanup
-
-
-      } catch (error) {
-        this.logger.error(`Failed to process member micro-batch`, error);
-        throw error;
-      }
+  private async createMembersInChunks(toCreate: Member[]) {
+    if (toCreate.length === 0) return;
+    const chunkSize = 1000;
+    let processed = 0;
+    for (let i = 0; i < toCreate.length; i += chunkSize) {
+      const chunk = toCreate.slice(i, i + chunkSize);
+      await this.prismaService.member.createMany({ data: chunk, skipDuplicates: true });
+      processed += chunk.length;
+      this.logger.debug(`Created members progress: ${processed}/${toCreate.length}`);
     }
-
-    const duration = Date.now() - startTime;
-    const recordsPerSecond = Math.round(members.length / (duration / 1000));
-    this.logger.debug(
-      `Processed ${members.length} members in ${duration}ms (${recordsPerSecond} records/sec)`,
-    );
   }
 
-  private async processPoints(points: NumericPoints[]) {
+  private async updateMembersInChunks(toUpdate: Member[]) {
+    if (toUpdate.length === 0) return;
+    const chunkSize = 200;
+    let processed = 0;
+    for (let i = 0; i < toUpdate.length; i += chunkSize) {
+      const chunk = toUpdate.slice(i, i + chunkSize);
+      await this.prismaService.$transaction(
+        chunk.map((m) =>
+          this.prismaService.member.update({
+            where: { id_licence: { id: m.id, licence: m.licence } },
+            data: {
+              playerCategory: m.playerCategory,
+              firstname: m.firstname,
+              lastname: m.lastname,
+              ranking: m.ranking,
+              club: m.club,
+              category: m.category,
+              worldRanking: m.worldRanking,
+              nationality: m.nationality,
+              updatedAt: new Date(),
+            },
+          }),
+        ),
+      );
+      processed += chunk.length;
+      this.logger.debug(`Updated members progress: ${processed}/${toUpdate.length}`);
+    }
+  }
+
+  private async processPointsOptimized(points: NumericPoints[]) {
     const startTime = Date.now();
     let skippedCount = 0;
     let storedCount = 0;
@@ -363,10 +334,10 @@ export class MembersListProcessingService {
       }
     }
 
-    // Bulk upsert points that need to be stored
+    // Bulk insert points that need to be stored
     if (pointsToStore.length > 0) {
       try {
-        await this.bulkUpsertPoints(pointsToStore);
+        await this.createPointsInChunks(pointsToStore);
         storedCount = pointsToStore.length;
 
         // Update Redis cache with new latest points
@@ -641,36 +612,14 @@ export class MembersListProcessingService {
     return latestPointsMap;
   }
 
-  private async bulkUpsertPoints(points: NumericPoints[]): Promise<void> {
-    // Process in smaller chunks to avoid transaction timeouts
-    const chunkSize = 100;
-
+  private async createPointsInChunks(points: NumericPoints[]): Promise<void> {
+    const chunkSize = 500;
+    let processed = 0;
     for (let i = 0; i < points.length; i += chunkSize) {
       const chunk = points.slice(i, i + chunkSize);
-
-      await this.prismaService.$transaction(async (tx) => {
-        for (const point of chunk) {
-          await tx.numericPoints.upsert({
-            where: {
-              memberId_memberLicence_date: {
-                memberId: point.memberId,
-                memberLicence: point.memberLicence,
-                date: point.date,
-              },
-            },
-            update: {
-              points: point.points,
-              ranking: point.ranking,
-              rankingLetterEstimation: point.rankingLetterEstimation,
-              rankingWI: point.rankingWI,
-            },
-            create: point,
-          });
-        }
-      }, {
-        timeout: TRANSACTION_TIMEOUT,
-        isolationLevel: 'ReadCommitted',
-      });
+      await this.prismaService.numericPoints.createMany({ data: chunk, skipDuplicates: true });
+      processed += chunk.length;
+      this.logger.debug(`Inserted points progress: ${processed}/${points.length}`);
     }
   }
 
