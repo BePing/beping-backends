@@ -99,6 +99,14 @@ export class MembersListProcessingService {
         `Parsed members: total=${membersToUpsert.length}, unique=${uniqueMembers.length}`,
       );
 
+      // Check if we should update existing records (only between 3am-4am)
+      const currentHour = new Date().getHours();
+      const shouldUpdateExisting = currentHour >= 3 && currentHour < 4;
+      
+      this.logger.log(
+        `Current hour: ${currentHour}, ${shouldUpdateExisting ? 'updating existing records' : 'only processing new records'}`,
+      );
+
       // Load existing members and split create/update
       const existingMembers = await this.prismaService.member.findMany({
         where: { id: { in: uniqueMembers.map((m) => m.id) }, playerCategory: job.data.playerCategory },
@@ -106,13 +114,20 @@ export class MembersListProcessingService {
       });
       const existingSet = new Set<number>(existingMembers.map((m) => m.id));
       const toCreate = uniqueMembers.filter((m) => !existingSet.has(m.id));
-      const toUpdate = uniqueMembers.filter((m) => existingSet.has(m.id));
+      const toUpdate = shouldUpdateExisting 
+        ? uniqueMembers.filter((m) => existingSet.has(m.id))
+        : [];
+      
       this.logger.log(
-        `Members upsert plan - toCreate: ${toCreate.length}, toUpdate: ${toUpdate.length}`,
+        `Members upsert plan - toCreate: ${toCreate.length}, toUpdate: ${toUpdate.length}${!shouldUpdateExisting ? ' (updates skipped - outside 3am-5am window)' : ''}`,
       );
 
       await this.createMembersInChunks(toCreate);
-      await this.updateMembersInChunks(toUpdate);
+      
+      // Only update existing members between 3am-5am
+      if (shouldUpdateExisting) {
+        await this.updateMembersInChunks(toUpdate);
+      }
 
       // Process numeric points with change detection and chunked createMany
       await this.processPointsOptimized(pointsToCreate);

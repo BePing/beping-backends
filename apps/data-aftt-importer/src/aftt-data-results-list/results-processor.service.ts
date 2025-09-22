@@ -82,6 +82,14 @@ export class ResultsProcessorService {
       if (validResults.length === 0) {
         this.logger.log('No valid results to process.');
       } else {
+        // Check if we should update existing records (only between 3am-4am)
+        const currentHour = new Date().getHours();
+        const shouldUpdateExisting = currentHour >= 3 && currentHour < 4;
+        
+        this.logger.log(
+          `Current hour: ${currentHour}, ${shouldUpdateExisting ? 'updating existing records' : 'only processing new records'}`,
+        );
+
         // Partition into create vs update
         const ids = validResults.map((r) => r.id);
         const existingIds = await this.findExistingResultIds(
@@ -91,16 +99,21 @@ export class ResultsProcessorService {
 
         const existingSet = new Set<number>(existingIds);
         const toCreate = validResults.filter((r) => !existingSet.has(r.id));
-        const toUpdate = validResults.filter((r) => existingSet.has(r.id));
+        const toUpdate = shouldUpdateExisting 
+          ? validResults.filter((r) => existingSet.has(r.id))
+          : [];
+        
         this.logger.log(
-          `Upsert plan - toCreate: ${toCreate.length}, toUpdate: ${toUpdate.length}`,
+          `Upsert plan - toCreate: ${toCreate.length}, toUpdate: ${toUpdate.length}${!shouldUpdateExisting ? ' (updates skipped - outside 3am-5am window)' : ''}`,
         );
 
         // Fast-path creates
         await this.createResultsInChunks(toCreate);
 
-        // Batched updates (per-row updates)
-        await this.updateResultsInChunks(toUpdate);
+        // Batched updates (only between 3am-5am)
+        if (shouldUpdateExisting) {
+          await this.updateResultsInChunks(toUpdate);
+        }
       }
 
       // Clean caches impacted by results (global wildcard patterns)
