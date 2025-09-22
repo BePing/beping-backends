@@ -97,26 +97,10 @@ export class NumericRankingService {
           this.getActualPoints(licence, category),
         ]);
 
-        // Get the ranking estimation table based on total players
-
-        // Get the ranking table once for all points to avoid cache stampede
-        const totalPlayers =
-          await this.rankingDistributionService.getMembersWithRankingCount(
-            category,
-          );
-        const rankingTable = this.rankingDistributionService.getRankingTable(
-          totalPlayers,
-          category,
-        );
-
         // Find the ranking letter for each points value (optimized single pass)
         const numericRankingHistory = actualPoints.map((p) => {
           const points = p?.points ?? 0;
-          const rankingLetter =
-            Object.entries(rankingTable).find(
-              ([_, threshold]) => p.ranking <= threshold,
-            )?.[0] || 'NC';
-
+          const rankingLetter = p?.rankingLetterEstimation ?? '-';
           return {
             numericRanking: p.rankingWI,
             rankingLetterEstimation: rankingLetter,
@@ -235,12 +219,6 @@ export class NumericRankingService {
             firstEvent.competition.type === CompetitionType.TOURNAMENT
               ? COMPETITION_TYPE.TOURNAMENT
               : COMPETITION_TYPE.CHAMPIONSHIP;
-
-          const rankingLetter =
-            await this.rankingDistributionService.getLetterRankingEstimationFromNumericPoints(
-              Number(firstEvent.opponentRanking),
-              category,
-            );
 
           const opponents = events.map((result) => ({
             opponentName: `${result.memberOpponent.firstname} ${result.memberOpponent.lastname}`,
