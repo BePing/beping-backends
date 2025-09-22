@@ -103,13 +103,12 @@ export class ResultsProcessorService {
         await this.updateResultsInChunks(toUpdate);
       }
 
-      // Clean caches impacted by results
-      await this.cleanCachesForMembers(affectedMembers, job.data.playerCategory);
+      // Clean caches impacted by results (global wildcard patterns)
+      await this.cleanAllMemberRelatedCaches();
 
       // Also clean some global caches
-      const categoryId = job.data.playerCategory === PlayerCategory.SENIOR_MEN ? 1 : 2;
       await Promise.all([
-        this.cacheService.cleanKeys(`numeric-ranking-v4:*:${categoryId}`),
+        this.cacheService.cleanKeys('numeric-ranking-v4:*'),
         this.cacheService.cleanKeys('search:*'),
         this.cacheService.cleanKeys('members-ranking-division:*'),
         this.cacheService.cleanKeys('members-ranking-club:*'),
@@ -418,34 +417,23 @@ export class ResultsProcessorService {
     });
   }
 
-  private async cleanCachesForMembers(
-    affectedMembers: Map<number, { id: number; licence: number }>,
-    playerCategory: PlayerCategory,
-  ): Promise<void> {
-    if (affectedMembers.size === 0) return;
-    const categoryId = playerCategory === PlayerCategory.SENIOR_MEN ? 1 : 2;
-
-    const patterns = new Set<string>();
-    const ids = Array.from(affectedMembers.values()).map((m) => m.id);
-    const arr = Array.from(affectedMembers.values());
-
-    for (const { id, licence } of arr) {
-      patterns.add(`member-stats:${id}:${categoryId}`);
-      patterns.add(`member-dashboard:${id}:${categoryId}*`);
-      patterns.add(`member-dashboard-all-categories:${id}*`);
-      patterns.add(`member:weekly-ranking:${licence}:${categoryId}`);
-      patterns.add(`member:points-history:${licence}:${categoryId}`);
-      patterns.add(`member:match-results:${licence}:${categoryId}`);
-      patterns.add(`latest-matches:${id}*`);
-      patterns.add(`numeric-ranking:${id}:${categoryId}`);
-    }
-
-    const patternArray = Array.from(patterns);
-    this.logger.log(
-      `Cleaning member caches for ${affectedMembers.size} members with ${patternArray.length} patterns`,
-    );
-    for (let i = 0; i < patternArray.length; i += 25) {
-      const batch = patternArray.slice(i, i + 25);
+  private async cleanAllMemberRelatedCaches(): Promise<void> {
+    const patterns: string[] = [
+      'member-stats:*',
+      'member-dashboard:*',
+      'member-dashboard-all-categories:*',
+      'member:weekly-ranking:*',
+      'member:points-history:*',
+      'member:match-results:*',
+      'latest-matches:*',
+      'numeric-ranking:*',
+      'numeric-ranking-v4:*',
+      'head2head:*',
+      'member-categories:*',
+    ];
+    this.logger.log(`Cleaning global member-related caches: ${patterns.length} patterns`);
+    for (let i = 0; i < patterns.length; i += 5) {
+      const batch = patterns.slice(i, i + 5);
       await Promise.all(batch.map((p) => this.cacheService.cleanKeys(p)));
     }
   }
