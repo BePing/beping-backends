@@ -24,14 +24,10 @@ export class CacheService {
     const value = (await this.cacheManager.get(key)) as unknown as Promise<
       T | undefined
     >;
-    this.logger.debug(`Get [${key}] in cache. Found in cache: ${!!value}`);
     return value;
   }
 
   setInCache(key: string, value: any, ttl?: number): Promise<void> {
-    this.logger.debug(
-      `Set [${key}] in cache. Value: ${JSON.stringify(value)}. TTL: ${ttl}`,
-    );
     return this.cacheManager.set(key, value, { ttl } as any) as Promise<void>;
   }
 
@@ -43,11 +39,9 @@ export class CacheService {
     const cached = await this.getFromCache<T>(key);
 
     if (cached) {
-      this.logger.debug('Data found in cache');
       return cached;
     }
 
-    this.logger.debug('Data not found in cache');
     const result = await getter();
     await this.setInCache(key, result, ttl);
     return result;

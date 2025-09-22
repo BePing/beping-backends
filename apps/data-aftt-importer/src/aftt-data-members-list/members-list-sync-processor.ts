@@ -33,6 +33,13 @@ export class MembersListProcessingService {
     batchesProcessed: 0,
   };
 
+  private cacheStats = {
+    pointsCacheHits: 0,
+    pointsCacheMisses: 0,
+    pointsCacheQueries: 0,
+    cacheOperations: 0,
+  };
+
   constructor(
     private readonly httpService: HttpService,
     private readonly prismaService: PrismaService,
@@ -88,8 +95,6 @@ export class MembersListProcessingService {
 
       // Clean global caches that are affected by member data updates
       await Promise.all([
-        // Search cache (member search results may have changed)
-        this.cacheService.cleanKeys('search:*'),
 
         // Division, club, and team ranking caches (member data affects rankings)
         this.cacheService.cleanKeys('members-ranking-division:*'),
@@ -109,6 +114,10 @@ export class MembersListProcessingService {
       this.performanceMetrics.memoryUsage =
         finalMemory.heapUsed - initialMemory.heapUsed;
 
+      const cacheHitRate = this.cacheStats.pointsCacheQueries > 0
+        ? Math.round((this.cacheStats.pointsCacheHits / this.cacheStats.pointsCacheQueries) * 100)
+        : 0;
+
       this.logger.log(
         `Small VPS import completed successfully. Performance metrics:`,
         {
@@ -120,6 +129,10 @@ export class MembersListProcessingService {
           recordsPerSecond: this.performanceMetrics.recordsPerSecond,
           memoryDelta: `${Math.round(this.performanceMetrics.memoryUsage / 1024 / 1024)}MB`,
           peakMemory: `${Math.round(this.performanceMetrics.peakMemory / 1024 / 1024)}MB`,
+          cacheHitRate: `${cacheHitRate}%`,
+          cacheHits: this.cacheStats.pointsCacheHits,
+          cacheMisses: this.cacheStats.pointsCacheMisses,
+          totalCacheOps: this.cacheStats.cacheOperations,
         },
       );
     } catch (e) {
@@ -212,15 +225,6 @@ export class MembersListProcessingService {
         await this.processBatch(batch, playerCategory);
         this.performanceMetrics.batchesProcessed++;
 
-        // Memory monitoring and cleanup
-        if (batchNumber % MEMORY_CHECK_FREQUENCY === 0) {
-          await this.checkMemoryAndCleanup(batchNumber, totalBatches);
-        }
-
-        // Strategic delay for CPU breathing room
-        if (i + BATCH_SIZE < lines.length) {
-          await this.sleep(BATCH_DELAY);
-        }
       } catch (error) {
         this.logger.error(
           `Failed to process batch ${batchNumber}/${totalBatches}`,
@@ -315,10 +319,7 @@ export class MembersListProcessingService {
         // Defer cache cleaning to reduce Redis load - clean only after entire batch
         // Store member IDs for later batch cache cleanup
 
-        // Small delay between micro-transactions
-        if (i + microBatchSize < members.length) {
-          await this.sleep(25); // Reduced from 100ms to 25ms
-        }
+
       } catch (error) {
         this.logger.error(`Failed to process member micro-batch`, error);
         throw error;
@@ -337,61 +338,42 @@ export class MembersListProcessingService {
     let skippedCount = 0;
     let storedCount = 0;
 
-    // Process points individually for maximum stability
-    for (let i = 0; i < points.length; i++) {
-      const point = points[i];
+    if (points.length === 0) return;
 
-      try {
-        // Check if the latest points record has the same values
-        const latestRecord = await this.prismaService.numericPoints.findFirst({
-          where: {
-            memberId: point.memberId,
-            memberLicence: point.memberLicence,
-          },
-          orderBy: {
-            date: 'desc',
-          },
-        });
+    // Bulk fetch latest points from Redis cache first, fallback to DB
+    const latestPointsMap = await this.getLatestPointsBulk(points);
 
-        // Only store if values have changed from the last record
-        const shouldStore = !latestRecord ||
-          latestRecord.points !== point.points ||
-          latestRecord.ranking !== point.ranking ||
-          latestRecord.rankingWI !== point.rankingWI ||
-          latestRecord.rankingLetterEstimation !== point.rankingLetterEstimation;
+    // Determine which points need to be stored
+    const pointsToStore: NumericPoints[] = [];
 
-        if (shouldStore) {
-          await this.prismaService.numericPoints.upsert({
-            where: {
-              memberId_memberLicence_date: {
-                memberId: point.memberId,
-                memberLicence: point.memberLicence,
-                date: point.date,
-              },
-            },
-            update: {
-              points: point.points,
-              ranking: point.ranking,
-              rankingLetterEstimation: point.rankingLetterEstimation,
-              rankingWI: point.rankingWI,
-            },
-            create: point,
-          });
-          storedCount++;
-        } else {
-          skippedCount++;
-        }
-      } catch (error) {
-        this.logger.warn(
-          `Failed to process point for member ${point.memberId}, skipping`,
-        );
-        // Continue processing other points instead of failing entire batch
+    for (const point of points) {
+      const memberKey = `${point.memberId}_${point.memberLicence}`;
+      const latestRecord = latestPointsMap.get(memberKey);
+
+      const shouldStore = !latestRecord ||
+        latestRecord.points !== point.points ||
+        latestRecord.ranking !== point.ranking ||
+        latestRecord.rankingWI !== point.rankingWI ||
+        latestRecord.rankingLetterEstimation !== point.rankingLetterEstimation;
+
+      if (shouldStore) {
+        pointsToStore.push(point);
+      } else {
+        skippedCount++;
       }
+    }
 
-      // Small delay between individual point operations
-      if (i < points.length - 1 && i % 20 === 19) {
-        // Check every 20 instead of 5
-        await this.sleep(10); // Reduced from 50ms to 10ms
+    // Bulk upsert points that need to be stored
+    if (pointsToStore.length > 0) {
+      try {
+        await this.bulkUpsertPoints(pointsToStore);
+        storedCount = pointsToStore.length;
+
+        // Update Redis cache with new latest points
+        await this.updateLatestPointsCache(pointsToStore);
+      } catch (error) {
+        this.logger.error('Failed to bulk upsert points', error);
+        throw error;
       }
     }
 
@@ -546,8 +528,6 @@ export class MembersListProcessingService {
         this.logger.debug('Forced garbage collection');
       }
 
-      // Extended delay for memory recovery
-      await this.sleep(BATCH_DELAY * 2);
     }
 
     // Progress logging
@@ -582,10 +562,142 @@ export class MembersListProcessingService {
     for (let i = 0; i < patternArray.length; i += 5) {
       const batch = patternArray.slice(i, i + 5);
       await Promise.all(batch.map(pattern => this.cacheService.cleanKeys(pattern)));
+      this.cacheStats.cacheOperations += batch.length;
     }
   }
 
-  private async sleep(ms: number): Promise<void> {
-    return new Promise((resolve) => setTimeout(resolve, ms));
+  private async getLatestPointsBulk(points: NumericPoints[]): Promise<Map<string, any>> {
+    const latestPointsMap = new Map();
+    const uncachedKeys: string[] = [];
+
+    // First, try to get from Redis cache
+    for (const point of points) {
+      const memberKey = `${point.memberId}_${point.memberLicence}`;
+      const cacheKey = `latest-points:${memberKey}`;
+
+      try {
+        this.cacheStats.pointsCacheQueries++;
+        const cached = await this.cacheService.getFromCache<string>(cacheKey);
+        if (cached) {
+          this.cacheStats.pointsCacheHits++;
+          latestPointsMap.set(memberKey, JSON.parse(cached));
+        } else {
+          this.cacheStats.pointsCacheMisses++;
+          uncachedKeys.push(memberKey);
+        }
+      } catch (error) {
+        this.cacheStats.pointsCacheMisses++;
+        uncachedKeys.push(memberKey);
+      }
+    }
+
+    // Fetch uncached data from database in bulk
+    if (uncachedKeys.length > 0) {
+      const memberIds = uncachedKeys.map(key => {
+        const [memberId, memberLicence] = key.split('_');
+        return { memberId: parseInt(memberId), memberLicence: parseInt(memberLicence) };
+      });
+
+      // Use multiple individual queries for now (more reliable than complex IN clause)
+      const latestPoints = [];
+
+      for (const { memberId, memberLicence } of memberIds) {
+        const point = await this.prismaService.numericPoints.findFirst({
+          where: {
+            memberId,
+            memberLicence,
+          },
+          orderBy: {
+            date: 'desc',
+          },
+          select: {
+            memberId: true,
+            memberLicence: true,
+            points: true,
+            ranking: true,
+            rankingWI: true,
+            rankingLetterEstimation: true,
+          },
+        });
+
+        if (point) {
+          latestPoints.push(point);
+        }
+      }
+
+      // Cache the results and add to map
+      for (const point of latestPoints) {
+        const memberKey = `${point.memberId}_${point.memberLicence}`;
+        const cacheKey = `latest-points:${memberKey}`;
+
+        latestPointsMap.set(memberKey, point);
+
+        // Cache for 24 hours since imports happen daily
+        await this.cacheService.setInCache(cacheKey, JSON.stringify(point), 86400);
+        this.cacheStats.cacheOperations++;
+      }
+    }
+
+    return latestPointsMap;
   }
+
+  private async bulkUpsertPoints(points: NumericPoints[]): Promise<void> {
+    // Process in smaller chunks to avoid transaction timeouts
+    const chunkSize = 100;
+
+    for (let i = 0; i < points.length; i += chunkSize) {
+      const chunk = points.slice(i, i + chunkSize);
+
+      await this.prismaService.$transaction(async (tx) => {
+        for (const point of chunk) {
+          await tx.numericPoints.upsert({
+            where: {
+              memberId_memberLicence_date: {
+                memberId: point.memberId,
+                memberLicence: point.memberLicence,
+                date: point.date,
+              },
+            },
+            update: {
+              points: point.points,
+              ranking: point.ranking,
+              rankingLetterEstimation: point.rankingLetterEstimation,
+              rankingWI: point.rankingWI,
+            },
+            create: point,
+          });
+        }
+      }, {
+        timeout: TRANSACTION_TIMEOUT,
+        isolationLevel: 'ReadCommitted',
+      });
+    }
+  }
+
+  private async updateLatestPointsCache(points: NumericPoints[]): Promise<void> {
+    // Update Redis cache with the new latest points (batch operation)
+    const cachePromises = points.map(point => {
+      const memberKey = `${point.memberId}_${point.memberLicence}`;
+      const cacheKey = `latest-points:${memberKey}`;
+      const cacheData = {
+        memberId: point.memberId,
+        memberLicence: point.memberLicence,
+        points: point.points,
+        ranking: point.ranking,
+        rankingWI: point.rankingWI,
+        rankingLetterEstimation: point.rankingLetterEstimation,
+      };
+
+      return this.cacheService.setInCache(cacheKey, JSON.stringify(cacheData), 86400); // 24 hour TTL
+    });
+
+    // Execute cache updates in batches to avoid overwhelming Redis
+    for (let i = 0; i < cachePromises.length; i += 10) {
+      const batch = cachePromises.slice(i, i + 10);
+      await Promise.all(batch);
+      this.cacheStats.cacheOperations += batch.length;
+    }
+  }
+
+
 }

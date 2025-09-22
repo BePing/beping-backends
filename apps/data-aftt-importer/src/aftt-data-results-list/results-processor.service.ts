@@ -26,11 +26,21 @@ export class ResultsProcessorService {
     { id: string; type: CompetitionType }
   >();
   private readonly memberCache = new Map<string, Member>();
-  private resourceMonitor: ResourceMonitor;
+  private readonly membersToCleanCache = new Set<string>();
   private performanceMetrics = {
     validRecords: 0,
     peakMemory: 0,
     batchesProcessed: 0,
+  };
+
+  private cacheStats = {
+    memberCacheHits: 0,
+    memberCacheMisses: 0,
+    memberCacheQueries: 0,
+    competitionCacheHits: 0,
+    competitionCacheMisses: 0,
+    competitionCacheQueries: 0,
+    cacheOperations: 0,
   };
 
   constructor(
@@ -38,7 +48,6 @@ export class ResultsProcessorService {
     private readonly prismaService: PrismaService,
     private readonly cacheService: CacheService,
   ) {
-    this.resourceMonitor = new ResourceMonitor(this.config);
   }
 
   @OnQueueActive()
@@ -113,23 +122,14 @@ export class ResultsProcessorService {
               job.data.playerCategory,
             );
 
-            // Small delay between transactions
-            if (j + this.config.POINTS_BATCH_SIZE < parsedResults.length) {
-              await this.resourceMonitor.sleep(this.config.TRANSACTION_DELAY);
-            }
+  
           }
 
           this.performanceMetrics.batchesProcessed++;
 
-          // Memory monitoring and cleanup
-          if (batchNumber % this.config.MEMORY_CHECK_FREQUENCY === 0) {
-            await this.checkMemoryAndCleanup(batchNumber, totalBatches);
-          }
+          // Batch cache cleanup after processing the entire batch
+          await this.batchCleanResultsCache(job.data.playerCategory);
 
-          // Strategic delay for CPU breathing room
-          if (i + this.config.BATCH_SIZE < dataLines.length) {
-            await this.resourceMonitor.sleep(this.config.BATCH_DELAY);
-          }
         } catch (error) {
           this.logger.error(
             `Failed to process batch ${batchNumber}/${totalBatches}`,
@@ -161,11 +161,25 @@ export class ResultsProcessorService {
       const processingTimeMs = Date.now() - processingStartTime;
       await this.storeImport(lines, job.data.playerCategory, fileDate, linesProcessed, processingTimeMs);
 
+      const memberCacheHitRate = this.cacheStats.memberCacheQueries > 0
+        ? Math.round((this.cacheStats.memberCacheHits / this.cacheStats.memberCacheQueries) * 100)
+        : 0;
+      const competitionCacheHitRate = this.cacheStats.competitionCacheQueries > 0
+        ? Math.round((this.cacheStats.competitionCacheHits / this.cacheStats.competitionCacheQueries) * 100)
+        : 0;
+
       this.logger.log(`Small VPS results processing completed. Performance:`, {
         totalRecords: lines.length,
         validRecords: this.performanceMetrics.validRecords,
         batchesProcessed: this.performanceMetrics.batchesProcessed,
         peakMemory: `${Math.round(this.performanceMetrics.peakMemory / 1024 / 1024)}MB`,
+        memberCacheHitRate: `${memberCacheHitRate}%`,
+        memberCacheHits: this.cacheStats.memberCacheHits,
+        memberCacheMisses: this.cacheStats.memberCacheMisses,
+        competitionCacheHitRate: `${competitionCacheHitRate}%`,
+        competitionCacheHits: this.cacheStats.competitionCacheHits,
+        competitionCacheMisses: this.cacheStats.competitionCacheMisses,
+        totalCacheOps: this.cacheStats.cacheOperations,
       });
     } catch (e) {
       this.logger.error('Failed to finish results job', e);
@@ -237,51 +251,87 @@ export class ResultsProcessorService {
       return;
     }
 
-    const competitions = await this.prismaService.competition.findMany({
-      where: {
-        name: {
-          in: Array.from(uniqueCompetitions.keys()),
+    const uncachedCompetitions: any[] = [];
+
+    // Check Redis cache first
+    for (const [name, competition] of uniqueCompetitions) {
+      const cacheKey = `competition:${name}`;
+      try {
+        this.cacheStats.competitionCacheQueries++;
+        const cached = await this.cacheService.getFromCache<string>(cacheKey);
+        if (cached) {
+          this.cacheStats.competitionCacheHits++;
+          const comp = JSON.parse(cached);
+          this.competitionCache.set(name, { id: comp.id, type: comp.type });
+        } else {
+          this.cacheStats.competitionCacheMisses++;
+          uncachedCompetitions.push(competition);
+        }
+      } catch (error) {
+        this.cacheStats.competitionCacheMisses++;
+        uncachedCompetitions.push(competition);
+      }
+    }
+
+    // Fetch uncached competitions from database
+    if (uncachedCompetitions.length > 0) {
+      const competitions = await this.prismaService.competition.findMany({
+        where: {
+          name: {
+            in: uncachedCompetitions.map(c => c.name),
+          },
         },
-      },
-    });
+      });
 
-    // Cache existing competitions
-    competitions.forEach((comp) => {
-      this.competitionCache.set(comp.name, { id: comp.id, type: comp.type });
-    });
+      // Cache existing competitions
+      const cachePromises = competitions.map(comp => {
+        this.competitionCache.set(comp.name, { id: comp.id, type: comp.type });
+        const cacheKey = `competition:${comp.name}`;
+        return this.cacheService.setInCache(cacheKey, JSON.stringify(comp), 86400); // 24 hour cache
+      });
 
-    // Create missing competitions
-    const missingCompetitions = Array.from(uniqueCompetitions.values()).filter(
-      (comp) => !this.competitionCache.has(comp.name),
-    );
+      await Promise.all(cachePromises);
+      this.cacheStats.cacheOperations += cachePromises.length;
 
-    if (missingCompetitions.length > 0) {
-      this.logger.debug(
-        `Creating ${missingCompetitions.length} new competitions`,
+      // Create missing competitions
+      const foundNames = new Set(competitions.map(c => c.name));
+      const missingCompetitions = uncachedCompetitions.filter(
+        (comp) => !foundNames.has(comp.name),
       );
 
-      try {
-        await this.prismaService.competition.createMany({
-          data: missingCompetitions,
-          skipDuplicates: true,
-        });
+      if (missingCompetitions.length > 0) {
+        this.logger.debug(
+          `Creating ${missingCompetitions.length} new competitions`,
+        );
 
-        // Fetch and cache the newly created competitions
-        const newCompetitions = await this.prismaService.competition.findMany({
-          where: {
-            name: { in: missingCompetitions.map((c) => c.name) },
-          },
-        });
-
-        newCompetitions.forEach((comp) => {
-          this.competitionCache.set(comp.name, {
-            id: comp.id,
-            type: comp.type,
+        try {
+          await this.prismaService.competition.createMany({
+            data: missingCompetitions,
+            skipDuplicates: true,
           });
-        });
-      } catch (error) {
-        this.logger.error('Failed to create new competitions:', error);
-        throw error;
+
+          // Fetch and cache the newly created competitions
+          const newCompetitions = await this.prismaService.competition.findMany({
+            where: {
+              name: { in: missingCompetitions.map((c) => c.name) },
+            },
+          });
+
+          const newCachePromises = newCompetitions.map(comp => {
+            this.competitionCache.set(comp.name, {
+              id: comp.id,
+              type: comp.type,
+            });
+            const cacheKey = `competition:${comp.name}`;
+            return this.cacheService.setInCache(cacheKey, JSON.stringify(comp), 86400);
+          });
+
+          await Promise.all(newCachePromises);
+          this.cacheStats.cacheOperations += newCachePromises.length;
+        } catch (error) {
+          this.logger.error('Failed to create new competitions:', error);
+          throw error;
+        }
       }
     }
   }
@@ -294,16 +344,47 @@ export class ResultsProcessorService {
       parsedResults.flatMap((r) => [r.memberLicence, r.opponentLicence]),
     );
 
-    const members = await this.prismaService.member.findMany({
-      where: {
-        licence: { in: Array.from(uniqueLicences) },
-        playerCategory: playerCategory,
-      },
-    });
+    const uncachedLicences: number[] = [];
 
-    members.forEach((member) => {
-      this.memberCache.set(`${member.licence}-${playerCategory}`, member);
-    });
+    // Check Redis cache first
+    for (const licence of uniqueLicences) {
+      const cacheKey = `member:${licence}:${playerCategory}`;
+      try {
+        this.cacheStats.memberCacheQueries++;
+        const cached = await this.cacheService.getFromCache<string>(cacheKey);
+        if (cached) {
+          this.cacheStats.memberCacheHits++;
+          const member = JSON.parse(cached);
+          this.memberCache.set(`${member.licence}-${playerCategory}`, member);
+        } else {
+          this.cacheStats.memberCacheMisses++;
+          uncachedLicences.push(licence);
+        }
+      } catch (error) {
+        this.cacheStats.memberCacheMisses++;
+        uncachedLicences.push(licence);
+      }
+    }
+
+    // Fetch uncached members from database
+    if (uncachedLicences.length > 0) {
+      const members = await this.prismaService.member.findMany({
+        where: {
+          licence: { in: uncachedLicences },
+          playerCategory: playerCategory,
+        },
+      });
+
+      // Cache and store members
+      const cachePromises = members.map(member => {
+        this.memberCache.set(`${member.licence}-${playerCategory}`, member);
+        const cacheKey = `member:${member.licence}:${playerCategory}`;
+        return this.cacheService.setInCache(cacheKey, JSON.stringify(member), 86400); // 24 hour cache
+      });
+
+      await Promise.all(cachePromises);
+      this.cacheStats.cacheOperations += cachePromises.length;
+    }
   }
 
   private async processTransactionBatch(
@@ -372,41 +453,9 @@ export class ResultsProcessorService {
 
           this.performanceMetrics.validRecords++;
 
-          // Clean member-related cache for both players involved in the result
-          const categoryId = playerCategory === PlayerCategory.SENIOR_MEN ? 1 : 2;
-
-          // Clean member stats and dashboard caches for both players
-          await Promise.all([
-            // Member stats caches
-            this.cacheService.cleanKeys(`member-stats:${member.id}:${categoryId}`),
-            this.cacheService.cleanKeys(`member-stats:${opponent.id}:${categoryId}`),
-
-            // Member dashboard caches
-            this.cacheService.cleanKeys(`member-dashboard:${member.id}:${categoryId}*`),
-            this.cacheService.cleanKeys(`member-dashboard:${opponent.id}:${categoryId}*`),
-            this.cacheService.cleanKeys(`member-dashboard-all-categories:${member.id}*`),
-            this.cacheService.cleanKeys(`member-dashboard-all-categories:${opponent.id}*`),
-
-            // Numeric ranking caches
-            this.cacheService.cleanKeys(`member:weekly-ranking:${member.licence}:${categoryId}`),
-            this.cacheService.cleanKeys(`member:weekly-ranking:${opponent.licence}:${categoryId}`),
-            this.cacheService.cleanKeys(`member:points-history:${member.licence}:${categoryId}`),
-            this.cacheService.cleanKeys(`member:points-history:${opponent.licence}:${categoryId}`),
-            this.cacheService.cleanKeys(`member:match-results:${member.licence}:${categoryId}`),
-            this.cacheService.cleanKeys(`member:match-results:${opponent.licence}:${categoryId}`),
-
-            // Head2head cache (both directions)
-            this.cacheService.cleanKeys(`head2head:${member.id}-${opponent.id}`),
-            this.cacheService.cleanKeys(`head2head:${opponent.id}-${member.id}`),
-
-            // Latest matches cache
-            this.cacheService.cleanKeys(`latest-matches:${member.id}*`),
-            this.cacheService.cleanKeys(`latest-matches:${opponent.id}*`),
-
-            // Numeric ranking for dashboard
-            this.cacheService.cleanKeys(`numeric-ranking:${member.id}:${categoryId}`),
-            this.cacheService.cleanKeys(`numeric-ranking:${opponent.id}:${categoryId}`),
-          ]);
+          // Store member IDs for batch cache cleanup later
+          this.membersToCleanCache.add(`${member.id}:${member.licence}`);
+          this.membersToCleanCache.add(`${opponent.id}:${opponent.licence}`);
 
           break; // Success, exit retry loop
         } catch (error) {
@@ -422,15 +471,10 @@ export class ResultsProcessorService {
           this.logger.warn(
             `Result processing failed, attempt ${retries}/${this.config.MAX_RETRIES}, retrying in ${delay}ms`,
           );
-          await this.resourceMonitor.sleep(delay);
         }
       }
 
-      // Small delay between individual result operations
-      if (i < parsedResults.length - 1 && i % 20 === 19) {
-        // Check every 20 instead of 3
-        await this.resourceMonitor.sleep(10); // Reduced from 50ms to 10ms
-      }
+  
     }
   }
 
@@ -544,7 +588,6 @@ export class ResultsProcessorService {
       }
 
       // Extended delay for memory recovery
-      await this.resourceMonitor.sleep(this.config.BATCH_DELAY * 2);
     }
 
     // Progress logging
@@ -552,5 +595,46 @@ export class ResultsProcessorService {
     this.logger.log(
       `Results import progress: ${progress}% (${batchNumber}/${totalBatches} batches, Memory: ${Math.round(currentMemory.heapUsed / 1024 / 1024)}MB, Valid: ${this.performanceMetrics.validRecords})`,
     );
+  }
+
+  private async batchCleanResultsCache(playerCategory: PlayerCategory): Promise<void> {
+    if (this.membersToCleanCache.size === 0) return;
+
+    const categoryId = playerCategory === PlayerCategory.SENIOR_MEN ? 1 : 2;
+    const patterns = new Set<string>();
+
+    // Collect cache patterns for all affected members
+    for (const memberInfo of this.membersToCleanCache) {
+      const [memberId, memberLicence] = memberInfo.split(':');
+
+      patterns.add(`member-stats:${memberId}:${categoryId}`);
+      patterns.add(`member-dashboard:${memberId}:${categoryId}*`);
+      patterns.add(`member-dashboard-all-categories:${memberId}*`);
+      patterns.add(`member:weekly-ranking:${memberLicence}:${categoryId}`);
+      patterns.add(`member:points-history:${memberLicence}:${categoryId}`);
+      patterns.add(`member:match-results:${memberLicence}:${categoryId}`);
+      patterns.add(`latest-matches:${memberId}*`);
+      patterns.add(`numeric-ranking:${memberId}:${categoryId}`);
+    }
+
+    // Add head2head patterns for member pairs
+    const memberIds = Array.from(this.membersToCleanCache).map(info => info.split(':')[0]);
+    for (let i = 0; i < memberIds.length; i++) {
+      for (let j = i + 1; j < memberIds.length; j++) {
+        patterns.add(`head2head:${memberIds[i]}-${memberIds[j]}`);
+        patterns.add(`head2head:${memberIds[j]}-${memberIds[i]}`);
+      }
+    }
+
+    // Execute cache cleaning in batches of 10 to avoid overwhelming Redis
+    const patternArray = Array.from(patterns);
+    for (let i = 0; i < patternArray.length; i += 10) {
+      const batch = patternArray.slice(i, i + 10);
+      await Promise.all(batch.map(pattern => this.cacheService.cleanKeys(pattern)));
+      this.cacheStats.cacheOperations += batch.length;
+    }
+
+    // Clear the set for next batch
+    this.membersToCleanCache.clear();
   }
 }
