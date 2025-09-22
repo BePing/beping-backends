@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.2.6](https://github.com/BePing/beping-backends/compare/data-aftt-importer-v1.2.5...data-aftt-importer-v1.2.6) (2025-09-22)
+
+
+### Bug Fixes
+
+* implement time-based record updates in members and results processing ([afaab1c](https://github.com/BePing/beping-backends/commit/afaab1cf89ade840eb218bd4b7ffe1244e2f4a21))
+
 ## [1.2.5](https://github.com/BePing/beping-backends/compare/data-aftt-importer-v1.2.4...data-aftt-importer-v1.2.5) (2025-09-22)
 
 

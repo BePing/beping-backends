@@ -514,6 +514,14 @@
 * separate build image ([73d72e1](https://github.com/BePing/beping-backends/commit/73d72e1526c9443fa5fc165ec752d300a9be0193))
 * sync lock ([2464dbd](https://github.com/BePing/beping-backends/commit/2464dbdd190ccdc7ac946526dedddbbc8935d001))
 
+## [4.2.4](https://github.com/BePing/beping-backends/compare/tabt-rest-v4.2.3...tabt-rest-v4.2.4) (2025-09-22)
+
+
+### Bug Fixes
+
+* implement time-based record updates in members and results processing ([afaab1c](https://github.com/BePing/beping-backends/commit/afaab1cf89ade840eb218bd4b7ffe1244e2f4a21))
+* reverse match IDs order in member dashboard service ([083caae](https://github.com/BePing/beping-backends/commit/083caae023faaffabbff3b4ccb4f6b8d4fb2c9a2))
+
 ## [4.2.3](https://github.com/BePing/beping-backends/compare/tabt-rest-v4.2.2...tabt-rest-v4.2.3) (2025-09-22)
 
 
