@@ -245,6 +245,9 @@ export class MembersListProcessingService {
     );
     await this.processMembers(membersToUpsert);
     await this.processPoints(pointsToCreate);
+
+    // Batch cache cleanup after processing entire batch to reduce Redis load
+    await this.batchCleanCache(membersToUpsert, playerCategory);
   }
 
   private parseLines(lines: string[], playerCategory: PlayerCategory) {
@@ -309,33 +312,8 @@ export class MembersListProcessingService {
           },
         );
 
-        // Clean member-related cache for all members in this micro-batch
-        const cacheCleanPromises = microBatch.flatMap(member => {
-          const categoryId = member.playerCategory === PlayerCategory.SENIOR_MEN ? 1 : 2;
-
-          return [
-            // Member stats and dashboard caches
-            this.cacheService.cleanKeys(`member-stats:${member.id}:${categoryId}`),
-            this.cacheService.cleanKeys(`member-dashboard:${member.id}:${categoryId}*`),
-            this.cacheService.cleanKeys(`member-dashboard-all-categories:${member.id}*`),
-
-            // Numeric ranking caches (license-based)
-            this.cacheService.cleanKeys(`member:weekly-ranking:${member.licence}:${categoryId}`),
-            this.cacheService.cleanKeys(`member:points-history:${member.licence}:${categoryId}`),
-            this.cacheService.cleanKeys(`member:match-results:${member.licence}:${categoryId}`),
-
-            // Numeric ranking for dashboard (id-based)
-            this.cacheService.cleanKeys(`numeric-ranking:${member.id}:${categoryId}`),
-
-            // Member categories cache
-            this.cacheService.cleanKeys(`member-categories:${member.licence}`),
-
-            // Latest matches cache
-            this.cacheService.cleanKeys(`latest-matches:${member.id}*`),
-          ];
-        });
-
-        await Promise.all(cacheCleanPromises);
+        // Defer cache cleaning to reduce Redis load - clean only after entire batch
+        // Store member IDs for later batch cache cleanup
 
         // Small delay between micro-transactions
         if (i + microBatchSize < members.length) {
@@ -577,6 +555,34 @@ export class MembersListProcessingService {
     this.logger.log(
       `Import progress: ${progress}% (${batchNumber}/${totalBatches} batches, Memory: ${Math.round(currentMemory.heapUsed / 1024 / 1024)}MB)`,
     );
+  }
+
+  private async batchCleanCache(members: Member[], playerCategory: PlayerCategory): Promise<void> {
+    if (members.length === 0) return;
+
+    const categoryId = playerCategory === PlayerCategory.SENIOR_MEN ? 1 : 2;
+
+    // Collect unique patterns to clean instead of individual keys
+    const patterns = new Set<string>();
+
+    for (const member of members) {
+      patterns.add(`member-stats:${member.id}:${categoryId}`);
+      patterns.add(`member-dashboard:${member.id}:${categoryId}*`);
+      patterns.add(`member-dashboard-all-categories:${member.id}*`);
+      patterns.add(`member:weekly-ranking:${member.licence}:${categoryId}`);
+      patterns.add(`member:points-history:${member.licence}:${categoryId}`);
+      patterns.add(`member:match-results:${member.licence}:${categoryId}`);
+      patterns.add(`numeric-ranking:${member.id}:${categoryId}`);
+      patterns.add(`member-categories:${member.licence}`);
+      patterns.add(`latest-matches:${member.id}*`);
+    }
+
+    // Execute cache cleaning with throttling - max 5 concurrent operations
+    const patternArray = Array.from(patterns);
+    for (let i = 0; i < patternArray.length; i += 5) {
+      const batch = patternArray.slice(i, i + 5);
+      await Promise.all(batch.map(pattern => this.cacheService.cleanKeys(pattern)));
+    }
   }
 
   private async sleep(ms: number): Promise<void> {
