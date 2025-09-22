@@ -40,6 +40,7 @@ import {
 import { PointsEstimationService } from '../../../services/members/points-estimation.service';
 import { PrismaService } from '../../../common/prisma.service';
 import { PlayerCategory as PrismaPlayerCategory } from '@prisma/client';
+import { toNumber } from 'lodash';
 
 @Injectable()
 export class MemberDashboardService
@@ -756,7 +757,8 @@ export class MemberDashboardService
         const matchIds = (member.ResultEntries ?? [])
           .map((result) => result.MatchId)
           .filter((item, pos, arr) => arr.indexOf(item) === pos)
-          .slice(0, 3);
+          .slice(0, 3)
+          .reverse();
 
         if (matchIds.length === 0) return [];
 
