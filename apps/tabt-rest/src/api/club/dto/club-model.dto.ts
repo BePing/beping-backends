@@ -65,4 +65,4 @@ export class ClubDto {
     }
     return dto;
   }
-} 
+}

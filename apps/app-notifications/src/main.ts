@@ -22,10 +22,10 @@ async function bootstrap() {
   });
 
   await app.startAllMicroservices();
-  
+
   const port = process.env.PORT || 3002;
   await app.listen(port);
-  
+
   console.log(`Notifications service running on port ${port}`);
 }
 

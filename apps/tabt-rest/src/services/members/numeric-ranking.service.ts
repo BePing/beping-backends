@@ -1,5 +1,10 @@
 import { Injectable } from '@nestjs/common';
-import { CompetitionType, NumericPoints, PlayerCategory as pc, Prisma } from '@prisma/client';
+import {
+  CompetitionType,
+  NumericPoints,
+  PlayerCategory as pc,
+  Prisma,
+} from '@prisma/client';
 import { format } from 'date-fns';
 import { CacheService, TTL_DURATION } from '../../common/cache/cache.service';
 import {
@@ -16,10 +21,18 @@ import { RankingDistributionService } from './ranking-distribution.service';
 import { ApiProperty } from '@nestjs/swagger';
 
 export class WeeklyNumericRankingHistoryEntryV1 {
-  @ApiProperty({ type: Number, nullable: true, description: 'The numeric ranking value' })
+  @ApiProperty({
+    type: Number,
+    nullable: true,
+    description: 'The numeric ranking value',
+  })
   numericRanking: number | null;
 
-  @ApiProperty({ type: String, nullable: true, description: 'Estimated letter ranking based on numeric points' })
+  @ApiProperty({
+    type: String,
+    nullable: true,
+    description: 'Estimated letter ranking based on numeric points',
+  })
   rankingLetterEstimation: string | null;
 
   @ApiProperty({ type: Number, description: 'Numeric points at this date' })
@@ -30,10 +43,18 @@ export class WeeklyNumericRankingHistoryEntryV1 {
 }
 
 export class WeeklyRankingV1Response {
-  @ApiProperty({ type: () => NumericRankingDetailsV1, isArray: true, description: 'Detailed history of matches and points changes' })
+  @ApiProperty({
+    type: () => NumericRankingDetailsV1,
+    isArray: true,
+    description: 'Detailed history of matches and points changes',
+  })
   perDateHistory: NumericRankingDetailsV1[];
 
-  @ApiProperty({ type: () => WeeklyNumericRankingHistoryEntryV1, isArray: true, description: 'Weekly numeric ranking history' })
+  @ApiProperty({
+    type: () => WeeklyNumericRankingHistoryEntryV1,
+    isArray: true,
+    description: 'Weekly numeric ranking history',
+  })
   numericRankingHistory: WeeklyNumericRankingHistoryEntryV1[];
 }
 
@@ -44,9 +65,12 @@ export type IndividualResultWithOpponent = Prisma.IndividualResultGetPayload<{
 }>;
 
 const CACHE_KEYS = {
-  weeklyRanking: (licence: number, category: PlayerCategoryDTO) => `member:weekly-ranking:${licence}:${category}`,
-  pointsHistory: (licence: number, category: PlayerCategoryDTO) => `member:points-history:${licence}:${category}`,
-  matchResults: (licence: number, category: PlayerCategoryDTO) => `member:match-results:${licence}:${category}`,
+  weeklyRanking: (licence: number, category: PlayerCategoryDTO) =>
+    `member:weekly-ranking:${licence}:${category}`,
+  pointsHistory: (licence: number, category: PlayerCategoryDTO) =>
+    `member:points-history:${licence}:${category}`,
+  matchResults: (licence: number, category: PlayerCategoryDTO) =>
+    `member:match-results:${licence}:${category}`,
 };
 
 @Injectable()
@@ -71,20 +95,27 @@ export class NumericRankingService {
         const [history, actualPoints] = await Promise.all([
           this.getResultsDetailsHistory(licence, category),
           this.getActualPoints(licence, category),
-
         ]);
 
         // Get the ranking estimation table based on total players
 
         // Get the ranking table once for all points to avoid cache stampede
-        const totalPlayers = await this.rankingDistributionService.getMembersWithRankingCount(category);
-        const rankingTable = this.rankingDistributionService.getRankingTable(totalPlayers, category);
-        
+        const totalPlayers =
+          await this.rankingDistributionService.getMembersWithRankingCount(
+            category,
+          );
+        const rankingTable = this.rankingDistributionService.getRankingTable(
+          totalPlayers,
+          category,
+        );
+
         // Find the ranking letter for each points value (optimized single pass)
         const numericRankingHistory = actualPoints.map((p) => {
           const points = p?.points ?? 0;
-          const rankingLetter = Object.entries(rankingTable)
-            .find(([_, threshold]) => p.ranking <= threshold)?.[0] || 'NC';
+          const rankingLetter =
+            Object.entries(rankingTable).find(
+              ([_, threshold]) => p.ranking <= threshold,
+            )?.[0] || 'NC';
 
           return {
             numericRanking: p.rankingWI,
@@ -110,7 +141,10 @@ export class NumericRankingService {
     return this.cacheService.getFromCacheOrGetAndCacheResult(
       CACHE_KEYS.pointsHistory(licence, category),
       async () => {
-        const gender = category === PlayerCategoryDTO.SENIOR_MEN ? pc.SENIOR_MEN : pc.SENIOR_WOMEN;
+        const gender =
+          category === PlayerCategoryDTO.SENIOR_MEN
+            ? pc.SENIOR_MEN
+            : pc.SENIOR_WOMEN;
         const points = await this.prismaService.numericPoints.findMany({
           where: {
             memberLicence: licence,
@@ -123,7 +157,7 @@ export class NumericRankingService {
           },
         });
 
-        return points.map(point => ({
+        return points.map((point) => ({
           ...point,
           date: new Date(point.date),
         }));
@@ -139,8 +173,11 @@ export class NumericRankingService {
     return this.cacheService.getFromCacheOrGetAndCacheResult(
       CACHE_KEYS.matchResults(licence, category),
       async () => {
-        const gender = category === PlayerCategoryDTO.SENIOR_MEN ? pc.SENIOR_MEN : pc.SENIOR_WOMEN;
-        
+        const gender =
+          category === PlayerCategoryDTO.SENIOR_MEN
+            ? pc.SENIOR_MEN
+            : pc.SENIOR_WOMEN;
+
         // Optimize query by selecting only needed fields and including related data
         const results = await this.prismaService.individualResult.findMany({
           where: {
@@ -178,8 +215,8 @@ export class NumericRankingService {
         });
 
         // Pre-process results into a Map for faster lookups
-        const eventMap = new Map<string, typeof results[0][]>();
-        
+        const eventMap = new Map<string, (typeof results)[0][]>();
+
         for (const result of results) {
           const key = `${format(result.date, 'yyyy-MM-dd')}-${result.competitionId}`;
           if (!eventMap.has(key)) {
@@ -188,20 +225,24 @@ export class NumericRankingService {
           eventMap.get(key)!.push(result);
         }
 
-
         const eventGroupedArray: NumericRankingDetailsV1[] = [];
         let basePoints = results[0]?.memberPoints.toNumber() ?? 0;
 
         // Process events in chronological order
         for (const [key, events] of Array.from(eventMap.entries()).sort()) {
           const firstEvent = events[0];
-          const competitionType = firstEvent.competition.type === CompetitionType.TOURNAMENT
-            ? COMPETITION_TYPE.TOURNAMENT
-            : COMPETITION_TYPE.CHAMPIONSHIP;
+          const competitionType =
+            firstEvent.competition.type === CompetitionType.TOURNAMENT
+              ? COMPETITION_TYPE.TOURNAMENT
+              : COMPETITION_TYPE.CHAMPIONSHIP;
 
-          const rankingLetter = await this.rankingDistributionService.getLetterRankingEstimationFromNumericPoints(Number(firstEvent.opponentRanking), category);
-          
-          const opponents = events.map(result => ({
+          const rankingLetter =
+            await this.rankingDistributionService.getLetterRankingEstimationFromNumericPoints(
+              Number(firstEvent.opponentRanking),
+              category,
+            );
+
+          const opponents = events.map((result) => ({
             opponentName: `${result.memberOpponent.firstname} ${result.memberOpponent.lastname}`,
             opponentRanking: result.opponentRanking,
             opponentUniqueIndex: result.opponentLicence,
@@ -219,8 +260,12 @@ export class NumericRankingService {
             date: format(firstEvent.date, 'yyyy-MM-dd'),
             competitionContext: firstEvent.competitionId,
             competitionType,
-            basePoints: Math.round(basePoints * this.POINTS_PRECISION) / this.POINTS_PRECISION,
-            endPoints: Math.round(endPoints * this.POINTS_PRECISION) / this.POINTS_PRECISION,
+            basePoints:
+              Math.round(basePoints * this.POINTS_PRECISION) /
+              this.POINTS_PRECISION,
+            endPoints:
+              Math.round(endPoints * this.POINTS_PRECISION) /
+              this.POINTS_PRECISION,
             opponents,
           });
 

@@ -1,24 +1,24 @@
 import { HttpService } from '@nestjs/axios';
 import { firstValueFrom } from 'rxjs';
 import { Logger } from '@nestjs/common';
-import { Member, NumericPoints, PlayerCategory, ImportType } from '@prisma/client';
+import {
+  Member,
+  NumericPoints,
+  PlayerCategory,
+  ImportType,
+} from '@prisma/client';
 import { OnQueueActive, Process, Processor } from '@nestjs/bull';
 import { PrismaService } from '../prisma.service';
 import { Job } from 'bull';
 import { CacheService } from '../cache/cache.service';
 import { createHash } from 'crypto';
-import { createReadStream } from 'fs';
-import { createInterface } from 'readline';
-import { pipeline } from 'stream/promises';
 
-// Small VPS optimized constants - prioritize stability over speed
-const BATCH_SIZE = 25;                    // Ultra-small batches for memory efficiency
-const POINTS_BATCH_SIZE = 10;             // Even smaller for points processing
-const TRANSACTION_TIMEOUT = 15000;        // Shorter transactions (15s)
-const CONCURRENCY = 1;                    // Sequential processing only
-const BATCH_DELAY = 500;                  // 500ms delay between batches
-const MEMORY_CHECK_FREQUENCY = 5;         // Check memory every 5 batches
-const MAX_MEMORY_THRESHOLD = 64 * 1024 * 1024; // 64MB threshold
+// Optimized constants for better performance
+const BATCH_SIZE = 500; // Increased from 25 to 500 records per batch
+const TRANSACTION_TIMEOUT = 30000; // Increased timeout to 30s
+const BATCH_DELAY = 100; // Reduced delay from 500ms to 100ms
+const MEMORY_CHECK_FREQUENCY = 10; // Check memory every 10 batches
+const MAX_MEMORY_THRESHOLD = 128 * 1024 * 1024; // Increased to 128MB threshold
 
 @Processor('members')
 export class MembersListProcessingService {
@@ -30,135 +30,183 @@ export class MembersListProcessingService {
     recordsPerSecond: 0,
     memoryUsage: 0,
     peakMemory: 0,
-    batchesProcessed: 0
+    batchesProcessed: 0,
   };
-  private startMemory: number = 0;
 
   constructor(
     private readonly httpService: HttpService,
     private readonly prismaService: PrismaService,
-    private readonly cacheService: CacheService
+    private readonly cacheService: CacheService,
   ) {}
 
   @OnQueueActive()
   onActive(job: Job) {
-    this.logger.log(`[Small VPS Mode] Processing job ${job.id} with ultra-conservative settings`);
-    this.startMemory = process.memoryUsage().heapUsed;
+    this.logger.log(
+      `[Small VPS Mode] Processing job ${job.id} with ultra-conservative settings`,
+    );
   }
 
   @Process()
   async process(job: Job<{ playerCategory: PlayerCategory }>): Promise<void> {
     const startTime = Date.now();
     const initialMemory = process.memoryUsage();
-    
+
     try {
       this.logger.log(`Starting import for ${job.data.playerCategory}`);
-      
+
       const downloadStart = Date.now();
       const lines = await this.downloadAndPrepareFile(job.data.playerCategory);
       this.performanceMetrics.downloadTime = Date.now() - downloadStart;
-      
-      const hasChanged = await this.hasChanged(lines, job.data.playerCategory);
-      
-      if (!hasChanged) {
-        this.logger.log('No changes detected in the file, skipping processing');
+
+      // Extract file date from first line
+      const fileDate = this.extractFileDate(lines);
+      this.logger.log(`File date: ${fileDate?.toISOString() || 'Not found'}`);
+
+      // Check if processing is needed based on file date
+      const shouldProcess = await this.shouldProcessFile(
+        fileDate,
+        job.data.playerCategory,
+      );
+      if (!shouldProcess) {
+        this.logger.log(
+          'File date is not newer than last import, skipping processing',
+        );
         return;
       }
-      
+
       this.performanceMetrics.totalRecords = lines.length;
       this.logger.log(`Processing ${lines.length} lines`);
-      
+
       const processingStart = Date.now();
       await this.processBatches(lines, job.data.playerCategory);
       this.performanceMetrics.processingTime = Date.now() - processingStart;
       
+      // Calculate lines processed (excluding header)
+      const linesProcessed = lines.length > 1 ? lines.length - 1 : lines.length;
+
       await this.cleanCache(job.data.playerCategory);
-      
-      // Store the new import record
-      await this.storeImport(lines, job.data.playerCategory);
-      
+
+      // Clean global caches that are affected by member data updates
+      await Promise.all([
+        // Search cache (member search results may have changed)
+        this.cacheService.cleanKeys('search:*'),
+
+        // Division, club, and team ranking caches (member data affects rankings)
+        this.cacheService.cleanKeys('members-ranking-division:*'),
+        this.cacheService.cleanKeys('members-ranking-club:*'),
+        this.cacheService.cleanKeys('members-ranking-team:*'),
+      ]);
+
+      // Store the new import record with file date
+      await this.storeImport(lines, job.data.playerCategory, fileDate, linesProcessed, this.performanceMetrics.processingTime);
+
       // Calculate final metrics
       const totalTime = Date.now() - startTime;
       const finalMemory = process.memoryUsage();
-      this.performanceMetrics.recordsPerSecond = Math.round(lines.length / (totalTime / 1000));
-      this.performanceMetrics.memoryUsage = finalMemory.heapUsed - initialMemory.heapUsed;
-      
-      this.logger.log(`Small VPS import completed successfully. Performance metrics:`, {
-        downloadTime: `${this.performanceMetrics.downloadTime}ms`,
-        processingTime: `${this.performanceMetrics.processingTime}ms`,
-        totalTime: `${Math.round(totalTime / 1000)}s`,
-        totalRecords: this.performanceMetrics.totalRecords,
-        batchesProcessed: this.performanceMetrics.batchesProcessed,
-        recordsPerSecond: this.performanceMetrics.recordsPerSecond,
-        memoryDelta: `${Math.round(this.performanceMetrics.memoryUsage / 1024 / 1024)}MB`,
-        peakMemory: `${Math.round(this.performanceMetrics.peakMemory / 1024 / 1024)}MB`
-      });
-      
+      this.performanceMetrics.recordsPerSecond = Math.round(
+        lines.length / (totalTime / 1000),
+      );
+      this.performanceMetrics.memoryUsage =
+        finalMemory.heapUsed - initialMemory.heapUsed;
+
+      this.logger.log(
+        `Small VPS import completed successfully. Performance metrics:`,
+        {
+          downloadTime: `${this.performanceMetrics.downloadTime}ms`,
+          processingTime: `${this.performanceMetrics.processingTime}ms`,
+          totalTime: `${Math.round(totalTime / 1000)}s`,
+          totalRecords: this.performanceMetrics.totalRecords,
+          batchesProcessed: this.performanceMetrics.batchesProcessed,
+          recordsPerSecond: this.performanceMetrics.recordsPerSecond,
+          memoryDelta: `${Math.round(this.performanceMetrics.memoryUsage / 1024 / 1024)}MB`,
+          peakMemory: `${Math.round(this.performanceMetrics.peakMemory / 1024 / 1024)}MB`,
+        },
+      );
     } catch (e) {
-      this.logger.error("Failed to finish job", e.message);
+      this.logger.error('Failed to finish job', e.message);
       throw e;
     }
   }
 
-  private async downloadAndPrepareFile(playerCategory: PlayerCategory): Promise<string[]> {
+  private async downloadAndPrepareFile(
+    playerCategory: PlayerCategory,
+  ): Promise<string[]> {
     const maxRetries = 3;
     const retryDelay = 2000; // 2 seconds
-    
+
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
       try {
-        this.logger.debug(`Downloading ${playerCategory} file from data.aftt.be (attempt ${attempt}/${maxRetries})`);
-        
+        this.logger.debug(
+          `Downloading ${playerCategory} file from data.aftt.be (attempt ${attempt}/${maxRetries})`,
+        );
+
         const file = await firstValueFrom(
           this.httpService.get<string>(
             `export/liste_joueurs_${playerCategory === PlayerCategory.SENIOR_MEN ? 1 : 2}.txt`,
             {
               timeout: 30000, // 30 second timeout
               headers: {
-                'User-Agent': 'AFTT-Data-Importer/1.0'
-              }
-            }
+                'User-Agent': 'AFTT-Data-Importer/1.0',
+              },
+            },
           ),
         );
-        
+
         if (!file.data || file.data.length === 0) {
           throw new Error('Empty response received from AFTT server');
         }
-        
-        const lines = file.data.split('\n').filter(line => line.trim().length > 0);
-        this.logger.log(`File downloaded successfully, processing ${lines.length} lines...`);
-        
+
+        const lines = file.data
+          .split('\n')
+          .filter((line) => line.trim().length > 0);
+        this.logger.log(
+          `File downloaded successfully, processing ${lines.length} lines...`,
+        );
+
         if (lines.length === 0) {
           throw new Error('No valid data lines found in the downloaded file');
         }
-        
+
         return lines;
-        
       } catch (error) {
         this.logger.warn(`Download attempt ${attempt} failed:`, error.message);
-        
+
         if (attempt === maxRetries) {
-          this.logger.error(`Failed to download file after ${maxRetries} attempts`);
-          throw new Error(`Download failed after ${maxRetries} attempts: ${error.message}`);
+          this.logger.error(
+            `Failed to download file after ${maxRetries} attempts`,
+          );
+          throw new Error(
+            `Download failed after ${maxRetries} attempts: ${error.message}`,
+          );
         }
-        
+
         // Wait before retrying
-        await new Promise(resolve => setTimeout(resolve, retryDelay * attempt));
+        await new Promise((resolve) =>
+          setTimeout(resolve, retryDelay * attempt),
+        );
       }
     }
-    
+
     return []; // This should never be reached
   }
 
-  private async processBatches(lines: string[], playerCategory: PlayerCategory): Promise<void> {
+  private async processBatches(
+    lines: string[],
+    playerCategory: PlayerCategory,
+  ): Promise<void> {
     const totalBatches = Math.ceil(lines.length / BATCH_SIZE);
-    this.logger.log(`Processing ${lines.length} lines in ${totalBatches} batches with parallel processing`);
-    
+    this.logger.log(
+      `Processing ${lines.length} lines in ${totalBatches} batches with parallel processing`,
+    );
+
     // Process batches sequentially for small VPS stability
     for (let i = 0; i < lines.length; i += BATCH_SIZE) {
       const batch = lines.slice(i, i + BATCH_SIZE);
       const batchNumber = i / BATCH_SIZE + 1;
 
-      this.logger.debug(`Processing batch ${batchNumber}/${totalBatches} (${batch.length} records)`);
+      this.logger.debug(
+        `Processing batch ${batchNumber}/${totalBatches} (${batch.length} records)`,
+      );
 
       try {
         await this.processBatch(batch, playerCategory);
@@ -173,13 +221,15 @@ export class MembersListProcessingService {
         if (i + BATCH_SIZE < lines.length) {
           await this.sleep(BATCH_DELAY);
         }
-
       } catch (error) {
-        this.logger.error(`Failed to process batch ${batchNumber}/${totalBatches}`, error);
+        this.logger.error(
+          `Failed to process batch ${batchNumber}/${totalBatches}`,
+          error,
+        );
         throw error;
       }
     }
-    
+
     this.logger.log(`Processing done. (${lines.length} lines)`);
   }
 
@@ -189,7 +239,10 @@ export class MembersListProcessingService {
   }
 
   private async processBatch(lines: string[], playerCategory: PlayerCategory) {
-    const { membersToUpsert, pointsToCreate } = this.parseLines(lines, playerCategory);
+    const { membersToUpsert, pointsToCreate } = this.parseLines(
+      lines,
+      playerCategory,
+    );
     await this.processMembers(membersToUpsert);
     await this.processPoints(pointsToCreate);
   }
@@ -198,7 +251,10 @@ export class MembersListProcessingService {
     const membersToUpsert: Member[] = [];
     const pointsToCreate: NumericPoints[] = [];
 
-    for (const line of lines) {
+    // Skip the first line as it contains the date
+    const dataLines = lines.slice(1);
+
+    for (const line of dataLines) {
       try {
         const { member, numericPoints } = this.parseLine(line, playerCategory);
         membersToUpsert.push(member);
@@ -218,41 +274,73 @@ export class MembersListProcessingService {
 
     const startTime = Date.now();
 
-    // Process members in micro-batches for ultra-small transactions
-    const microBatchSize = Math.min(10, members.length);
+    // Process members in micro-batches for transactions
+    const microBatchSize = Math.min(50, members.length); // Increased from 10 to 50
 
     for (let i = 0; i < members.length; i += microBatchSize) {
       const microBatch = members.slice(i, i + microBatchSize);
 
       try {
-        await this.prismaService.$transaction(async (tx) => {
-          for (const member of microBatch) {
-            await tx.member.upsert({
-              where: { id_licence: { id: member.id, licence: member.licence } },
-              update: {
-                playerCategory: member.playerCategory,
-                firstname: member.firstname,
-                lastname: member.lastname,
-                ranking: member.ranking,
-                club: member.club,
-                category: member.category,
-                worldRanking: member.worldRanking,
-                nationality: member.nationality,
-                updatedAt: new Date()
-              },
-              create: member
-            });
-          }
-        }, {
-          timeout: TRANSACTION_TIMEOUT,
-          isolationLevel: 'ReadCommitted'
+        await this.prismaService.$transaction(
+          async (tx) => {
+            for (const member of microBatch) {
+              await tx.member.upsert({
+                where: {
+                  id_licence: { id: member.id, licence: member.licence },
+                },
+                update: {
+                  playerCategory: member.playerCategory,
+                  firstname: member.firstname,
+                  lastname: member.lastname,
+                  ranking: member.ranking,
+                  club: member.club,
+                  category: member.category,
+                  worldRanking: member.worldRanking,
+                  nationality: member.nationality,
+                  updatedAt: new Date(),
+                },
+                create: member,
+              });
+            }
+          },
+          {
+            timeout: TRANSACTION_TIMEOUT,
+            isolationLevel: 'ReadCommitted',
+          },
+        );
+
+        // Clean member-related cache for all members in this micro-batch
+        const cacheCleanPromises = microBatch.flatMap(member => {
+          const categoryId = member.playerCategory === PlayerCategory.SENIOR_MEN ? 1 : 2;
+
+          return [
+            // Member stats and dashboard caches
+            this.cacheService.cleanKeys(`member-stats:${member.id}:${categoryId}`),
+            this.cacheService.cleanKeys(`member-dashboard:${member.id}:${categoryId}*`),
+            this.cacheService.cleanKeys(`member-dashboard-all-categories:${member.id}*`),
+
+            // Numeric ranking caches (license-based)
+            this.cacheService.cleanKeys(`member:weekly-ranking:${member.licence}:${categoryId}`),
+            this.cacheService.cleanKeys(`member:points-history:${member.licence}:${categoryId}`),
+            this.cacheService.cleanKeys(`member:match-results:${member.licence}:${categoryId}`),
+
+            // Numeric ranking for dashboard (id-based)
+            this.cacheService.cleanKeys(`numeric-ranking:${member.id}:${categoryId}`),
+
+            // Member categories cache
+            this.cacheService.cleanKeys(`member-categories:${member.licence}`),
+
+            // Latest matches cache
+            this.cacheService.cleanKeys(`latest-matches:${member.id}*`),
+          ];
         });
+
+        await Promise.all(cacheCleanPromises);
 
         // Small delay between micro-transactions
         if (i + microBatchSize < members.length) {
-          await this.sleep(100);
+          await this.sleep(25); // Reduced from 100ms to 25ms
         }
-
       } catch (error) {
         this.logger.error(`Failed to process member micro-batch`, error);
         throw error;
@@ -261,122 +349,90 @@ export class MembersListProcessingService {
 
     const duration = Date.now() - startTime;
     const recordsPerSecond = Math.round(members.length / (duration / 1000));
-    this.logger.debug(`Processed ${members.length} members in ${duration}ms (${recordsPerSecond} records/sec)`);
-  }
-
-  private async findExistingMembers(tx: any, members: Member[]) {
-    return tx.member.findMany({
-      where: {
-        OR: members.map(m => ({
-          AND: [{ id: m.id }, { licence: m.licence }]
-        }))
-      },
-      select: { id: true, licence: true },
-    });
-  }
-
-  private splitMembersForUpsert(members: Member[], existingMembers: any[]) {
-    const existingMap = new Map(
-      existingMembers.map(m => [`${m.id}-${m.licence}`, m])
+    this.logger.debug(
+      `Processed ${members.length} members in ${duration}ms (${recordsPerSecond} records/sec)`,
     );
-
-    const membersToCreate: Member[] = [];
-    const membersToUpdate: Member[] = [];
-
-    members.forEach(member => {
-      const key = `${member.id}-${member.licence}`;
-      if (existingMap.has(key)) {
-        membersToUpdate.push(member);
-      } else {
-        membersToCreate.push(member);
-      }
-    });
-
-    return { membersToCreate, membersToUpdate };
   }
 
   private async processPoints(points: NumericPoints[]) {
     const startTime = Date.now();
+    let skippedCount = 0;
+    let storedCount = 0;
 
     // Process points individually for maximum stability
     for (let i = 0; i < points.length; i++) {
       const point = points[i];
 
       try {
-        // Check if this point already exists with same values
-        const existing = await this.prismaService.numericPoints.findUnique({
+        // Check if the latest points record has the same values
+        const latestRecord = await this.prismaService.numericPoints.findFirst({
           where: {
-            memberId_memberLicence_date: {
-              memberId: point.memberId,
-              memberLicence: point.memberLicence,
-              date: point.date
-            }
-          }
+            memberId: point.memberId,
+            memberLicence: point.memberLicence,
+          },
+          orderBy: {
+            date: 'desc',
+          },
         });
 
-        // Only update if values have changed
-        if (!existing || existing.points !== point.points || existing.ranking !== point.ranking) {
+        // Only store if values have changed from the last record
+        const shouldStore = !latestRecord ||
+          latestRecord.points !== point.points ||
+          latestRecord.ranking !== point.ranking ||
+          latestRecord.rankingWI !== point.rankingWI ||
+          latestRecord.rankingLetterEstimation !== point.rankingLetterEstimation;
+
+        if (shouldStore) {
           await this.prismaService.numericPoints.upsert({
             where: {
               memberId_memberLicence_date: {
                 memberId: point.memberId,
                 memberLicence: point.memberLicence,
-                date: point.date
-              }
+                date: point.date,
+              },
             },
             update: {
               points: point.points,
               ranking: point.ranking,
               rankingLetterEstimation: point.rankingLetterEstimation,
-              rankingWI: point.rankingWI
+              rankingWI: point.rankingWI,
             },
-            create: point
+            create: point,
           });
+          storedCount++;
+        } else {
+          skippedCount++;
         }
-
       } catch (error) {
-        this.logger.warn(`Failed to process point for member ${point.memberId}, skipping`);
+        this.logger.warn(
+          `Failed to process point for member ${point.memberId}, skipping`,
+        );
         // Continue processing other points instead of failing entire batch
       }
 
       // Small delay between individual point operations
-      if (i < points.length - 1 && i % 5 === 4) {
-        await this.sleep(50);
+      if (i < points.length - 1 && i % 20 === 19) {
+        // Check every 20 instead of 5
+        await this.sleep(10); // Reduced from 50ms to 10ms
       }
     }
 
-    this.logger.debug(`Processed ${points.length} points in ${Date.now() - startTime}ms`);
-  }
-
-  private async filterPointsForUpsert(points: NumericPoints[]) {
-    const latestPoints = await this.prismaService.numericPoints.findMany({
-      where: {
-        OR: points.map(p => ({
-          memberId: p.memberId,
-          memberLicence: p.memberLicence,
-        })),
-      },
-      orderBy: { date: 'desc' },
-      distinct: ['memberId', 'memberLicence'],
-    });
-
-    const latestMap = new Map(
-      latestPoints.map(p => [`${p.memberId}-${p.memberLicence}`, p])
+    const duration = Date.now() - startTime;
+    this.logger.log(
+      `Processed ${points.length} points in ${duration}ms - Stored: ${storedCount}, Skipped duplicates: ${skippedCount}`,
     );
-
-    return points.filter(point => {
-      const latest = latestMap.get(`${point.memberId}-${point.memberLicence}`);
-      return !latest || latest.points !== point.points || latest.ranking !== point.ranking;
-    });
   }
 
-  private parseLine(line: string, playerCategory: PlayerCategory): { member: Member, numericPoints: NumericPoints } {
+  private parseLine(
+    line: string,
+    playerCategory: PlayerCategory,
+  ): { member: Member; numericPoints: NumericPoints } {
     const cols = line.split(';');
-    
+
     if (cols.length < 13) {
       throw new Error(`Invalid line format: ${line}`);
     }
- 
+
     const member: Member = {
       id: parseInt(cols[0], 10),
       licence: parseInt(cols[1], 10),
@@ -407,45 +463,104 @@ export class MembersListProcessingService {
   }
 
 
-  private async hasChanged(lines: string[], playerCategory: PlayerCategory): Promise<boolean> {
-    // Get the latest import for this category
+  private extractFileDate(lines: string[]): Date | null {
+    if (lines.length === 0) {
+      return null;
+    }
+
+    const firstLine = lines[0].trim();
+
+    // Try to parse as ISO-8601 format
+    try {
+      const date = new Date(firstLine);
+      if (isNaN(date.getTime())) {
+        this.logger.warn(`Invalid date format in first line: ${firstLine}`);
+        return null;
+      }
+      return date;
+    } catch (error) {
+      this.logger.warn(
+        `Failed to parse date from first line: ${firstLine}`,
+        error,
+      );
+      return null;
+    }
+  }
+
+  private async shouldProcessFile(
+    fileDate: Date | null,
+    playerCategory: PlayerCategory,
+  ): Promise<boolean> {
+    if (!fileDate) {
+      this.logger.warn('No file date found, processing anyway');
+      return true;
+    }
+
     const lastImport = await this.prismaService.dataImport.findFirst({
-      where: { 
+      where: {
         type: ImportType.MEMBER,
-        playerCategory 
+        playerCategory,
       },
       orderBy: { importedAt: 'desc' },
     });
 
     if (!lastImport) {
-      this.logger.log('No previous import found, processing all lines');
+      this.logger.log('No previous import found, processing file');
       return true;
     }
 
-    // Filter only lines that have changed or are new
-    const currentHash = createHash('sha256').update(lines.join('')).digest('hex');
-    return currentHash !== lastImport.hash;
+    if (!lastImport.fileDate) {
+      this.logger.log('Previous import has no file date, processing file');
+      return true;
+    }
+
+    const isNewer = fileDate > lastImport.fileDate;
+    this.logger.log(
+      `File date comparison: new=${fileDate.toISOString()}, last=${lastImport.fileDate.toISOString()}, isNewer=${isNewer}`,
+    );
+
+    return isNewer;
   }
 
-  private async storeImport(lines: string[], playerCategory: PlayerCategory): Promise<void> {
-    // create a master hash of all the lines
-    const masterHash = createHash('sha256').update(lines.join('')).digest('hex');
+  private async storeImport(
+    lines: string[],
+    playerCategory: PlayerCategory,
+    fileDate: Date | null,
+    linesProcessed: number,
+    processingTimeMs: number,
+  ): Promise<void> {
+    // create a master hash of all the lines (skip first line which contains the date)
+    const contentLines = lines.length > 1 ? lines.slice(1) : lines;
+    const masterHash = createHash('sha256')
+      .update(contentLines.join(''))
+      .digest('hex');
 
     await this.prismaService.dataImport.create({
       data: {
         type: ImportType.MEMBER,
         playerCategory,
         hash: masterHash,
+        fileDate,
+        linesProcessed,
+        processingTimeMs,
       },
     });
   }
 
-  private async checkMemoryAndCleanup(batchNumber: number, totalBatches: number): Promise<void> {
+  private async checkMemoryAndCleanup(
+    batchNumber: number,
+    totalBatches: number,
+  ): Promise<void> {
     const currentMemory = process.memoryUsage();
-    this.performanceMetrics.peakMemory = Math.max(this.performanceMetrics.peakMemory, currentMemory.heapUsed);
+    this.performanceMetrics.peakMemory = Math.max(
+      this.performanceMetrics.peakMemory,
+      currentMemory.heapUsed,
+    );
 
     if (currentMemory.heapUsed > MAX_MEMORY_THRESHOLD) {
-      this.logger.warn(`High memory usage detected: ${Math.round(currentMemory.heapUsed / 1024 / 1024)}MB`);
+      this.logger.warn(
+        `High memory usage detected: ${Math.round(currentMemory.heapUsed / 1024 / 1024)}MB`,
+      );
 
       // Force garbage collection if available
       if (global.gc) {
@@ -459,11 +574,12 @@ export class MembersListProcessingService {
 
     // Progress logging
     const progress = Math.round((batchNumber / totalBatches) * 100);
-    this.logger.log(`Import progress: ${progress}% (${batchNumber}/${totalBatches} batches, Memory: ${Math.round(currentMemory.heapUsed / 1024 / 1024)}MB)`);
+    this.logger.log(
+      `Import progress: ${progress}% (${batchNumber}/${totalBatches} batches, Memory: ${Math.round(currentMemory.heapUsed / 1024 / 1024)}MB)`,
+    );
   }
 
   private async sleep(ms: number): Promise<void> {
-    return new Promise(resolve => setTimeout(resolve, ms));
+    return new Promise((resolve) => setTimeout(resolve, ms));
   }
 }
-

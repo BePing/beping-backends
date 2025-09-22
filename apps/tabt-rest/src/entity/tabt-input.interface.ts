@@ -32,7 +32,6 @@ export enum MemberStatus {
   EXTERN = 'E',
 }
 
-
 export enum PlayerCategory {
   SENIOR_MEN = 37,
   SENIOR_WOMEN = 38,
@@ -87,4 +86,3 @@ export enum ClubCategory {
   AFTT = 13,
   FRBTT = 14,
 }
-

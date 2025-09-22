@@ -106,10 +106,13 @@ export class Head2headService {
     opponentPlayerUniqueIndex: number,
   ): Promise<Head2HeadData> {
     const cacheKey = `${CACHE_PREFIX}:${playerUniqueIndex}-${opponentPlayerUniqueIndex}`;
-    
+
     const getter = async (): Promise<Head2HeadData> => {
       try {
-        const htmlPage = await this.getPageFromAFTT(playerUniqueIndex, opponentPlayerUniqueIndex);
+        const htmlPage = await this.getPageFromAFTT(
+          playerUniqueIndex,
+          opponentPlayerUniqueIndex,
+        );
         const matchesExtracted = this.extractMatchesInfos(htmlPage);
         const playersInfo = this.extractPlayerNames(htmlPage);
 
@@ -121,15 +124,24 @@ export class Head2headService {
           matchesExtracted.map((m) => this.getMatchDetails(m)),
         );
 
-        const teamMatchEntries = matchesFound.filter((match): match is TeamMatchesEntry => !!match);
-        
+        const teamMatchEntries = matchesFound.filter(
+          (match): match is TeamMatchesEntry => !!match,
+        );
+
         if (teamMatchEntries.length === 0) {
           return this.createEmptyHead2HeadData(playersInfo);
         }
 
-        return this.calculateHead2Head(teamMatchEntries, matchesExtracted, playersInfo);
+        return this.calculateHead2Head(
+          teamMatchEntries,
+          matchesExtracted,
+          playersInfo,
+        );
       } catch (error) {
-        this.logger.error(`Failed to get head-to-head results: ${error.message}`, error.stack);
+        this.logger.error(
+          `Failed to get head-to-head results: ${error.message}`,
+          error.stack,
+        );
         throw error;
       }
     };
@@ -144,7 +156,10 @@ export class Head2headService {
   /**
    * Fetches the AFTT page containing head-to-head information
    */
-  private async getPageFromAFTT(playerA: number, playerB: number): Promise<string> {
+  private async getPageFromAFTT(
+    playerA: number,
+    playerB: number,
+  ): Promise<string> {
     try {
       const result = await firstValueFrom(
         this.httpService.post(
@@ -163,7 +178,10 @@ export class Head2headService {
       );
       return result.data;
     } catch (error) {
-      this.logger.error(`Failed to fetch AFTT page: ${error.message}`, error.stack);
+      this.logger.error(
+        `Failed to fetch AFTT page: ${error.message}`,
+        error.stack,
+      );
       throw new Error('Failed to fetch data from AFTT');
     }
   }
@@ -172,9 +190,10 @@ export class Head2headService {
    * Extracts match information from the AFTT HTML page
    */
   private extractMatchesInfos(htmlPage: string): ExtractedMatchInfo[] {
-    const regex = /season=([0-9]+)&sel=([0-9]+)&detail=([0-9]+)&week_name=([0-9]+)&div_id=([0-9]+)">Match ([0-2]\d\/\d+)/gm;
+    const regex =
+      /season=([0-9]+)&sel=([0-9]+)&detail=([0-9]+)&week_name=([0-9]+)&div_id=([0-9]+)">Match ([0-2]\d\/\d+)/gm;
     const matches: ExtractedMatchInfo[] = [];
-    
+
     let match: RegExpExecArray | null;
     while ((match = regex.exec(htmlPage)) !== null) {
       matches.push({
@@ -192,9 +211,10 @@ export class Head2headService {
    * Extracts player names and unique indexes from the AFTT HTML page
    */
   private extractPlayerNames(htmlPage: string): PlayersInfo {
-    const regex = /id="player_[0-9]" name="player_[0-9]" value="([0-9]+)\/(.+)"/gm;
+    const regex =
+      /id="player_[0-9]" name="player_[0-9]" value="([0-9]+)\/(.+)"/gm;
     const players: Array<[string, string]> = [];
-    
+
     let match: RegExpExecArray | null;
     while ((match = regex.exec(htmlPage)) !== null) {
       players.push([match[1], match[2]]);
@@ -275,14 +295,26 @@ export class Head2headService {
         (p) => p.UniqueIndex === playersInfo.playerUniqueIndex,
       );
 
-      const player = this.findPlayer(match, playersInfo.playerUniqueIndex, isHomePlayer);
-      const opponent = this.findPlayer(match, playersInfo.opponentPlayerUniqueIndex, !isHomePlayer);
+      const player = this.findPlayer(
+        match,
+        playersInfo.playerUniqueIndex,
+        isHomePlayer,
+      );
+      const opponent = this.findPlayer(
+        match,
+        playersInfo.opponentPlayerUniqueIndex,
+        !isHomePlayer,
+      );
 
       if (!player || !opponent) {
         continue;
       }
 
-      const individualResult = this.findIndividualResult(match, playersInfo, isHomePlayer);
+      const individualResult = this.findIndividualResult(
+        match,
+        playersInfo,
+        isHomePlayer,
+      );
       const score = this.calculateScore(individualResult, isHomePlayer);
 
       if (individualResult) {
@@ -336,7 +368,7 @@ export class Head2headService {
     const players = isHome
       ? match.MatchDetails.HomePlayers.Players
       : match.MatchDetails.AwayPlayers.Players;
-    
+
     return players.find((p) => p.UniqueIndex === uniqueIndex);
   }
 
@@ -350,17 +382,28 @@ export class Head2headService {
   ) {
     return match.MatchDetails.IndividualMatchResults.find((individualMatch) =>
       isHomePlayer
-        ? individualMatch.HomePlayerUniqueIndex.includes(playersInfo.playerUniqueIndex) &&
-          individualMatch.AwayPlayerUniqueIndex.includes(playersInfo.opponentPlayerUniqueIndex)
-        : individualMatch.AwayPlayerUniqueIndex.includes(playersInfo.playerUniqueIndex) &&
-          individualMatch.HomePlayerUniqueIndex.includes(playersInfo.opponentPlayerUniqueIndex),
+        ? individualMatch.HomePlayerUniqueIndex.includes(
+            playersInfo.playerUniqueIndex,
+          ) &&
+          individualMatch.AwayPlayerUniqueIndex.includes(
+            playersInfo.opponentPlayerUniqueIndex,
+          )
+        : individualMatch.AwayPlayerUniqueIndex.includes(
+            playersInfo.playerUniqueIndex,
+          ) &&
+          individualMatch.HomePlayerUniqueIndex.includes(
+            playersInfo.opponentPlayerUniqueIndex,
+          ),
     );
   }
 
   /**
    * Calculates the score string
    */
-  private calculateScore(individualResult: any, isHomePlayer: boolean): string | undefined {
+  private calculateScore(
+    individualResult: any,
+    isHomePlayer: boolean,
+  ): string | undefined {
     if (!individualResult) {
       return undefined;
     }
@@ -382,7 +425,13 @@ export class Head2headService {
     lastVictory: Date | undefined,
     firstVictory: Date | undefined,
     lastDefeat: Date | undefined,
-  ): { victoryCount: number; defeatCount: number; lastVictory?: Date; firstVictory?: Date; lastDefeat?: Date } {
+  ): {
+    victoryCount: number;
+    defeatCount: number;
+    lastVictory?: Date;
+    firstVictory?: Date;
+    lastDefeat?: Date;
+  } {
     const matchDateObj = new Date(matchDate);
     const isVictory = isHomePlayer
       ? individualResult.HomeSetCount > individualResult.AwaySetCount

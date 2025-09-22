@@ -35,12 +35,14 @@ export class ClubDashboardService
       const club = await this.getClub(clubUniqueIndex);
 
       const [men, women, teams, matches] = await Promise.all([
-        this.getClubMembers(clubUniqueIndex, PlayerCategoryDTO.SENIOR_MEN).catch(
-          (error) => null,
-        ),
-        this.getClubMembers(clubUniqueIndex, PlayerCategoryDTO.SENIOR_WOMEN).catch(
-          (error) => null,
-        ),
+        this.getClubMembers(
+          clubUniqueIndex,
+          PlayerCategoryDTO.SENIOR_MEN,
+        ).catch((error) => null),
+        this.getClubMembers(
+          clubUniqueIndex,
+          PlayerCategoryDTO.SENIOR_WOMEN,
+        ).catch((error) => null),
         this.getClubTeams(clubUniqueIndex).catch((error) => null),
         this.getClubMatchesGrouped(clubUniqueIndex).catch((error) => null),
       ]);

@@ -4,7 +4,6 @@ import { Transform } from 'class-transformer';
 import { Level, PlayerCategory } from '../tabt-input.interface';
 import { decode } from 'he';
 
-
 export enum DivisionCategory {
   SENIOR_MEN = 37,
   SENIOR_WOMEN = 38,
@@ -56,8 +55,6 @@ export class VenueEntry {
   @ApiPropertyOptional()
   BoundingBox?: string[];
 }
-
-
 
 export class TestOutput {
   /** xsd:string(undefined) */

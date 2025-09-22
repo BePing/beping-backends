@@ -13,7 +13,9 @@ export class AppCheckGuard implements CanActivate {
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
     if (!admin.apps.length) {
-      this.logger.warn('Firebase not initialized. App Check verification disabled.');
+      this.logger.warn(
+        'Firebase not initialized. App Check verification disabled.',
+      );
       return true; // Allow in development/testing without Firebase
     }
 
@@ -26,17 +28,22 @@ export class AppCheckGuard implements CanActivate {
 
     try {
       const appCheckClaims = await admin.appCheck().verifyToken(appCheckToken);
-      
+
       // Optionally verify specific app claims using appId
-      if (process.env.FIREBASE_APP_ID && appCheckClaims.appId !== process.env.FIREBASE_APP_ID) {
+      if (
+        process.env.FIREBASE_APP_ID &&
+        appCheckClaims.appId !== process.env.FIREBASE_APP_ID
+      ) {
         throw new UnauthorizedException('Invalid App Check token app ID');
       }
 
-      this.logger.debug(`App Check verification successful for app: ${appCheckClaims.appId}`);
-      
+      this.logger.debug(
+        `App Check verification successful for app: ${appCheckClaims.appId}`,
+      );
+
       // Add app check claims to request for potential use in controllers
       request.appCheckClaims = appCheckClaims;
-      
+
       return true;
     } catch (error) {
       this.logger.error('App Check verification failed', error);
@@ -47,11 +54,11 @@ export class AppCheckGuard implements CanActivate {
   private extractAppCheckToken(request: any): string | null {
     // App Check token is typically sent in the X-Firebase-AppCheck header
     const authHeader = request.headers['x-firebase-appcheck'];
-    
+
     if (!authHeader) {
       return null;
     }
 
     return authHeader;
   }
-} 
+}

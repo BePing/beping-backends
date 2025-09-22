@@ -39,8 +39,12 @@ describe('MemberController', () => {
     controller = module.get<MemberController>(MemberController);
     service = module.get<MemberService>(MemberService);
     seasonService = module.get<SeasonService>(SeasonService);
-    memberCategoryService = module.get<MemberCategoryService>(MemberCategoryService);
-    numericRankingService = module.get<NumericRankingService>(NumericRankingService);
+    memberCategoryService = module.get<MemberCategoryService>(
+      MemberCategoryService,
+    );
+    numericRankingService = module.get<NumericRankingService>(
+      NumericRankingService,
+    );
   });
 
   it('should be defined', () => {
@@ -67,7 +71,6 @@ describe('MemberController', () => {
       expect(error).toBeInstanceOf(NotFoundException);
       expect(spy).toHaveBeenCalledWith(input);
     }
-
   });
 
   it('should call members service with correct param - 1 player', async () => {
@@ -80,16 +83,18 @@ describe('MemberController', () => {
       withOpponentRankingEvaluation: 'true',
       withResults: 'true',
     };
-    const spy = jest.spyOn(service, 'getMembersV1').mockResolvedValue([{
-      UniqueIndex: 142453,
-      FirstName: 'florent',
-      LastName: 'florent',
-      Position: 1,
-      RankingIndex: 1,
-      Ranking: '1',
-      Status: '1',
-      Club: 'L360',
-    }]);
+    const spy = jest.spyOn(service, 'getMembersV1').mockResolvedValue([
+      {
+        UniqueIndex: 142453,
+        FirstName: 'florent',
+        LastName: 'florent',
+        Position: 1,
+        RankingIndex: 1,
+        Ranking: '1',
+        Status: '1',
+        Club: 'L360',
+      },
+    ]);
 
     const result = await controller.findById(
       input as unknown as GetMemberV1,
@@ -98,7 +103,7 @@ describe('MemberController', () => {
 
     expect(result).toBeDefined();
     expect(typeof result).toBe('object');
-    expect(spy).toHaveBeenCalledWith({...input, uniqueIndex: 142453});
+    expect(spy).toHaveBeenCalledWith({ ...input, uniqueIndex: 142453 });
   });
 
   it('should throw 404 exeption if not found', async () => {
@@ -109,5 +114,4 @@ describe('MemberController', () => {
       new NotFoundException(),
     );
   });
-  
 });

@@ -83,31 +83,35 @@ describe('Head2headService', () => {
     beforeEach(() => {
       mockHttpService.post.mockReturnValue(of({ data: mockHtmlResponse }));
       mockMatchService.getMatches.mockResolvedValue([mockMatchEntry]);
-      mockCacheService.getFromCacheOrGetAndCacheResult.mockImplementation((_, fn) => fn());
+      mockCacheService.getFromCacheOrGetAndCacheResult.mockImplementation(
+        (_, fn) => fn(),
+      );
     });
 
     it('should return head-to-head results for two players', async () => {
       const result = await service.getHead2HeadResults(123, 456);
 
-      expect(result).toEqual(expect.objectContaining({
-        head2HeadCount: 1,
-        victoryCount: 1,
-        defeatCount: 0,
-        playersInfo: {
-          playerUniqueIndex: 123,
-          opponentPlayerUniqueIndex: 456,
-          playerName: 'Player One',
-          opponentPlayerName: 'Player Two',
-        },
-        matchEntryHistory: expect.arrayContaining([
-          expect.objectContaining({
-            season: 2023,
-            playerRanking: 'C0',
-            opponentRanking: 'C2',
-            score: '3 - 1',
-          }),
-        ]),
-      }));
+      expect(result).toEqual(
+        expect.objectContaining({
+          head2HeadCount: 1,
+          victoryCount: 1,
+          defeatCount: 0,
+          playersInfo: {
+            playerUniqueIndex: 123,
+            opponentPlayerUniqueIndex: 456,
+            playerName: 'Player One',
+            opponentPlayerName: 'Player Two',
+          },
+          matchEntryHistory: expect.arrayContaining([
+            expect.objectContaining({
+              season: 2023,
+              playerRanking: 'C0',
+              opponentRanking: 'C2',
+              score: '3 - 1',
+            }),
+          ]),
+        }),
+      );
     });
 
     it('should return empty results when no matches are found', async () => {
@@ -115,12 +119,14 @@ describe('Head2headService', () => {
 
       const result = await service.getHead2HeadResults(123, 456);
 
-      expect(result).toEqual(expect.objectContaining({
-        head2HeadCount: 0,
-        victoryCount: 0,
-        defeatCount: 0,
-        matchEntryHistory: [],
-      }));
+      expect(result).toEqual(
+        expect.objectContaining({
+          head2HeadCount: 0,
+          victoryCount: 0,
+          defeatCount: 0,
+          matchEntryHistory: [],
+        }),
+      );
     });
 
     it('should throw error when AFTT page fetch fails', async () => {
@@ -128,7 +134,9 @@ describe('Head2headService', () => {
         throw new Error('Network error');
       });
 
-      await expect(service.getHead2HeadResults(123, 456)).rejects.toThrow('Failed to fetch data from AFTT');
+      await expect(service.getHead2HeadResults(123, 456)).rejects.toThrow(
+        'Failed to fetch data from AFTT',
+      );
     });
   });
-}); 
+});

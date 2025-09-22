@@ -1,7 +1,10 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Transform } from 'class-transformer';
 import { Level } from '../../../entity/tabt-input.interface';
-import { TournamentEntry, TournamentSerieEntry } from '../../../entity/tabt-soap/TabTAPI_Port';
+import {
+  TournamentEntry,
+  TournamentSerieEntry,
+} from '../../../entity/tabt-soap/TabTAPI_Port';
 import { LevelDTO, mapLevelToLevelDTO } from '../../../common/dto/levels.dto';
 
 export class TournamentVenueDTOV1 {
@@ -99,9 +102,13 @@ export class TournamentEntryDTOV1 {
     dto.dateFrom = tournament.DateFrom;
     dto.dateTo = tournament.DateTo;
     dto.registrationDate = tournament.RegistrationDate;
-    dto.venue = tournament.Venue ? TournamentVenueDTOV1.fromTabT(tournament.Venue) : undefined;
+    dto.venue = tournament.Venue
+      ? TournamentVenueDTOV1.fromTabT(tournament.Venue)
+      : undefined;
     dto.serieCount = tournament.SerieCount;
-    dto.serieEntries = tournament.SerieEntries?.map(TournamentSerieEntryDTOV1.fromTabT);
+    dto.serieEntries = tournament.SerieEntries?.map(
+      TournamentSerieEntryDTOV1.fromTabT,
+    );
     return dto;
   }
-} 
+}

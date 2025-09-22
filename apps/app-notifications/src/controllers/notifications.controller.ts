@@ -86,9 +86,8 @@ export class NotificationsController {
   async getSubscriptions(
     @Query('notificationType') notificationType?: NotificationType,
   ) {
-    const subscriptions = await this.fcmService.getActiveSubscriptions(
-      notificationType,
-    );
+    const subscriptions =
+      await this.fcmService.getActiveSubscriptions(notificationType);
 
     return {
       subscriptions,
@@ -123,4 +122,4 @@ export class NotificationsController {
       };
     }
   }
-} 
+}

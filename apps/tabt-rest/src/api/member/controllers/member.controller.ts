@@ -8,8 +8,17 @@ import {
   Query,
   UseInterceptors,
 } from '@nestjs/common';
-import { GetPlayerCategoriesInput, MemberEntry, PlayerCategoryEntries } from '../../../entity/tabt-soap/TabTAPI_Port';
-import { ApiNotFoundResponse, ApiOkResponse, ApiOperation, ApiTags } from '@nestjs/swagger';
+import {
+  GetPlayerCategoriesInput,
+  MemberEntry,
+  PlayerCategoryEntries,
+} from '../../../entity/tabt-soap/TabTAPI_Port';
+import {
+  ApiNotFoundResponse,
+  ApiOkResponse,
+  ApiOperation,
+  ApiTags,
+} from '@nestjs/swagger';
 import { MemberService } from '../../../services/members/member.service';
 import { TabtHeadersDecorator } from '../../../common/decorators/tabt-headers.decorator';
 import {
@@ -20,11 +29,13 @@ import {
   PlayerCategoryEntriesDTOV1,
   WeeklyNumericPointsInputV1,
   WeeklyNumericPointsV1,
-
 } from '../dto/member.dto';
 import { SeasonService } from '../../../services/seasons/season.service';
 import { MemberCategoryService } from '../../../services/members/member-category.service';
-import { NumericRankingService, WeeklyRankingV1Response } from '../../../services/members/numeric-ranking.service';
+import {
+  NumericRankingService,
+  WeeklyRankingV1Response,
+} from '../../../services/members/numeric-ranking.service';
 
 @ApiTags('Members')
 @Controller({
@@ -54,7 +65,6 @@ export class MemberController {
     }
     return members.map(MemberEntryDTOV1.fromTabT);
   }
-
 
   @Get('categories')
   @ApiOkResponse({

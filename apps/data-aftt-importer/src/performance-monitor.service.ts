@@ -23,7 +23,7 @@ export class PerformanceMonitorService {
 
   startImport(
     playerCategory: PlayerCategory,
-    importType: 'MEMBER' | 'RESULT'
+    importType: 'MEMBER' | 'RESULT',
   ): string {
     const sessionId = `${importType}_${playerCategory}_${Date.now()}`;
     const metrics: ImportMetrics = {
@@ -58,7 +58,9 @@ export class PerformanceMonitorService {
 
     metrics.endTime = Date.now();
     const totalTime = metrics.endTime - metrics.startTime;
-    metrics.recordsPerSecond = Math.round(metrics.totalRecords / (totalTime / 1000));
+    metrics.recordsPerSecond = Math.round(
+      metrics.totalRecords / (totalTime / 1000),
+    );
 
     this.logger.log(`Import session ${sessionId} completed:`, {
       playerCategory: metrics.playerCategory,
@@ -86,4 +88,4 @@ export class PerformanceMonitorService {
   getAllActiveMetrics(): ImportMetrics[] {
     return Array.from(this.metrics.values());
   }
-} 
+}

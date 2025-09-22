@@ -11,7 +11,6 @@ import { Transform } from 'class-transformer';
 import { DivisionCategoryDTO } from '../../../common/dto/division-category.dto';
 import { LevelDTO } from '../../../common/dto/levels.dto';
 
-
 export class GetMatches {
   @ApiPropertyOptional()
   @IsOptional()
@@ -74,7 +73,9 @@ export class GetMatches {
   @ApiPropertyOptional()
   @IsOptional()
   @IsBoolean()
-  @Transform(({ value }) => value === 'true' || value === true, { toClassOnly: true })
+  @Transform(({ value }) => value === 'true' || value === true, {
+    toClassOnly: true,
+  })
   withDetails?: boolean;
 
   @ApiPropertyOptional()

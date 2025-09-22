@@ -1,5 +1,8 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { Level, PlayerCategory } from 'apps/tabt-rest/src/entity/tabt-input.interface';
+import {
+  Level,
+  PlayerCategory,
+} from 'apps/tabt-rest/src/entity/tabt-input.interface';
 
 export class TeamEntryDto {
   @ApiProperty()
@@ -19,7 +22,7 @@ export class TeamEntryDto {
     enumName: 'PlayerCategory',
     description: 'Division category',
     example: 'MEN',
-    type: 'string'
+    type: 'string',
   })
   DivisionCategory?: keyof typeof PlayerCategory;
 

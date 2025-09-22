@@ -134,9 +134,13 @@ model DataImport {
   type           ImportType
   playerCategory PlayerCategory
   importedAt     DateTime       @default(now())
-  hash     String      // Store hashes of each line to detect changes
-  
+  hash           String         // Store hashes of each line to detect changes
+  fileDate       DateTime?      // Date from the first line of the file (ISO-8601 format)
+  linesProcessed Int?           // Number of lines processed (excluding header)
+  processingTimeMs Int?         // Processing time in milliseconds
+
   @@index([type, playerCategory, importedAt])
+  @@index([type, playerCategory, fileDate])
 }
 
 enum NotificationType {

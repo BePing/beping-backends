@@ -20,7 +20,10 @@ import {
   RegisterTournament,
 } from '../dto/tournaments.dto';
 import { TabtHeadersDecorator } from '../../../common/decorators/tabt-headers.decorator';
-import { TournamentEntryDTOV1, TournamentSerieEntryDTOV1 } from '../dto/tournament.dto';
+import {
+  TournamentEntryDTOV1,
+  TournamentSerieEntryDTOV1,
+} from '../dto/tournament.dto';
 
 @ApiTags('Tournaments')
 @Controller({

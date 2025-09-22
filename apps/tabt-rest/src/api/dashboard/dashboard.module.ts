@@ -19,17 +19,12 @@ import { DivisionDashboardService } from './services/division-dashboard.service'
 import { ClubDashboardService } from './services/club-dashboard.service';
 
 @Module({
-  imports: [
-    CommonModule, 
-    ServicesModule,
-    
-  ],
+  imports: [CommonModule, ServicesModule],
   controllers: [MemberDashboardController],
   providers: [
     MemberDashboardService,
     ClubDashboardService,
     DivisionDashboardService,
-    
   ],
 })
 export class DashboardModule {}

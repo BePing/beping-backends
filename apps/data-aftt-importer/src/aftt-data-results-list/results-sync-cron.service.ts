@@ -21,10 +21,10 @@ export class ResultsSyncCronService {
     }
   }
 
-  // Run every day at 9:30 AM
-  @Cron('0 30 9 * * *')
+  // Run every hour at 45 minutes past the hour
+  @Cron('0 45 * * * *')
   async syncResults() {
-    this.logger.debug('Daily members sync starting...');
+    this.logger.log('Results sync starting (every hour at 45 minutes)...');
     await this.queue.add({ playerCategory: PlayerCategory.SENIOR_MEN });
     await this.queue.add({ playerCategory: PlayerCategory.SENIOR_WOMEN });
   }

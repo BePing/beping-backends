@@ -24,10 +24,7 @@ import { NotificationsController } from './controllers/notifications.controller'
     ConfigModule.forRoot(),
     NotificationsModule,
   ],
-  controllers: [
-    HealthController,
-    NotificationsController,
-  ],
+  controllers: [HealthController, NotificationsController],
   providers: [PrismaService],
 })
 export class AppModule {}

@@ -7,11 +7,6 @@ import { ServeStaticModule } from '@nestjs/serve-static';
 import { join } from 'path';
 
 @Module({
-  imports: [
-    ServicesModule,
-    CommonModule,
-    ApiModule,
-    ConfigModule.forRoot(),
-  ],
+  imports: [ServicesModule, CommonModule, ApiModule, ConfigModule.forRoot()],
 })
 export class AppModule {}

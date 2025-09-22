@@ -1,7 +1,14 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Transform } from 'class-transformer';
-import { DivisionCategoryDTO, mapDivisionCategoryToDivisionCategoryDTO } from '../../../common/dto/division-category.dto';
-import { TeamMatchesEntry, VenueEntry, Players } from '../../../entity/tabt-soap/TabTAPI_Port';
+import {
+  DivisionCategoryDTO,
+  mapDivisionCategoryToDivisionCategoryDTO,
+} from '../../../common/dto/division-category.dto';
+import {
+  TeamMatchesEntry,
+  VenueEntry,
+  Players,
+} from '../../../entity/tabt-soap/TabTAPI_Port';
 
 export class VenueEntryDTO {
   @ApiPropertyOptional()
@@ -233,7 +240,9 @@ export class CommentEntryDTO {
   static fromTabT(entry: any): CommentEntryDTO {
     const dto = new CommentEntryDTO();
     dto.timestamp = entry.Timestamp;
-    dto.author = entry.Author ? CommentAuthorDTO.fromTabT(entry.Author) : undefined;
+    dto.author = entry.Author
+      ? CommentAuthorDTO.fromTabT(entry.Author)
+      : undefined;
     dto.comment = entry.Comment;
     dto.code = entry.Code;
     return dto;
@@ -295,9 +304,15 @@ export class MatchDetailsDTO {
     dto.awayCaptain = details.AwayCaptain;
     dto.referee = details.Referee;
     dto.hallCommissioner = details.HallCommissioner;
-    dto.homePlayers = details.HomePlayers ? PlayersDTO.fromTabT(details.HomePlayers) : undefined;
-    dto.awayPlayers = details.AwayPlayers ? PlayersDTO.fromTabT(details.AwayPlayers) : undefined;
-    dto.individualMatchResults = details.IndividualMatchResults?.map(IndividualMatchResultDTO.fromTabT) ?? [];
+    dto.homePlayers = details.HomePlayers
+      ? PlayersDTO.fromTabT(details.HomePlayers)
+      : undefined;
+    dto.awayPlayers = details.AwayPlayers
+      ? PlayersDTO.fromTabT(details.AwayPlayers)
+      : undefined;
+    dto.individualMatchResults =
+      details.IndividualMatchResults?.map(IndividualMatchResultDTO.fromTabT) ??
+      [];
     dto.matchSystem = details.MatchSystem;
     dto.homeScore = details.HomeScore;
     dto.awayScore = details.AwayScore;
@@ -366,7 +381,9 @@ export class TeamMatchesEntryDTO {
   divisionId: number;
 
   @ApiPropertyOptional({ enum: DivisionCategoryDTO })
-  @Transform((cat) => mapDivisionCategoryToDivisionCategoryDTO(cat.value), { toPlainOnly: true })
+  @Transform((cat) => mapDivisionCategoryToDivisionCategoryDTO(cat.value), {
+    toPlainOnly: true,
+  })
   divisionCategory: DivisionCategoryDTO;
 
   @ApiProperty()
@@ -393,7 +410,9 @@ export class TeamMatchesEntryDTO {
     dto.time = match.Time;
     dto.venue = match.Venue;
     dto.venueClub = match.VenueClub;
-    dto.venueEntry = match.VenueEntry ? VenueEntryDTO.fromTabT(match.VenueEntry as VenueEntry) : null;
+    dto.venueEntry = match.VenueEntry
+      ? VenueEntryDTO.fromTabT(match.VenueEntry as VenueEntry)
+      : null;
     dto.homeClub = match.HomeClub;
     dto.homeTeam = match.HomeTeam;
     dto.awayClub = match.AwayClub;
@@ -405,12 +424,16 @@ export class TeamMatchesEntryDTO {
     dto.isHomeForfeited = match.IsHomeForfeited;
     dto.isAwayForfeited = match.IsAwayForfeited;
     dto.divisionId = match.DivisionId;
-    dto.divisionCategory = mapDivisionCategoryToDivisionCategoryDTO(match.DivisionCategory);
+    dto.divisionCategory = mapDivisionCategoryToDivisionCategoryDTO(
+      match.DivisionCategory,
+    );
     dto.isHomeWithdrawn = match.IsHomeWithdrawn;
     dto.isAwayWithdrawn = match.IsAwayWithdrawn;
     dto.isValidated = match.IsValidated;
     dto.isLocked = match.IsLocked;
-    dto.matchDetails = match.MatchDetails ? MatchDetailsDTO.fromTabT(match.MatchDetails) : undefined;
+    dto.matchDetails = match.MatchDetails
+      ? MatchDetailsDTO.fromTabT(match.MatchDetails)
+      : undefined;
     return dto;
   }
-} 
+}

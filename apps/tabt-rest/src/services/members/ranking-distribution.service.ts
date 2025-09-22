@@ -3,7 +3,10 @@ import { PlayerCategory } from '@prisma/client';
 import { CacheService, TTL_DURATION } from '../../common/cache/cache.service';
 import { PlayerCategoryDTO } from '../../common/dto/player-category.dto';
 import { PrismaService } from '../../common/prisma.service';
-import { MEN_RANKING_ESTIMATION, WOMAN_RANKING_ESTIMATION } from '../../common/consts/ranking-estimation';
+import {
+  MEN_RANKING_ESTIMATION,
+  WOMAN_RANKING_ESTIMATION,
+} from '../../common/consts/ranking-estimation';
 
 interface MemberCountCache {
   [PlayerCategoryDTO.SENIOR_MEN]: number | null;
@@ -12,7 +15,9 @@ interface MemberCountCache {
 }
 
 @Injectable()
-export class RankingDistributionService implements OnModuleInit, OnModuleDestroy {
+export class RankingDistributionService
+  implements OnModuleInit, OnModuleDestroy
+{
   private memberCountCache: MemberCountCache = {
     [PlayerCategoryDTO.SENIOR_MEN]: null,
     [PlayerCategoryDTO.SENIOR_WOMEN]: null,
@@ -29,7 +34,7 @@ export class RankingDistributionService implements OnModuleInit, OnModuleDestroy
   async onModuleInit() {
     // Initialize cache on startup
     await this.refreshMemberCounts();
-    
+
     // Schedule daily refresh at midnight
     this.scheduleNextRefresh();
   }
@@ -44,8 +49,10 @@ export class RankingDistributionService implements OnModuleInit, OnModuleDestroy
     category: PlayerCategoryDTO = PlayerCategoryDTO.SENIOR_MEN,
   ): Promise<number> {
     // Check if cache needs refresh (older than 1 day)
-    const shouldRefresh = !this.memberCountCache.lastUpdated || 
-      Date.now() - this.memberCountCache.lastUpdated.getTime() > 24 * 60 * 60 * 1000;
+    const shouldRefresh =
+      !this.memberCountCache.lastUpdated ||
+      Date.now() - this.memberCountCache.lastUpdated.getTime() >
+        24 * 60 * 60 * 1000;
 
     if (shouldRefresh || this.memberCountCache[category] === null) {
       await this.refreshMemberCounts();
@@ -57,12 +64,14 @@ export class RankingDistributionService implements OnModuleInit, OnModuleDestroy
   private async refreshMemberCounts(): Promise<void> {
     try {
       console.log('Refreshing member count cache...');
-      
+
       // Get the latest date once
-      const latestDate = (await this.prismaService.numericPoints.findFirst({
-        orderBy: { date: 'desc' },
-        select: { date: true },
-      }))?.date;
+      const latestDate = (
+        await this.prismaService.numericPoints.findFirst({
+          orderBy: { date: 'desc' },
+          select: { date: true },
+        })
+      )?.date;
 
       if (!latestDate) {
         console.warn('No numeric points found in database');
@@ -91,7 +100,9 @@ export class RankingDistributionService implements OnModuleInit, OnModuleDestroy
       this.memberCountCache[PlayerCategoryDTO.SENIOR_WOMEN] = womenCount;
       this.memberCountCache.lastUpdated = new Date();
 
-      console.log(`Member count cache refreshed: Men=${menCount}, Women=${womenCount}`);
+      console.log(
+        `Member count cache refreshed: Men=${menCount}, Women=${womenCount}`,
+      );
     } catch (error) {
       console.error('Failed to refresh member count cache:', error);
     }
@@ -107,32 +118,48 @@ export class RankingDistributionService implements OnModuleInit, OnModuleDestroy
     this.refreshTimer = setTimeout(async () => {
       await this.refreshMemberCounts();
       // Schedule next refresh (24 hours from now)
-      this.refreshTimer = setInterval(() => this.refreshMemberCounts(), 24 * 60 * 60 * 1000);
+      this.refreshTimer = setInterval(
+        () => this.refreshMemberCounts(),
+        24 * 60 * 60 * 1000,
+      );
     }, msUntilMidnight);
 
-    console.log(`Next member count refresh scheduled in ${Math.round(msUntilMidnight / 1000 / 60)} minutes`);
+    console.log(
+      `Next member count refresh scheduled in ${Math.round(msUntilMidnight / 1000 / 60)} minutes`,
+    );
   }
 
-  getRankingTable(totalPlayers: number, category: PlayerCategoryDTO): Record<string, number> {
+  getRankingTable(
+    totalPlayers: number,
+    category: PlayerCategoryDTO,
+  ): Record<string, number> {
     // Get the estimation table based on category
-    const estimationTable = category === PlayerCategoryDTO.SENIOR_MEN ? MEN_RANKING_ESTIMATION : WOMAN_RANKING_ESTIMATION;
-    
+    const estimationTable =
+      category === PlayerCategoryDTO.SENIOR_MEN
+        ? MEN_RANKING_ESTIMATION
+        : WOMAN_RANKING_ESTIMATION;
+
     // Get all available player counts and find the highest one that's lower than or equal to totalPlayers
     const availableCounts = Object.keys(estimationTable)
       .map(Number)
       .sort((a, b) => b - a); // Sort in descending order
-    
-    const selectedCount = availableCounts.find(count => count <= totalPlayers) || 14000;
-    
+
+    const selectedCount =
+      availableCounts.find((count) => count <= totalPlayers) || 14000;
+
     return estimationTable[selectedCount.toString()];
   }
 
-
-  async getLetterRankingEstimationFromNumericPoints(ranking: number, category: PlayerCategoryDTO): Promise<string> {
+  async getLetterRankingEstimationFromNumericPoints(
+    ranking: number,
+    category: PlayerCategoryDTO,
+  ): Promise<string> {
     const totalPlayers = await this.getMembersWithRankingCount(category);
     const rankingTable = this.getRankingTable(totalPlayers, category);
-    return Object.entries(rankingTable)
-      .find(([_, threshold]) => ranking <= threshold)?.[0] || 'NC';
-
+    return (
+      Object.entries(rankingTable).find(
+        ([_, threshold]) => ranking <= threshold,
+      )?.[0] || 'NC'
+    );
   }
-} 
+}

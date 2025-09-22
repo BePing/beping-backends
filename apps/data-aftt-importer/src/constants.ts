@@ -8,33 +8,45 @@ export const playerCategoryFilenameMapping: { [index: string]: string } = {
 // Performance optimization constants
 export const PERFORMANCE_CONFIG = {
   // Batch sizes for different operations
-  MEMBER_BATCH_SIZE: parseInt(process.env.MEMBER_BATCH_SIZE || '500'),
-  MEMBER_POINTS_BATCH_SIZE: parseInt(process.env.MEMBER_POINTS_BATCH_SIZE || '200'),
-  RESULTS_BATCH_SIZE: parseInt(process.env.RESULTS_BATCH_SIZE || '200'),
-  RESULTS_TRANSACTION_BATCH_SIZE: parseInt(process.env.RESULTS_TRANSACTION_BATCH_SIZE || '150'),
-  
+  MEMBER_BATCH_SIZE: parseInt(process.env.MEMBER_BATCH_SIZE || '1000'),
+  MEMBER_POINTS_BATCH_SIZE: parseInt(
+    process.env.MEMBER_POINTS_BATCH_SIZE || '1000',
+  ),
+  RESULTS_BATCH_SIZE: parseInt(process.env.RESULTS_BATCH_SIZE || '1000'),
+  RESULTS_TRANSACTION_BATCH_SIZE: parseInt(
+    process.env.RESULTS_TRANSACTION_BATCH_SIZE || '500',
+  ),
+
   // Concurrency limits
-  MAX_CONCURRENT_BATCHES: parseInt(process.env.MAX_CONCURRENT_BATCHES || '3'),
-  MAX_DATABASE_CONNECTIONS: parseInt(process.env.MAX_DATABASE_CONNECTIONS || '10'),
-  
+  MAX_CONCURRENT_BATCHES: parseInt(process.env.MAX_CONCURRENT_BATCHES || '5'),
+  MAX_DATABASE_CONNECTIONS: parseInt(
+    process.env.MAX_DATABASE_CONNECTIONS || '15',
+  ),
+
   // Timeout and retry settings
   DOWNLOAD_TIMEOUT_MS: parseInt(process.env.DOWNLOAD_TIMEOUT_MS || '30000'),
-  TRANSACTION_TIMEOUT_MS: parseInt(process.env.TRANSACTION_TIMEOUT_MS || '120000'),
-  MAX_DOWNLOAD_RETRIES: parseInt(process.env.MAX_DOWNLOAD_RETRIES || '3'),
+  TRANSACTION_TIMEOUT_MS: parseInt(
+    process.env.TRANSACTION_TIMEOUT_MS || '120000',
+  ),
+  MAX_DOWNLOAD_RETRIES: parseInt(process.env.MAX_DOWNLOAD_RETRIES || '5'),
   RETRY_DELAY_MS: parseInt(process.env.RETRY_DELAY_MS || '2000'),
-  
+
   // Memory optimization
-  ENABLE_STREAMING_PROCESSING: process.env.ENABLE_STREAMING_PROCESSING === 'true',
+  ENABLE_STREAMING_PROCESSING:
+    process.env.ENABLE_STREAMING_PROCESSING === 'true',
   MAX_MEMORY_USAGE_MB: parseInt(process.env.MAX_MEMORY_USAGE_MB || '1024'),
-  
+
   // Monitoring
-  ENABLE_PERFORMANCE_LOGGING: process.env.ENABLE_PERFORMANCE_LOGGING !== 'false',
+  ENABLE_PERFORMANCE_LOGGING:
+    process.env.ENABLE_PERFORMANCE_LOGGING !== 'false',
   LOG_BATCH_PROGRESS: process.env.LOG_BATCH_PROGRESS !== 'false',
 } as const;
 
 // Cache invalidation patterns
 export const CACHE_PATTERNS = {
   NUMERIC_RANKING: (categoryId: number) => `numeric-ranking-v4:*:${categoryId}`,
-  MEMBER_DATA: (playerCategory: PlayerCategory) => `member-data:${playerCategory}:*`,
-  RESULTS_DATA: (playerCategory: PlayerCategory) => `results-data:${playerCategory}:*`,
+  MEMBER_DATA: (playerCategory: PlayerCategory) =>
+    `member-data:${playerCategory}:*`,
+  RESULTS_DATA: (playerCategory: PlayerCategory) =>
+    `results-data:${playerCategory}:*`,
 } as const;

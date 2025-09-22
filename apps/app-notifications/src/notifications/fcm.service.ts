@@ -1,7 +1,11 @@
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import * as admin from 'firebase-admin';
 import { PrismaService } from '../common/prisma.service';
-import { DevicePlatform, NotificationStatus, NotificationType } from '@prisma/client';
+import {
+  DevicePlatform,
+  NotificationStatus,
+  NotificationType,
+} from '@prisma/client';
 
 export interface SendNotificationOptions {
   title: string;
@@ -23,7 +27,7 @@ export class FcmService implements OnModuleInit {
       // Initialize Firebase Admin SDK
       const serviceAccountPath = process.env.FIREBASE_SERVICE_ACCOUNT_KEY_PATH;
       const serviceAccountKey = process.env.FIREBASE_SERVICE_ACCOUNT_KEY;
-      
+
       if (serviceAccountPath) {
         admin.initializeApp({
           credential: admin.credential.cert(serviceAccountPath),
@@ -34,10 +38,12 @@ export class FcmService implements OnModuleInit {
           credential: admin.credential.cert(serviceAccount),
         });
       } else {
-        this.logger.warn('Firebase credentials not configured. FCM functionality will be disabled.');
+        this.logger.warn(
+          'Firebase credentials not configured. FCM functionality will be disabled.',
+        );
         return;
       }
-      
+
       this.logger.log('Firebase Admin SDK initialized');
     }
   }
@@ -85,7 +91,9 @@ export class FcmService implements OnModuleInit {
         data: { active: false },
       });
 
-      this.logger.log(`Device unregistered: ${deviceToken.substring(0, 10)}...`);
+      this.logger.log(
+        `Device unregistered: ${deviceToken.substring(0, 10)}...`,
+      );
     } catch (error) {
       this.logger.error('Failed to unregister device', error);
       throw error;
@@ -99,13 +107,15 @@ export class FcmService implements OnModuleInit {
     try {
       await this.prisma.deviceSubscription.update({
         where: { deviceToken },
-        data: { 
+        data: {
           notificationTypes,
           lastUsed: new Date(),
         },
       });
 
-      this.logger.log(`Device notification types updated: ${deviceToken.substring(0, 10)}...`);
+      this.logger.log(
+        `Device notification types updated: ${deviceToken.substring(0, 10)}...`,
+      );
     } catch (error) {
       this.logger.error('Failed to update device notification types', error);
       throw error;
@@ -139,11 +149,13 @@ export class FcmService implements OnModuleInit {
           },
         });
 
-        targetDevices = subscriptions.map(sub => sub.deviceToken);
+        targetDevices = subscriptions.map((sub) => sub.deviceToken);
       }
 
       if (targetDevices.length === 0) {
-        this.logger.log(`No active subscriptions found for notification type: ${options.notificationType}`);
+        this.logger.log(
+          `No active subscriptions found for notification type: ${options.notificationType}`,
+        );
         return;
       }
 
@@ -204,7 +216,7 @@ export class FcmService implements OnModuleInit {
       await this.processBatchResponse(deviceTokens, response, options);
     } catch (error) {
       this.logger.error('Failed to send batch notification', error);
-      
+
       // Log failed notifications
       for (const token of deviceTokens) {
         await this.logNotification(token, options, 'FAILED', error.message);
@@ -224,17 +236,27 @@ export class FcmService implements OnModuleInit {
       const token = deviceTokens[i];
 
       if (result.success) {
-        await this.logNotification(token, options, 'SENT', undefined, result.messageId);
+        await this.logNotification(
+          token,
+          options,
+          'SENT',
+          undefined,
+          result.messageId,
+        );
       } else {
         const error = result.error;
         failedTokens.push(token);
-        
+
         // Handle specific error codes
-        if (error?.code === 'messaging/registration-token-not-registered' ||
-            error?.code === 'messaging/invalid-registration-token') {
+        if (
+          error?.code === 'messaging/registration-token-not-registered' ||
+          error?.code === 'messaging/invalid-registration-token'
+        ) {
           // Remove invalid tokens
           await this.unregisterDevice(token);
-          this.logger.warn(`Removed invalid token: ${token.substring(0, 10)}...`);
+          this.logger.warn(
+            `Removed invalid token: ${token.substring(0, 10)}...`,
+          );
         }
 
         await this.logNotification(token, options, 'FAILED', error?.message);
@@ -284,7 +306,9 @@ export class FcmService implements OnModuleInit {
     return chunks;
   }
 
-  async getActiveSubscriptions(notificationType?: NotificationType): Promise<any[]> {
+  async getActiveSubscriptions(
+    notificationType?: NotificationType,
+  ): Promise<any[]> {
     return this.prisma.deviceSubscription.findMany({
       where: {
         active: true,
@@ -305,11 +329,11 @@ export class FcmService implements OnModuleInit {
   }
 
   async getNotificationStats(deviceToken?: string): Promise<any> {
-    const where = deviceToken 
-      ? { 
-          deviceSubscription: { 
-            deviceToken 
-          } 
+    const where = deviceToken
+      ? {
+          deviceSubscription: {
+            deviceToken,
+          },
         }
       : {};
 
@@ -323,4 +347,4 @@ export class FcmService implements OnModuleInit {
 
     return stats;
   }
-} 
+}

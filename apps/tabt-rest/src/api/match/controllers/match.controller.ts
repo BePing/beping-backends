@@ -16,9 +16,7 @@ import {
   ApiOperation,
   ApiTags,
 } from '@nestjs/swagger';
-import {
-  MatchSystemEntry,
-} from '../../../entity/tabt-soap/TabTAPI_Port';
+import { MatchSystemEntry } from '../../../entity/tabt-soap/TabTAPI_Port';
 import { MatchService } from '../../../services/matches/match.service';
 import { TabtHeadersDecorator } from '../../../common/decorators/tabt-headers.decorator';
 import { MatchSystemService } from '../../../services/matches/match-system.service';
@@ -50,12 +48,14 @@ export class MatchController {
     description: 'List of team matches entries',
   })
   @UsePipes(new ValidationPipe({ transform: true }))
-  async findAll( @Query() input: GetMatches): Promise<TeamMatchesEntryDTO[]> {
+  async findAll(@Query() input: GetMatches): Promise<TeamMatchesEntryDTO[]> {
     const matches = await this.matchService.getMatches({
       DivisionId: input.divisionId,
       Club: input.club,
       Team: input.team,
-      DivisionCategory: input.divisionCategory ? mapDivisionCategoryDTOToDivisionCategory(input.divisionCategory) : undefined,
+      DivisionCategory: input.divisionCategory
+        ? mapDivisionCategoryDTOToDivisionCategory(input.divisionCategory)
+        : undefined,
       WeekName: input.weekName,
       Level: input.level ? mapLevelDTOToLevels(input.level)[0] : undefined,
       ShowDivisionName: input.showDivisionName,
@@ -116,7 +116,9 @@ export class MatchController {
       DivisionId: input.divisionId,
       Club: input.club,
       Team: input.team,
-      DivisionCategory: input.divisionCategory ? mapDivisionCategoryDTOToDivisionCategory(input.divisionCategory) : undefined,
+      DivisionCategory: input.divisionCategory
+        ? mapDivisionCategoryDTOToDivisionCategory(input.divisionCategory)
+        : undefined,
       WeekName: input.weekName,
       Level: input.level ? mapLevelDTOToLevels(input.level)[0] : undefined,
       ShowDivisionName: input.showDivisionName,
@@ -136,7 +138,8 @@ export class MatchController {
   @Get('player/:playerUniqueIndex/performance')
   @ApiOperation({
     operationId: 'getWeeklyPerformanceMetrics',
-    description: 'Get weekly performance metrics for a player including load score, fatigue resistance, and recovery score',
+    description:
+      'Get weekly performance metrics for a player including load score, fatigue resistance, and recovery score',
   })
   @ApiOkResponse({
     type: WeeklyPerformanceMetricsDTO,
@@ -147,6 +150,9 @@ export class MatchController {
     @Param('playerUniqueIndex', ParseIntPipe) playerUniqueIndex: number,
     @Query('weekName') weekName: string,
   ): Promise<WeeklyPerformanceMetricsDTO> {
-    return this.matchService.getWeeklyPerformanceMetrics(playerUniqueIndex, weekName);
+    return this.matchService.getWeeklyPerformanceMetrics(
+      playerUniqueIndex,
+      weekName,
+    );
   }
 }

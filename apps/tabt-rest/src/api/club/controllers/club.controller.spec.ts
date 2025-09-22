@@ -41,7 +41,9 @@ describe('ClubController', () => {
     memberService = module.get<MemberService>(MemberService);
     clubTeamService = module.get<ClubTeamService>(ClubTeamService);
     clubService = module.get<ClubService>(ClubService);
-    matchesMembersRankerService = module.get<MatchesMembersRankerService>(MatchesMembersRankerService);
+    matchesMembersRankerService = module.get<MatchesMembersRankerService>(
+      MatchesMembersRankerService,
+    );
   });
 
   it('should be defined', () => {
@@ -92,7 +94,9 @@ describe('ClubController', () => {
         withOpponentRankingEvaluation: false,
         withResults: true,
       };
-      const getClubMembersSpy = jest.spyOn(memberService, 'getMembersV1').mockResolvedValue([]);
+      const getClubMembersSpy = jest
+        .spyOn(memberService, 'getMembersV1')
+        .mockResolvedValue([]);
 
       const response = await controller.getClubMembers(input, 'L360');
 
@@ -128,14 +132,23 @@ describe('ClubController', () => {
       const input: RequestBySeasonDto = { season: 18 };
       const clubIndex = 'L360';
       const teamId = 'A';
-      
-      const getMembersRankingSpy = jest.spyOn(matchesMembersRankerService, 'getMembersRankingFromTeam')
+
+      const getMembersRankingSpy = jest
+        .spyOn(matchesMembersRankerService, 'getMembersRankingFromTeam')
         .mockResolvedValue([]);
 
-      const response = await controller.getClubTeamsMembersRanking(input, clubIndex, teamId);
+      const response = await controller.getClubTeamsMembersRanking(
+        input,
+        clubIndex,
+        teamId,
+      );
 
       expect(response).toBeDefined();
-      expect(getMembersRankingSpy).toHaveBeenCalledWith(clubIndex, teamId, input.season);
+      expect(getMembersRankingSpy).toHaveBeenCalledWith(
+        clubIndex,
+        teamId,
+        input.season,
+      );
     });
   });
 
@@ -143,14 +156,21 @@ describe('ClubController', () => {
     it('should call matches members ranker service with correct params', async () => {
       const input: RequestBySeasonDto = { season: 18 };
       const clubIndex = 'L360';
-      
-      const getMembersRankingSpy = jest.spyOn(matchesMembersRankerService, 'getMembersRankingFromClub')
+
+      const getMembersRankingSpy = jest
+        .spyOn(matchesMembersRankerService, 'getMembersRankingFromClub')
         .mockResolvedValue([]);
 
-      const response = await controller.findClubMembersRanking(clubIndex, input);
+      const response = await controller.findClubMembersRanking(
+        clubIndex,
+        input,
+      );
 
       expect(response).toBeDefined();
-      expect(getMembersRankingSpy).toHaveBeenCalledWith(clubIndex, input.season);
+      expect(getMembersRankingSpy).toHaveBeenCalledWith(
+        clubIndex,
+        input.season,
+      );
     });
   });
 });

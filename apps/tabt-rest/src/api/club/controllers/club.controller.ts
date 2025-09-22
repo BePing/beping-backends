@@ -20,7 +20,10 @@ import { TabtException } from '../../../common/filter/tabt-exceptions.filter';
 import { TabtHeadersDecorator } from '../../../common/decorators/tabt-headers.decorator';
 import { GetMembersFromClub, ListAllClubs } from '../dto/club.dto';
 import { RequestBySeasonDto } from '../../../common/dto/request-by-season.dto';
-import { MatchesMembersRankerService, PlayerMatchStats } from '../../../services/matches/matches-members-ranker.service';
+import {
+  MatchesMembersRankerService,
+  PlayerMatchStats,
+} from '../../../services/matches/matches-members-ranker.service';
 import { MemberService } from '../../../services/members/member.service';
 import { ClubDto } from '../dto/club-model.dto';
 import { MemberEntryDTOV1 } from '../../member/dto/member.dto';
@@ -133,7 +136,9 @@ export class ClubController {
     @Query() input: RequestBySeasonDto,
     @Param('clubIndex') uniqueIndex: string,
   ) {
-    const teams = await this.clubTeamService.getClubsTeams({ Club: uniqueIndex });
+    const teams = await this.clubTeamService.getClubsTeams({
+      Club: uniqueIndex,
+    });
     return teams.map(TeamDto.fromTabT);
   }
 

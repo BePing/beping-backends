@@ -1,6 +1,10 @@
 import { Controller, Get, Query, BadRequestException } from '@nestjs/common';
 import { ApiOperation, ApiResponse, ApiTags, ApiQuery } from '@nestjs/swagger';
-import { SearchService, SearchResultDTO, SearchType } from '../../../services/search/search.service';
+import {
+  SearchService,
+  SearchResultDTO,
+  SearchType,
+} from '../../../services/search/search.service';
 
 @ApiTags('search')
 @Controller('search')
@@ -18,7 +22,8 @@ export class SearchController {
   @ApiQuery({
     name: 'types',
     required: false,
-    description: 'Comma-separated list of types to search (member,club,tournament). If not provided, searches all types.',
+    description:
+      'Comma-separated list of types to search (member,club,tournament). If not provided, searches all types.',
     type: String,
   })
   @ApiResponse({
@@ -38,27 +43,31 @@ export class SearchController {
       throw new BadRequestException('Search query is required');
     }
     if (query.length < 3) {
-      throw new BadRequestException('Search query must be at least 3 characters long');
+      throw new BadRequestException(
+        'Search query must be at least 3 characters long',
+      );
     }
     let searchTypes: SearchType[] | undefined;
-    
+
     if (types) {
-      const requestedTypes = types.split(',').map(t => t.trim().toLowerCase());
+      const requestedTypes = types
+        .split(',')
+        .map((t) => t.trim().toLowerCase());
       const validTypes = Object.values(SearchType);
-      
+
       const invalidTypes = requestedTypes.filter(
-        t => !validTypes.includes(t as SearchType)
+        (t) => !validTypes.includes(t as SearchType),
       );
-      
+
       if (invalidTypes.length) {
         throw new BadRequestException(
-          `Invalid search type(s): ${invalidTypes.join(', ')}. Valid types are: ${validTypes.join(', ')}`
+          `Invalid search type(s): ${invalidTypes.join(', ')}. Valid types are: ${validTypes.join(', ')}`,
         );
       }
-      
+
       searchTypes = requestedTypes as SearchType[];
     }
 
     return this.searchService.search(query, searchTypes);
   }
-} 
+}

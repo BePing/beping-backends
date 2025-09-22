@@ -1,4 +1,4 @@
-import { PlayerCategory } from "../../entity/tabt-input.interface";
+import { PlayerCategory } from '../../entity/tabt-input.interface';
 
 export enum PlayerCategoryDTO {
   SENIOR_MEN = 'SEN_M',
@@ -74,7 +74,10 @@ export const playerCategoryDisplayNames: Record<PlayerCategoryDTO, string> = {
   [PlayerCategoryDTO.SENIOR_85]: 'Veteranen Dames 85',
 };
 
-export const playerCategoryDTOToPlayerCategory: Record<PlayerCategoryDTO, PlayerCategory> = {
+export const playerCategoryDTOToPlayerCategory: Record<
+  PlayerCategoryDTO,
+  PlayerCategory
+> = {
   [PlayerCategoryDTO.SENIOR_MEN]: PlayerCategory.SENIOR_MEN,
   [PlayerCategoryDTO.SENIOR_WOMEN]: PlayerCategory.SENIOR_WOMEN,
   [PlayerCategoryDTO.YOUTH]: PlayerCategory.YOUTH,
@@ -111,14 +114,24 @@ export const playerCategoryDTOToPlayerCategory: Record<PlayerCategoryDTO, Player
   [PlayerCategoryDTO.SENIOR_85]: PlayerCategory.SENIOR_85,
 };
 
-export const playerCategoryToPlayerCategoryDTO: Record<PlayerCategory, PlayerCategoryDTO> = Object.fromEntries(
-  Object.entries(playerCategoryDTOToPlayerCategory).map(([dto, category]) => [category, dto as PlayerCategoryDTO])
+export const playerCategoryToPlayerCategoryDTO: Record<
+  PlayerCategory,
+  PlayerCategoryDTO
+> = Object.fromEntries(
+  Object.entries(playerCategoryDTOToPlayerCategory).map(([dto, category]) => [
+    category,
+    dto as PlayerCategoryDTO,
+  ]),
 ) as Record<PlayerCategory, PlayerCategoryDTO>;
 
-export function mapPlayerCategoryToPlayerCategoryDTO(playerCategory: PlayerCategory): PlayerCategoryDTO {
+export function mapPlayerCategoryToPlayerCategoryDTO(
+  playerCategory: PlayerCategory,
+): PlayerCategoryDTO {
   return playerCategoryToPlayerCategoryDTO[playerCategory];
 }
 
-export function mapPlayerCategoryDTOToPlayerCategory(playerCategoryDTO: PlayerCategoryDTO): PlayerCategory {
+export function mapPlayerCategoryDTOToPlayerCategory(
+  playerCategoryDTO: PlayerCategoryDTO,
+): PlayerCategory {
   return playerCategoryDTOToPlayerCategory[playerCategoryDTO];
 }

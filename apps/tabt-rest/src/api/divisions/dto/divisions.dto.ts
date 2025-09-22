@@ -1,9 +1,18 @@
 import { ApiProperty, ApiPropertyOptional, PickType } from '@nestjs/swagger';
 import { IsEnum, IsOptional } from 'class-validator';
 import { LevelDTO, mapLevelToLevelDTO } from '../../../common/dto/levels.dto';
-import { mapPlayerCategoryToPlayerCategoryDTO, PlayerCategoryDTO } from '../../../common/dto/player-category.dto';
-import { DivisionCategoryDTO, mapDivisionCategoryToDivisionCategoryDTO } from '../../../common/dto/division-category.dto';
-import { DivisionEntry, RankingEntry } from '../../../entity/tabt-soap/TabTAPI_Port';
+import {
+  mapPlayerCategoryToPlayerCategoryDTO,
+  PlayerCategoryDTO,
+} from '../../../common/dto/player-category.dto';
+import {
+  DivisionCategoryDTO,
+  mapDivisionCategoryToDivisionCategoryDTO,
+} from '../../../common/dto/division-category.dto';
+import {
+  DivisionEntry,
+  RankingEntry,
+} from '../../../entity/tabt-soap/TabTAPI_Port';
 
 // Base DTO with common properties
 export class GetDivisionsV1 {
@@ -18,7 +27,7 @@ export class GetDivisionsV1 {
   @ApiPropertyOptional({
     enum: LevelDTO,
     description: 'Filter divisions by level category',
-    example: 'NATIONAL'
+    example: 'NATIONAL',
   })
   @IsOptional()
   @IsEnum(LevelDTO)
@@ -41,7 +50,7 @@ export class DivisionEntryDtoV1 {
   DivisionName: string;
 
   @ApiProperty({ enum: LevelDTO })
-  Level:  LevelDTO;
+  Level: LevelDTO;
 
   @ApiProperty()
   MatchType: number;
@@ -56,9 +65,13 @@ export class DivisionEntryDtoV1 {
   static fromDivisionEntry(divisionEntry: DivisionEntry): DivisionEntryDtoV1 {
     return {
       ...divisionEntry,
-      DivisionCategory: mapDivisionCategoryToDivisionCategoryDTO(divisionEntry.DivisionCategory),
+      DivisionCategory: mapDivisionCategoryToDivisionCategoryDTO(
+        divisionEntry.DivisionCategory,
+      ),
       Level: mapLevelToLevelDTO(divisionEntry.Level),
-      PlayerCategory: mapPlayerCategoryToPlayerCategoryDTO(divisionEntry.PlayerCategory),
+      PlayerCategory: mapPlayerCategoryToPlayerCategoryDTO(
+        divisionEntry.PlayerCategory,
+      ),
     };
   }
 }

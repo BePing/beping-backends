@@ -26,9 +26,9 @@ export class SeasonController {
     type: TabtException,
   })
   findAll() {
-    return this.seasonService.getSeasons().then((seasons) =>
-      seasons.map(SeasonDto.fromTabT),
-    );
+    return this.seasonService
+      .getSeasons()
+      .then((seasons) => seasons.map(SeasonDto.fromTabT));
   }
 
   @Get('current')

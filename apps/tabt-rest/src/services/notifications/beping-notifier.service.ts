@@ -21,7 +21,9 @@ export class BepingNotifierService {
     private readonly httpClient: HttpService,
     private readonly configService: ConfigService,
   ) {
-    this.notificationURL = this.configService.get<string>('BEPING_NOTIFICATION_URL');
+    this.notificationURL = this.configService.get<string>(
+      'BEPING_NOTIFICATION_URL',
+    );
     this.isDevMode = this.configService.get('NODE_ENV') === 'dev';
 
     if (!this.notificationURL && !this.isDevMode) {
@@ -45,15 +47,19 @@ export class BepingNotifierService {
     };
 
     try {
-      const ack = await this.sendNotification('numeric-ranking/update', payload);
+      const ack = await this.sendNotification(
+        'numeric-ranking/update',
+        payload,
+      );
       this.logger.debug(
         `Numeric ranking update acknowledged for player ${uniqueIndex}: ${ack?.acknolwedgedId ?? 'no acknowledgement'}`,
       );
       return ack;
     } catch (error) {
-      const errorMessage = error instanceof AxiosError 
-        ? `${error.message} (Status: ${error.response?.status})`
-        : error.message;
+      const errorMessage =
+        error instanceof AxiosError
+          ? `${error.message} (Status: ${error.response?.status})`
+          : error.message;
 
       this.logger.error(
         `Failed to send numeric ranking update notification for player ${uniqueIndex}: ${errorMessage}`,
@@ -69,12 +75,16 @@ export class BepingNotifierService {
     newRanking: number,
   ): boolean {
     if (!uniqueIndex || !oldRanking || !newRanking) {
-      this.logger.debug(`Invalid ranking update parameters: uniqueIndex=${uniqueIndex}, oldRanking=${oldRanking}, newRanking=${newRanking}`);
+      this.logger.debug(
+        `Invalid ranking update parameters: uniqueIndex=${uniqueIndex}, oldRanking=${oldRanking}, newRanking=${newRanking}`,
+      );
       return false;
     }
 
     if (oldRanking === newRanking) {
-      this.logger.debug(`Skipping notification for unchanged ranking: ${oldRanking}`);
+      this.logger.debug(
+        `Skipping notification for unchanged ranking: ${oldRanking}`,
+      );
       return false;
     }
 
@@ -86,13 +96,20 @@ export class BepingNotifierService {
     payload: T,
   ): Promise<NotificationAcknolwedgement | null> {
     if (this.isDevMode) {
-      this.logger.debug(`[DEV MODE] Notification skipped for endpoint: ${endpoint}`, { payload });
+      this.logger.debug(
+        `[DEV MODE] Notification skipped for endpoint: ${endpoint}`,
+        { payload },
+      );
       return null;
     }
 
     const auth = {
-      username: this.configService.get<string>('BEPING_NOTIFICATION_CONSUMER_KEY'),
-      password: this.configService.get<string>('BEPING_NOTIFICATION_CONSUMER_SECRET'),
+      username: this.configService.get<string>(
+        'BEPING_NOTIFICATION_CONSUMER_KEY',
+      ),
+      password: this.configService.get<string>(
+        'BEPING_NOTIFICATION_CONSUMER_SECRET',
+      ),
     };
 
     if (!auth.username || !auth.password) {
@@ -101,7 +118,11 @@ export class BepingNotifierService {
 
     return firstValueFrom(
       this.httpClient
-        .post<NotificationAcknolwedgement>(`${this.notificationURL}${endpoint}`, payload, { auth })
+        .post<NotificationAcknolwedgement>(
+          `${this.notificationURL}${endpoint}`,
+          payload,
+          { auth },
+        )
         .pipe(map((response) => response.data)),
     );
   }

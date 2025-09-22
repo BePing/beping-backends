@@ -16,13 +16,18 @@ export class DivisionService {
 
   async getDivisionsV1(query: GetDivisionsV1): Promise<DivisionEntry[]> {
     const input: GetDivisionsInput = {
-      Level: query.level ? mapLevelDTOToLevels(query.level as LevelDTO)[0] : undefined,
+      Level: query.level
+        ? mapLevelDTOToLevels(query.level as LevelDTO)[0]
+        : undefined,
       ShowDivisionName: query.showDivisionName,
-    }
+    };
     const result = await this.tabtClient.GetDivisionsAsync(input);
-    return result.DivisionEntries.filter(division => {
+    return result.DivisionEntries.filter((division) => {
       if (query.divisionCategory) {
-        return division.DivisionCategory === divisionCategoryDTOToDivisionCategory[query.divisionCategory];
+        return (
+          division.DivisionCategory ===
+          divisionCategoryDTOToDivisionCategory[query.divisionCategory]
+        );
       }
       return true;
     });
@@ -43,6 +48,8 @@ export class DivisionService {
     input: GetDivisionsInput,
   ): Promise<DivisionEntry> {
     const divisions = await this.tabtClient.GetDivisionsAsync(input);
-    return divisions.DivisionEntries.find((division) => division.DivisionId === id);
+    return divisions.DivisionEntries.find(
+      (division) => division.DivisionId === id,
+    );
   }
 }

@@ -274,13 +274,13 @@ export class MemberEntryDTOV1 {
 
   @ApiPropertyOptional()
   RankingPointsCount?: number;
-  
+
   @ApiPropertyOptional({ type: [RankingPointsEntryDTOV1] })
   RankingPointsEntries?: Array<RankingPointsEntryDTOV1>;
 
   @ApiPropertyOptional()
   Email?: string;
-  
+
   @ApiPropertyOptional()
   Phone?: PhoneDTOV1;
 
@@ -311,12 +311,18 @@ export class MemberEntryDTOV1 {
     dto.BirthDate = entry.BirthDate;
     dto.MedicalAttestation = entry.MedicalAttestation;
     dto.RankingPointsCount = entry.RankingPointsCount;
-    dto.RankingPointsEntries = entry.RankingPointsEntries ? entry.RankingPointsEntries.map(RankingPointsEntryDTOV1.fromTabT) : undefined;
+    dto.RankingPointsEntries = entry.RankingPointsEntries
+      ? entry.RankingPointsEntries.map(RankingPointsEntryDTOV1.fromTabT)
+      : undefined;
     dto.Email = entry.Email;
     dto.Phone = entry.Phone ? PhoneDTOV1.fromTabT(entry.Phone) : undefined;
-    dto.Address = entry.Address ? AddressDTOV1.fromTabT(entry.Address) : undefined;
+    dto.Address = entry.Address
+      ? AddressDTOV1.fromTabT(entry.Address)
+      : undefined;
     dto.ResultCount = entry.ResultCount;
-    dto.ResultEntries = entry.ResultEntries ? entry.ResultEntries.map(MemberEntryResultEntryDTOV1.fromTabT) : undefined;
+    dto.ResultEntries = entry.ResultEntries
+      ? entry.ResultEntries.map(MemberEntryResultEntryDTOV1.fromTabT)
+      : undefined;
     dto.NationalNumber = entry.NationalNumber;
     return dto;
   }
@@ -379,13 +385,11 @@ export class NumericRankingDetailsV1 {
   @ApiProperty()
   endPoints: number;
 
-  
   @ApiProperty({
     type: [NumericRankingPerWeekOpponentsV1],
   })
   opponents: NumericRankingPerWeekOpponentsV1[];
 }
-
 
 export class GetPlayerCategoriesInputV1 {
   @ApiProperty()
@@ -394,7 +398,6 @@ export class GetPlayerCategoriesInputV1 {
   shortNameSearch?: string;
   @ApiProperty()
   rankingCategory?: string;
-  
 }
 export class PlayerCategoryEntriesDTOV1 {
   /** xsd:integer */
@@ -456,4 +459,3 @@ export class WeeklyNumericPointsInputV1 {
   })
   category: PlayerCategoryDTO;
 }
-

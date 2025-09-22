@@ -2,19 +2,22 @@ import { ApiProperty } from '@nestjs/swagger';
 
 export class WeeklyPerformanceMetricsDTO {
   @ApiProperty({
-    description: 'Weekly Load (0-100) - Measures total effort based on number of sets played and average rally duration',
+    description:
+      'Weekly Load (0-100) - Measures total effort based on number of sets played and average rally duration',
     example: 75,
   })
   weeklyLoad: number;
 
   @ApiProperty({
-    description: 'Fatigue Resistance (0-100) - Measures ability to maintain performance between first and last set',
+    description:
+      'Fatigue Resistance (0-100) - Measures ability to maintain performance between first and last set',
     example: 85,
   })
   fatigueResistance: number;
 
   @ApiProperty({
-    description: 'Recovery Score (0-100) - Measures readiness for next week based on performance trend',
+    description:
+      'Recovery Score (0-100) - Measures readiness for next week based on performance trend',
     example: 90,
   })
   recoveryScore: number;
@@ -63,7 +66,7 @@ export class WeeklyPerformanceMetricsDTO {
 
   @ApiProperty({
     description: 'Feedback message about recovery',
-    example: 'You\'re in great shape for next week!',
+    example: "You're in great shape for next week!",
   })
   recoveryMessage: string;
-} 
+}

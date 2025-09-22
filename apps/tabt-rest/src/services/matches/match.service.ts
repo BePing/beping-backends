@@ -12,7 +12,7 @@ import { MemberEntryResultEntry } from '../../common/tabt-client/model/memberEnt
 
 @Injectable()
 export class MatchService {
-  constructor(private tabtClient: TabtClientService) { }
+  constructor(private tabtClient: TabtClientService) {}
 
   async getMatches(input: GetMatchesInput): Promise<TeamMatchesEntry[]> {
     const result = await this.tabtClient.GetMatchesAsync(input);
@@ -32,9 +32,9 @@ export class MatchService {
     });
 
     const playerResults = player.MemberEntries[0].ResultEntries;
-    
+
     // Filter results for the specified week
-    const weekResults = playerResults.filter(result => {
+    const weekResults = playerResults.filter((result) => {
       const resultDate = new Date(result.Date);
       const today = new Date();
       today.setDate(today.getDate() - 14);
@@ -42,7 +42,7 @@ export class MatchService {
       sevenDaysAgo.setDate(today.getDate() - 7);
       return resultDate >= sevenDaysAgo && resultDate <= today;
     });
-    
+
     if (weekResults.length === 0) {
       return {
         weeklyLoad: 0,
@@ -65,7 +65,9 @@ export class MatchService {
     let totalRallies = 0;
 
     // Sort results by date to ensure proper order
-    weekResults.sort((a, b) => new Date(a.Date).getTime() - new Date(b.Date).getTime());
+    weekResults.sort(
+      (a, b) => new Date(a.Date).getTime() - new Date(b.Date).getTime(),
+    );
 
     weekResults.forEach((result) => {
       const totalSets = result.SetFor + result.SetAgainst;
@@ -75,12 +77,13 @@ export class MatchService {
       totalRallyDuration += totalSets * 6;
     });
 
-    const averageRallyDuration = totalRallies > 0 ? totalRallyDuration / totalRallies : 4;
+    const averageRallyDuration =
+      totalRallies > 0 ? totalRallyDuration / totalRallies : 4;
 
     // Calculate performance metrics using actual results
     const firstMatch = weekResults[0];
     const lastMatch = weekResults[weekResults.length - 1];
-    
+
     const firstMatchPerformance = this.calculateResultPerformance(firstMatch);
     const lastMatchPerformance = this.calculateResultPerformance(lastMatch);
     const performanceDrop = firstMatchPerformance - lastMatchPerformance;
@@ -106,7 +109,8 @@ export class MatchService {
 
     // Generate feedback messages
     const weeklyLoadMessage = this.generateWeeklyLoadMessage(totalSetsPlayed);
-    const fatigueResistanceMessage = this.generateFatigueResistanceMessage(fatigueResistance);
+    const fatigueResistanceMessage =
+      this.generateFatigueResistanceMessage(fatigueResistance);
     const recoveryMessage = this.generateRecoveryMessage(recoveryScore);
 
     return {
@@ -168,7 +172,7 @@ export class MatchService {
 
   private generateRecoveryMessage(score: number): string {
     if (score >= 90) {
-      return 'You\'re in great shape for next week!';
+      return "You're in great shape for next week!";
     } else if (score >= 70) {
       return 'Good endurance, but make sure to recover well.';
     } else {

@@ -33,7 +33,10 @@ import {
   RankingEntryDtoV1,
 } from '../dto/divisions.dto';
 import { MatchService } from '../../../services/matches/match.service';
-import { MatchesMembersRankerService, PlayerMatchStats } from '../../../services/matches/matches-members-ranker.service';
+import {
+  MatchesMembersRankerService,
+  PlayerMatchStats,
+} from '../../../services/matches/matches-members-ranker.service';
 import { TeamMatchesEntryDTO } from '../../match/dto/match-model.dto';
 
 @Controller({
@@ -56,7 +59,8 @@ export class DivisionsController {
     summary: 'List of divisions for a specific season with enum string values.',
   })
   @ApiResponse({
-    description: 'List of divisions for a specific season with enum string values.',
+    description:
+      'List of divisions for a specific season with enum string values.',
     type: [DivisionEntryDtoV1],
     status: 200,
   })

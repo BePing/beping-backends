@@ -26,4 +26,4 @@ export namespace MemberEntryResultEntry {
     C: 'C' as CompetitionTypeEnum,
     T: 'T' as CompetitionTypeEnum,
   };
-} 
+}

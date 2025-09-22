@@ -33,8 +33,8 @@ describe('DivisionsController', () => {
           provide: DivisionService,
           useValue: {
             getDivisionsV1: jest.fn(),
-            getDivisionByIdV1: jest.fn()
-          }
+            getDivisionByIdV1: jest.fn(),
+          },
         },
         DivisionRankingService,
         MatchService,
@@ -56,7 +56,6 @@ describe('DivisionsController', () => {
   it('should be defined', () => {
     expect(controller).toBeDefined();
   });
-
 
   describe('Division ranking', () => {
     it('should call division ranking service with correct params', async () => {
@@ -134,7 +133,9 @@ describe('DivisionsController', () => {
       const spy = jest.spyOn(divisionService, 'getDivisionByIdV1');
       spy.mockResolvedValue(null);
 
-      await expect(controller.findOneV1(divisionId)).rejects.toThrow(NotFoundException);
+      await expect(controller.findOneV1(divisionId)).rejects.toThrow(
+        NotFoundException,
+      );
       expect(spy).toHaveBeenCalledWith(divisionId);
     });
   });
@@ -142,7 +143,10 @@ describe('DivisionsController', () => {
   describe('findMembersInDivisionV1', () => {
     it('should call matchesMembersRankerService with correct params', async () => {
       const divisionId = 4755;
-      const spy = jest.spyOn(matchesMembersRankerService, 'getMembersRankingFromDivision');
+      const spy = jest.spyOn(
+        matchesMembersRankerService,
+        'getMembersRankingFromDivision',
+      );
       spy.mockResolvedValue([]);
 
       const result = await controller.findMembersInDivisionV1(divisionId);

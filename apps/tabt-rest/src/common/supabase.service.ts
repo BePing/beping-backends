@@ -18,4 +18,4 @@ export class SupabaseService implements OnModuleInit {
   get client() {
     return this.supabase;
   }
-} 
+}

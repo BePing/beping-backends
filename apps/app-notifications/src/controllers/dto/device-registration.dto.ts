@@ -1,4 +1,10 @@
-import { IsEnum, IsString, IsOptional, IsArray, IsObject } from 'class-validator';
+import {
+  IsEnum,
+  IsString,
+  IsOptional,
+  IsArray,
+  IsObject,
+} from 'class-validator';
 import { DevicePlatform, NotificationType } from '@prisma/client';
 
 export class RegisterDeviceDto {
@@ -54,4 +60,4 @@ export class SendNotificationDto {
   @IsString({ each: true })
   @IsOptional()
   targetDeviceTokens?: string[];
-} 
+}

@@ -33,7 +33,10 @@ export class RankingWinLossDTOV1 extends WinLossSummaryDTOV1 {
 }
 
 export class WeeklyNumericRankingInputV2 {
-  @ApiProperty({ required: false, description: 'Team ID to get next match estimation points' })
+  @ApiProperty({
+    required: false,
+    description: 'Team ID to get next match estimation points',
+  })
   teamId?: string;
 }
 
@@ -208,10 +211,18 @@ export class NextMatchEstimationDTO {
   @ApiPropertyOptional({ type: String })
   awayTeam?: string;
 
-  @ApiProperty({ type: () => OpponentEstimationDTO, isArray: true, description: 'Best case scenario - most points to win' })
+  @ApiProperty({
+    type: () => OpponentEstimationDTO,
+    isArray: true,
+    description: 'Best case scenario - most points to win',
+  })
   bestCase: OpponentEstimationDTO[];
 
-  @ApiProperty({ type: () => OpponentEstimationDTO, isArray: true, description: 'Worst case scenario - least points to win' })
+  @ApiProperty({
+    type: () => OpponentEstimationDTO,
+    isArray: true,
+    description: 'Worst case scenario - least points to win',
+  })
   worstCase: OpponentEstimationDTO[];
 }
 
@@ -281,20 +292,20 @@ export class MultiCategoryMemberDashboardDTOV1 {
   @ApiProperty({
     type: () => MemberDashboardDTOV1,
     required: false,
-    description: 'Dashboard data for SENIOR_MEN category'
+    description: 'Dashboard data for SENIOR_MEN category',
   })
   public SENIOR_MEN?: MemberDashboardDTOV1;
 
   @ApiProperty({
     type: () => MemberDashboardDTOV1,
     required: false,
-    description: 'Dashboard data for SENIOR_WOMEN category'
+    description: 'Dashboard data for SENIOR_WOMEN category',
   })
   public SENIOR_WOMEN?: MemberDashboardDTOV1;
 
   @ApiProperty({
     type: [String],
-    description: 'List of categories where the member exists'
+    description: 'List of categories where the member exists',
   })
   public availableCategories: string[];
 

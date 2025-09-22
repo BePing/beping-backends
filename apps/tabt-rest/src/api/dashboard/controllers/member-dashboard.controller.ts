@@ -7,7 +7,12 @@ import {
   Query,
   Version,
 } from '@nestjs/common';
-import { ApiNotFoundResponse, ApiOkResponse, ApiQuery, ApiTags } from '@nestjs/swagger';
+import {
+  ApiNotFoundResponse,
+  ApiOkResponse,
+  ApiQuery,
+  ApiTags,
+} from '@nestjs/swagger';
 import {
   MultiCategoryMemberDashboardDTOV1,
   WeeklyNumericRankingInputV2,
@@ -27,7 +32,8 @@ export class MemberDashboardController {
   @Get(':uniqueIndex')
   @ApiOkResponse({
     type: MultiCategoryMemberDashboardDTOV1,
-    description: 'The dashboard information for all categories where the member exists',
+    description:
+      'The dashboard information for all categories where the member exists',
   })
   @ApiNotFoundResponse({
     description: 'No info found for given player',
@@ -42,10 +48,11 @@ export class MemberDashboardController {
     @Param('uniqueIndex', ParseIntPipe) id: number,
     @Query() params: WeeklyNumericRankingInputV2,
   ): Promise<MultiCategoryMemberDashboardDTOV1> {
-    const memberDashboard = await this.memberDashboardService.getMultiCategoryDashboard(
-      id,
-      params.teamId,
-    );
+    const memberDashboard =
+      await this.memberDashboardService.getMultiCategoryDashboard(
+        id,
+        params.teamId,
+      );
 
     if (memberDashboard.availableCategories.length === 0) {
       throw new NotFoundException(`No member found for id ${id}`);
@@ -53,5 +60,4 @@ export class MemberDashboardController {
 
     return memberDashboard;
   }
-
 }

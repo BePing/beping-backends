@@ -55,13 +55,10 @@ export class CacheService {
 
   async cleanKeys(pattern: string): Promise<void> {
     const keys = await this.cacheManager.store.keys(pattern);
-    this.logger.log(
-      `Cleaning cache for pattern ${pattern}. Found ${keys.length} keys.`,
-    );
 
-    for (const key of keys){
+
+    for (const key of keys) {
       await this.cacheManager.del(key);
     }
-
   }
 }

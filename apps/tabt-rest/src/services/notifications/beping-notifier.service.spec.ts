@@ -12,10 +12,10 @@ describe('BepingNotifierService', () => {
   let httpService: jest.Mocked<HttpService>;
 
   const mockConfig = {
-    'BEPING_NOTIFICATION_URL': 'http://test-api.com/',
-    'BEPING_NOTIFICATION_CONSUMER_KEY': 'test-key',
-    'BEPING_NOTIFICATION_CONSUMER_SECRET': 'test-secret',
-    'NODE_ENV': 'test',
+    BEPING_NOTIFICATION_URL: 'http://test-api.com/',
+    BEPING_NOTIFICATION_CONSUMER_KEY: 'test-key',
+    BEPING_NOTIFICATION_CONSUMER_SECRET: 'test-secret',
+    NODE_ENV: 'test',
   };
 
   beforeEach(async () => {
@@ -50,8 +50,8 @@ describe('BepingNotifierService', () => {
 
   describe('constructor', () => {
     it('should throw error if notification URL is not configured in production', async () => {
-      configService.get.mockImplementation((key: string) => 
-        key === 'NODE_ENV' ? 'production' : undefined
+      configService.get.mockImplementation((key: string) =>
+        key === 'NODE_ENV' ? 'production' : undefined,
       );
 
       expect(() => {
@@ -60,8 +60,8 @@ describe('BepingNotifierService', () => {
     });
 
     it('should not throw error if notification URL is missing in dev mode', () => {
-      configService.get.mockImplementation((key: string) => 
-        key === 'NODE_ENV' ? 'dev' : undefined
+      configService.get.mockImplementation((key: string) =>
+        key === 'NODE_ENV' ? 'dev' : undefined,
       );
 
       expect(() => {
@@ -155,8 +155,8 @@ describe('BepingNotifierService', () => {
     });
 
     it('should skip notification in dev mode', async () => {
-      configService.get.mockImplementation((key: string) => 
-        key === 'NODE_ENV' ? 'dev' : mockConfig[key]
+      configService.get.mockImplementation((key: string) =>
+        key === 'NODE_ENV' ? 'dev' : mockConfig[key],
       );
 
       const result = await service.notifyNumericRankingChanged(
@@ -185,4 +185,4 @@ describe('BepingNotifierService', () => {
       ).rejects.toThrow('Notification credentials are not properly configured');
     });
   });
-}); 
+});

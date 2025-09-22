@@ -21,10 +21,22 @@ import {
   MemberEntryResultEntry,
   TeamMatchesEntry,
 } from '../../../entity/tabt-soap/TabTAPI_Port';
-import { NumericRankingService, WeeklyRankingV1Response } from '../../../services/members/numeric-ranking.service';
-import { PlayerCategoryDTO, mapPlayerCategoryToPlayerCategoryDTO } from 'apps/tabt-rest/src/common/dto/player-category.dto';
-import { MEN_RANKING_ESTIMATION, WOMAN_RANKING_ESTIMATION } from '../../../common/consts/ranking-estimation';
-import { MatchesMembersRankerService, SortSystem } from '../../../services/matches/matches-members-ranker.service';
+import {
+  NumericRankingService,
+  WeeklyRankingV1Response,
+} from '../../../services/members/numeric-ranking.service';
+import {
+  PlayerCategoryDTO,
+  mapPlayerCategoryToPlayerCategoryDTO,
+} from 'apps/tabt-rest/src/common/dto/player-category.dto';
+import {
+  MEN_RANKING_ESTIMATION,
+  WOMAN_RANKING_ESTIMATION,
+} from '../../../common/consts/ranking-estimation';
+import {
+  MatchesMembersRankerService,
+  SortSystem,
+} from '../../../services/matches/matches-members-ranker.service';
 import { PointsEstimationService } from '../../../services/members/points-estimation.service';
 import { PrismaService } from '../../../common/prisma.service';
 import { PlayerCategory as PrismaPlayerCategory } from '@prisma/client';
@@ -46,7 +58,9 @@ export class MemberDashboardService
   /**
    * Find all player categories for a member by their unique index (licence)
    */
-  private async findMemberCategoriesByLicence(licence: number): Promise<PrismaPlayerCategory[]> {
+  private async findMemberCategoriesByLicence(
+    licence: number,
+  ): Promise<PrismaPlayerCategory[]> {
     const cacheKey = `member-categories:${licence}`;
 
     const getter = async (): Promise<PrismaPlayerCategory[]> => {
@@ -56,7 +70,7 @@ export class MemberDashboardService
         distinct: ['playerCategory'],
       });
 
-      return members.map(member => member.playerCategory);
+      return members.map((member) => member.playerCategory);
     };
 
     return await this.cacheService.getFromCacheOrGetAndCacheResult(
@@ -75,9 +89,12 @@ export class MemberDashboardService
   ): Promise<{ [key in PrismaPlayerCategory]?: MemberDashboardDTOV1 }> {
     const cacheKey = `member-dashboard-all-categories:${memberUniqueIndex}${teamId ? `:${teamId}` : ''}`;
 
-    const getter = async (): Promise<{ [key in PrismaPlayerCategory]?: MemberDashboardDTOV1 }> => {
+    const getter = async (): Promise<{
+      [key in PrismaPlayerCategory]?: MemberDashboardDTOV1;
+    }> => {
       // Find all categories for this member
-      const categories = await this.findMemberCategoriesByLicence(memberUniqueIndex);
+      const categories =
+        await this.findMemberCategoriesByLicence(memberUniqueIndex);
 
       if (categories.length === 0) {
         return {};
@@ -87,15 +104,24 @@ export class MemberDashboardService
       const dashboardPromises = categories.map(async (category) => {
         try {
           // Convert PrismaPlayerCategory to PlayerCategory then to PlayerCategoryDTO
-          const tabtPlayerCategory = category === PrismaPlayerCategory.SENIOR_MEN
-            ? PlayerCategory.SENIOR_MEN
-            : PlayerCategory.SENIOR_WOMEN;
-          const playerCategoryDTO = mapPlayerCategoryToPlayerCategoryDTO(tabtPlayerCategory);
+          const tabtPlayerCategory =
+            category === PrismaPlayerCategory.SENIOR_MEN
+              ? PlayerCategory.SENIOR_MEN
+              : PlayerCategory.SENIOR_WOMEN;
+          const playerCategoryDTO =
+            mapPlayerCategoryToPlayerCategoryDTO(tabtPlayerCategory);
 
-          const dashboard = await this.getDashboard(memberUniqueIndex, playerCategoryDTO, teamId);
+          const dashboard = await this.getDashboard(
+            memberUniqueIndex,
+            playerCategoryDTO,
+            teamId,
+          );
           return { category, dashboard };
         } catch (error) {
-          console.warn(`Failed to get dashboard for category ${category}:`, error.message);
+          console.warn(
+            `Failed to get dashboard for category ${category}:`,
+            error.message,
+          );
           return null;
         }
       });
@@ -103,7 +129,8 @@ export class MemberDashboardService
       const results = await Promise.all(dashboardPromises);
 
       // Build response object
-      const response: { [key in PrismaPlayerCategory]?: MemberDashboardDTOV1 } = {};
+      const response: { [key in PrismaPlayerCategory]?: MemberDashboardDTOV1 } =
+        {};
       results.forEach((result) => {
         if (result) {
           response[result.category] = result.dashboard;
@@ -133,16 +160,21 @@ export class MemberDashboardService
     teamId?: string,
   ): Promise<MultiCategoryMemberDashboardDTOV1> {
     try {
-      const dashboards = await this.getDashboardForAllCategories(memberUniqueIndex, teamId);
+      const dashboards = await this.getDashboardForAllCategories(
+        memberUniqueIndex,
+        teamId,
+      );
 
       if (Object.keys(dashboards).length === 0) {
         return new MultiCategoryMemberDashboardDTOV1(
-          ResponseDTO.error('No member found for given id')
+          ResponseDTO.error('No member found for given id'),
         );
       }
 
       const response = new MultiCategoryMemberDashboardDTOV1(
-        ResponseDTO.success('Multi-category member dashboard retrieved successfully')
+        ResponseDTO.success(
+          'Multi-category member dashboard retrieved successfully',
+        ),
       );
 
       // Set dashboard data for each category
@@ -159,7 +191,9 @@ export class MemberDashboardService
       return response;
     } catch (error) {
       return new MultiCategoryMemberDashboardDTOV1(
-        ResponseDTO.error('Error while retrieving multi-category member dashboard')
+        ResponseDTO.error(
+          'Error while retrieving multi-category member dashboard',
+        ),
       );
     }
   }
@@ -171,7 +205,7 @@ export class MemberDashboardService
   ): Promise<MemberDashboardDTOV1> {
     // Add caching for the entire dashboard
     const cacheKey = `member-dashboard:${memberUniqueIndex}:${category}${teamId ? `:${teamId}` : ''}`;
-    
+
     const getter = async (): Promise<MemberDashboardDTOV1> => {
       try {
         // Get member data first as it's required for all other operations
@@ -203,7 +237,11 @@ export class MemberDashboardService
         ]);
 
         // Calculate stats after getting numeric ranking to include season extremes
-        const stats = await this.getMemberStats(member.payload, numericRankingResponse, category);
+        const stats = await this.getMemberStats(
+          member.payload,
+          numericRankingResponse,
+          category,
+        );
 
         const dashboard = new MemberDashboardDTOV1(
           ResponseDTO.success('Member dashboard retrieved successfully'),
@@ -238,7 +276,7 @@ export class MemberDashboardService
     category: PlayerCategoryDTO,
   ) {
     const cacheKey = `numeric-ranking:${uniqueIndex}:${category}`;
-    
+
     const getter = async () => {
       try {
         return await this.numericRankingService.getWeeklyRankingV1(
@@ -263,12 +301,12 @@ export class MemberDashboardService
     category?: PlayerCategoryDTO,
   ): Promise<MemberStatsDTOV1> {
     const cacheKey = `member-stats:${member.UniqueIndex}${category ? `:${category}` : ''}`;
-    
+
     const getter = async (): Promise<MemberStatsDTOV1> => {
       try {
         const memberResultEntries = member.ResultEntries ?? [];
         const total = memberResultEntries.length;
-        
+
         if (total === 0) {
           return this.getEmptyMemberStats(member);
         }
@@ -281,19 +319,33 @@ export class MemberDashboardService
         let lostSets = 0;
         let tieBreakVictories = 0;
         let tieBreakDefeats = 0;
-        
+
         // Time-based counters
         const timeSlots = { morning: 0, afternoon: 0, evening: 0 };
         const timeWins = { morning: 0, afternoon: 0, evening: 0 };
-        const dayStats = new Array(7).fill(0).map(() => ({ count: 0, wins: 0 }));
-        const monthStats = new Array(12).fill(0).map(() => ({ count: 0, wins: 0 }));
-        const rankingMap = new Map<string, { victories: number; defeats: number; entries: MemberEntryResultEntry[] }>();
+        const dayStats = new Array(7)
+          .fill(0)
+          .map(() => ({ count: 0, wins: 0 }));
+        const monthStats = new Array(12)
+          .fill(0)
+          .map(() => ({ count: 0, wins: 0 }));
+        const rankingMap = new Map<
+          string,
+          {
+            victories: number;
+            defeats: number;
+            entries: MemberEntryResultEntry[];
+          }
+        >();
 
         // Create sorted indices to avoid array cloning
         const sortedIndices = memberResultEntries
-          .map((_, index) => ({ index, date: new Date(memberResultEntries[index].Date).getTime() }))
+          .map((_, index) => ({
+            index,
+            date: new Date(memberResultEntries[index].Date).getTime(),
+          }))
           .sort((a, b) => a.date - b.date)
-          .map(item => item.index);
+          .map((item) => item.index);
 
         // Single optimized pass through all results
         for (const result of memberResultEntries) {
@@ -312,11 +364,14 @@ export class MemberDashboardService
           lostSets += result.SetAgainst;
 
           // Tie break stats
-          if (result.SetFor === 3 && result.SetAgainst === 2) tieBreakVictories++;
-          else if (result.SetFor === 2 && result.SetAgainst === 3) tieBreakDefeats++;
+          if (result.SetFor === 3 && result.SetAgainst === 2)
+            tieBreakVictories++;
+          else if (result.SetFor === 2 && result.SetAgainst === 3)
+            tieBreakDefeats++;
 
           // Time of day stats
-          const timeSlot = hour < 12 ? 'morning' : hour < 18 ? 'afternoon' : 'evening';
+          const timeSlot =
+            hour < 12 ? 'morning' : hour < 18 ? 'afternoon' : 'evening';
           timeSlots[timeSlot]++;
           if (isVictory) timeWins[timeSlot]++;
 
@@ -340,11 +395,20 @@ export class MemberDashboardService
         }
 
         // Calculate streaks efficiently
-        const { currentWinStreak, bestWinStreak, currentLossStreak, worstLossStreak } = 
-          this.calculateStreaks(memberResultEntries, sortedIndices);
+        const {
+          currentWinStreak,
+          bestWinStreak,
+          currentLossStreak,
+          worstLossStreak,
+        } = this.calculateStreaks(memberResultEntries, sortedIndices);
 
         // Season extremes from numeric ranking
-        const seasonExtremes = this.calculateSeasonExtremes(member, numericRanking, memberResultEntries, sortedIndices);
+        const seasonExtremes = this.calculateSeasonExtremes(
+          member,
+          numericRanking,
+          memberResultEntries,
+          sortedIndices,
+        );
 
         // Build response efficiently
         return {
@@ -359,18 +423,37 @@ export class MemberDashboardService
             count: tieBreakVictories + tieBreakDefeats,
             victories: tieBreakVictories,
             defeats: tieBreakDefeats,
-            victoriesPct: tieBreakVictories + tieBreakDefeats > 0 ? Math.round((tieBreakVictories / (tieBreakVictories + tieBreakDefeats)) * 100) : 0,
-            defeatsPct: tieBreakVictories + tieBreakDefeats > 0 ? Math.round((tieBreakDefeats / (tieBreakVictories + tieBreakDefeats)) * 100) : 0,
+            victoriesPct:
+              tieBreakVictories + tieBreakDefeats > 0
+                ? Math.round(
+                    (tieBreakVictories /
+                      (tieBreakVictories + tieBreakDefeats)) *
+                      100,
+                  )
+                : 0,
+            defeatsPct:
+              tieBreakVictories + tieBreakDefeats > 0
+                ? Math.round(
+                    (tieBreakDefeats / (tieBreakVictories + tieBreakDefeats)) *
+                      100,
+                  )
+                : 0,
           },
-          perRanking: Array.from(rankingMap.entries()).map(([ranking, stats]) => ({
-            ranking,
-            victories: stats.victories,
-            defeats: stats.defeats,
-            count: stats.victories + stats.defeats,
-            victoriesPct: Math.round((stats.victories / (stats.victories + stats.defeats)) * 100),
-            defeatsPct: Math.round((stats.defeats / (stats.victories + stats.defeats)) * 100),
-            players: stats.entries,
-          })),
+          perRanking: Array.from(rankingMap.entries()).map(
+            ([ranking, stats]) => ({
+              ranking,
+              victories: stats.victories,
+              defeats: stats.defeats,
+              count: stats.victories + stats.defeats,
+              victoriesPct: Math.round(
+                (stats.victories / (stats.victories + stats.defeats)) * 100,
+              ),
+              defeatsPct: Math.round(
+                (stats.defeats / (stats.victories + stats.defeats)) * 100,
+              ),
+              players: stats.entries,
+            }),
+          ),
           sets: {
             total: totalSets,
             won: wonSets,
@@ -389,7 +472,7 @@ export class MemberDashboardService
             worst: worstLossStreak,
           },
           seasonExtremes,
-          matchHistory: sortedIndices.map(index => {
+          matchHistory: sortedIndices.map((index) => {
             const entry = memberResultEntries[index];
             return {
               date: entry.Date,
@@ -402,7 +485,12 @@ export class MemberDashboardService
           timeOfDay: this.buildTimeOfDayStats(timeSlots, timeWins),
           dayOfWeek: this.buildDayOfWeekStats(dayStats),
           monthly: this.buildMonthlyStats(monthStats),
-          matchDetails: this.calculateMatchDetails(memberResultEntries, sortedIndices, totalSets, total),
+          matchDetails: this.calculateMatchDetails(
+            memberResultEntries,
+            sortedIndices,
+            totalSets,
+            total,
+          ),
         };
       } catch (error) {
         throw new Error(error.message);
@@ -447,7 +535,10 @@ export class MemberDashboardService
     };
   }
 
-  private calculateStreaks(entries: MemberEntryResultEntry[], sortedIndices: number[]) {
+  private calculateStreaks(
+    entries: MemberEntryResultEntry[],
+    sortedIndices: number[],
+  ) {
     let currentWinStreak = 0;
     let currentLossStreak = 0;
     let bestWinStreak = 0;
@@ -493,14 +584,19 @@ export class MemberDashboardService
       }
     }
 
-    return { currentWinStreak, bestWinStreak, currentLossStreak, worstLossStreak };
+    return {
+      currentWinStreak,
+      bestWinStreak,
+      currentLossStreak,
+      worstLossStreak,
+    };
   }
 
   private calculateSeasonExtremes(
-    member: MemberEntry, 
+    member: MemberEntry,
     numericRanking: WeeklyRankingV1Response | undefined,
     entries: MemberEntryResultEntry[],
-    sortedIndices: number[]
+    sortedIndices: number[],
   ) {
     let highestPoints = 0;
     let lowestPoints = Infinity;
@@ -509,11 +605,16 @@ export class MemberDashboardService
 
     if (numericRanking?.numericRankingHistory?.length) {
       for (const entry of numericRanking.numericRankingHistory) {
-        if (entry.numericPoints > highestPoints) highestPoints = entry.numericPoints;
-        if (entry.numericPoints < lowestPoints) lowestPoints = entry.numericPoints;
-        
+        if (entry.numericPoints > highestPoints)
+          highestPoints = entry.numericPoints;
+        if (entry.numericPoints < lowestPoints)
+          lowestPoints = entry.numericPoints;
+
         if (entry.rankingLetterEstimation) {
-          if (!highestRanking || entry.rankingLetterEstimation < highestRanking) {
+          if (
+            !highestRanking ||
+            entry.rankingLetterEstimation < highestRanking
+          ) {
             highestRanking = entry.rankingLetterEstimation;
           }
           if (!lowestRanking || entry.rankingLetterEstimation > lowestRanking) {
@@ -527,13 +628,19 @@ export class MemberDashboardService
       highestRanking,
       lowestRanking,
       highestPoints: Math.round(highestPoints * 100) / 100,
-      lowestPoints: lowestPoints === Infinity ? 0 : Math.round(lowestPoints * 100) / 100,
+      lowestPoints:
+        lowestPoints === Infinity ? 0 : Math.round(lowestPoints * 100) / 100,
       firstMatch: sortedIndices[0] ? entries[sortedIndices[0]].Date : '',
-      lastMatch: sortedIndices[sortedIndices.length - 1] ? entries[sortedIndices[sortedIndices.length - 1]].Date : '',
+      lastMatch: sortedIndices[sortedIndices.length - 1]
+        ? entries[sortedIndices[sortedIndices.length - 1]].Date
+        : '',
     };
   }
 
-  private buildTimeOfDayStats(timeSlots: Record<string, number>, timeWins: Record<string, number>) {
+  private buildTimeOfDayStats(
+    timeSlots: Record<string, number>,
+    timeWins: Record<string, number>,
+  ) {
     return Object.entries(timeSlots).map(([slot, count]) => {
       const wins = timeWins[slot];
       const losses = count - wins;
@@ -548,8 +655,18 @@ export class MemberDashboardService
     });
   }
 
-  private buildDayOfWeekStats(dayStats: Array<{ count: number; wins: number }>) {
-    const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+  private buildDayOfWeekStats(
+    dayStats: Array<{ count: number; wins: number }>,
+  ) {
+    const days = [
+      'Sunday',
+      'Monday',
+      'Tuesday',
+      'Wednesday',
+      'Thursday',
+      'Friday',
+      'Saturday',
+    ];
     return days.map((day, index) => {
       const { count, wins } = dayStats[index];
       const losses = count - wins;
@@ -564,9 +681,23 @@ export class MemberDashboardService
     });
   }
 
-  private buildMonthlyStats(monthStats: Array<{ count: number; wins: number }>) {
-    const months = ['January', 'February', 'March', 'April', 'May', 'June', 
-                   'July', 'August', 'September', 'October', 'November', 'December'];
+  private buildMonthlyStats(
+    monthStats: Array<{ count: number; wins: number }>,
+  ) {
+    const months = [
+      'January',
+      'February',
+      'March',
+      'April',
+      'May',
+      'June',
+      'July',
+      'August',
+      'September',
+      'October',
+      'November',
+      'December',
+    ];
     return months.map((month, index) => {
       const { count, wins } = monthStats[index];
       const losses = count - wins;
@@ -581,7 +712,12 @@ export class MemberDashboardService
     });
   }
 
-  private calculateMatchDetails(entries: MemberEntryResultEntry[], sortedIndices: number[], totalSets: number, total: number) {
+  private calculateMatchDetails(
+    entries: MemberEntryResultEntry[],
+    sortedIndices: number[],
+    totalSets: number,
+    total: number,
+  ) {
     let cleanVictories = 0;
     let cleanDefeats = 0;
     let comebacks = 0;
@@ -590,10 +726,14 @@ export class MemberDashboardService
     for (const index of sortedIndices) {
       const match = entries[index];
       const isVictory = match.Result.startsWith('V');
-      if (isVictory && match.SetFor === 3 && match.SetAgainst === 0) cleanVictories++;
-      else if (!isVictory && match.SetFor === 0 && match.SetAgainst === 3) cleanDefeats++;
-      else if (isVictory && match.SetFor === 3 && match.SetAgainst === 2) comebacks++;
-      else if (!isVictory && match.SetFor === 2 && match.SetAgainst === 3) leadLost++;
+      if (isVictory && match.SetFor === 3 && match.SetAgainst === 0)
+        cleanVictories++;
+      else if (!isVictory && match.SetFor === 0 && match.SetAgainst === 3)
+        cleanDefeats++;
+      else if (isVictory && match.SetFor === 3 && match.SetAgainst === 2)
+        comebacks++;
+      else if (!isVictory && match.SetFor === 2 && match.SetAgainst === 3)
+        leadLost++;
     }
 
     return {
@@ -610,7 +750,7 @@ export class MemberDashboardService
     category?: PlayerCategoryDTO,
   ): Promise<TeamMatchesEntry[]> {
     const cacheKey = `latest-matches:${member.UniqueIndex}${category ? `:${category}` : ''}`;
-    
+
     const getter = async (): Promise<TeamMatchesEntry[]> => {
       try {
         const matchIds = (member.ResultEntries ?? [])
@@ -641,7 +781,7 @@ export class MemberDashboardService
     category: PlayerCategoryDTO,
   ): Promise<NextMatchEstimationDTO | undefined> {
     const cacheKey = `next-match-estimation:${member.UniqueIndex}:${teamId}:${category}`;
-    
+
     const getter = async (): Promise<NextMatchEstimationDTO | undefined> => {
       try {
         // Get team matches and player ranking in parallel
@@ -651,46 +791,62 @@ export class MemberDashboardService
             Team: teamId,
             WithDetails: true,
           }),
-          this.numericRankingService.getWeeklyRankingV1(member.UniqueIndex, category),
+          this.numericRankingService.getWeeklyRankingV1(
+            member.UniqueIndex,
+            category,
+          ),
         ]);
 
         // Find the next match
         const now = new Date();
-        const nextMatch = matches.find(match => new Date(match.Date) > now);
+        const nextMatch = matches.find((match) => new Date(match.Date) > now);
 
         if (!nextMatch) {
           return undefined;
         }
 
-        const isHomeTeam = nextMatch.HomeClub === member.Club && nextMatch.HomeTeam === teamId;
-        const opponentClub = isHomeTeam ? nextMatch.AwayClub : nextMatch.HomeClub;
+        const isHomeTeam =
+          nextMatch.HomeClub === member.Club && nextMatch.HomeTeam === teamId;
+        const opponentClub = isHomeTeam
+          ? nextMatch.AwayClub
+          : nextMatch.HomeClub;
         const divisionId = nextMatch.DivisionId;
 
         // Get division players and filter opponents
-        const divisionPlayers = await this.matchesMembersRankerService.getMembersRankingFromDivision(
-          Number(divisionId),
-          SortSystem.MOST_PLAYED,
-        );
+        const divisionPlayers =
+          await this.matchesMembersRankerService.getMembersRankingFromDivision(
+            Number(divisionId),
+            SortSystem.MOST_PLAYED,
+          );
 
         const opponentPlayers = divisionPlayers
-          .filter(player => player.club === opponentClub)
+          .filter((player) => player.club === opponentClub)
           .slice(0, 6); // Reduced from 8 to 6 to minimize calls
 
         if (!opponentPlayers.length) {
           return undefined;
         }
 
-        const playerPoints = playerRanking.numericRankingHistory[playerRanking.numericRankingHistory.length - 1].numericPoints;
+        const playerPoints =
+          playerRanking.numericRankingHistory[
+            playerRanking.numericRankingHistory.length - 1
+          ].numericPoints;
 
         // OPTIMIZED: Sequential processing to avoid cache stampede
         // Instead of parallel batches, process sequentially to allow cache to work
         const opponentPlayersRanking = [];
-        
+
         for (const player of opponentPlayers) {
           try {
-            const ranking = await this.numericRankingService.getWeeklyRankingV1(player.uniqueIndex, category);
-            const latestRanking = ranking.numericRankingHistory[ranking.numericRankingHistory.length - 1];
-            
+            const ranking = await this.numericRankingService.getWeeklyRankingV1(
+              player.uniqueIndex,
+              category,
+            );
+            const latestRanking =
+              ranking.numericRankingHistory[
+                ranking.numericRankingHistory.length - 1
+              ];
+
             opponentPlayersRanking.push({
               ...player,
               rankingLetter: latestRanking.rankingLetterEstimation,
@@ -698,7 +854,10 @@ export class MemberDashboardService
             });
           } catch (error) {
             // Skip players we can't get ranking for
-            console.warn(`Failed to get ranking for player ${player.uniqueIndex}:`, error.message);
+            console.warn(
+              `Failed to get ranking for player ${player.uniqueIndex}:`,
+              error.message,
+            );
             continue;
           }
         }
@@ -708,7 +867,9 @@ export class MemberDashboardService
         }
 
         // Calculate estimations
-        const calculateOpponentPoints = (opponent: typeof opponentPlayersRanking[0]): OpponentEstimationDTO => {
+        const calculateOpponentPoints = (
+          opponent: (typeof opponentPlayersRanking)[0],
+        ): OpponentEstimationDTO => {
           const estimation = this.pointsEstimationService.estimatePoints(
             playerPoints,
             opponent.points,
@@ -723,7 +884,9 @@ export class MemberDashboardService
             firstName: opponent.firstName,
             lastName: opponent.lastName,
             ranking: opponent.rankingLetter,
-            pointsToWin: isExpectedWin ? estimation.expectedWinPoints : estimation.unexpectedWinPoints,
+            pointsToWin: isExpectedWin
+              ? estimation.expectedWinPoints
+              : estimation.unexpectedWinPoints,
             coefficient: estimation.coefficient,
             isExpectedWin,
             pointsDifference: Math.abs(pointsDifference),
@@ -731,14 +894,14 @@ export class MemberDashboardService
         };
 
         // Optimize sorting by calculating point differences once
-        const opponentsWithDiff = opponentPlayersRanking.map(opponent => ({
+        const opponentsWithDiff = opponentPlayersRanking.map((opponent) => ({
           ...opponent,
           pointsDiff: Math.abs(opponent.points - playerPoints),
         }));
 
         // Get best and worst case scenarios - limit to 3 each to reduce complexity
         const maxOpponents = Math.min(3, opponentsWithDiff.length);
-        
+
         const bestCase = opponentsWithDiff
           .sort((a, b) => b.pointsDiff - a.pointsDiff)
           .slice(0, maxOpponents)
@@ -770,12 +933,16 @@ export class MemberDashboardService
     );
   }
 
-  private getRankingPoints(ranking: string, category: PlayerCategoryDTO): number {
+  private getRankingPoints(
+    ranking: string,
+    category: PlayerCategoryDTO,
+  ): number {
     // Get base points for each ranking from the ranking estimation tables
-    const estimationTable = category === PlayerCategoryDTO.SENIOR_MEN 
-      ? MEN_RANKING_ESTIMATION['15000'] 
-      : WOMAN_RANKING_ESTIMATION['15000'];
-    
+    const estimationTable =
+      category === PlayerCategoryDTO.SENIOR_MEN
+        ? MEN_RANKING_ESTIMATION['15000']
+        : WOMAN_RANKING_ESTIMATION['15000'];
+
     return estimationTable[ranking] || 0;
   }
 }

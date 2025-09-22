@@ -29,9 +29,7 @@ export class CacheService {
   }
 
   setInCache(key: string, value: any, ttl?: number): Promise<void> {
-    this.logger.debug(
-      `Set [${key}] in cache. TTL: ${ttl}`,
-    );
+    this.logger.debug(`Set [${key}] in cache. TTL: ${ttl}`);
     return this.cacheManager.set(key, value, { ttl } as any) as Promise<void>;
   }
 
