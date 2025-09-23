@@ -137,6 +137,8 @@ model DataImport {
   hash           String         // Store hashes of each line to detect changes
   fileDate       DateTime?      // Date from the first line of the file (ISO-8601 format)
   linesProcessed Int?           // Number of lines processed (excluding header)
+  linesAdded     Int?           // Number of new records added
+  linesUpdated   Int?           // Number of existing records updated
   processingTimeMs Int?         // Processing time in milliseconds
 
   @@index([type, playerCategory, importedAt])

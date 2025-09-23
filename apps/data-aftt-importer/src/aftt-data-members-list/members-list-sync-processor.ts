@@ -114,20 +114,24 @@ export class MembersListProcessingService {
       });
       const existingSet = new Set<number>(existingMembers.map((m) => m.id));
       const toCreate = uniqueMembers.filter((m) => !existingSet.has(m.id));
-      const toUpdate = shouldUpdateExisting 
+      const toUpdate = shouldUpdateExisting
         ? uniqueMembers.filter((m) => existingSet.has(m.id))
         : [];
-      
+
       this.logger.log(
         `Members upsert plan - toCreate: ${toCreate.length}, toUpdate: ${toUpdate.length}${!shouldUpdateExisting ? ' (updates skipped - outside 3am-5am window)' : ''}`,
       );
 
       await this.createMembersInChunks(toCreate);
-      
+
       // Only update existing members between 3am-5am
       if (shouldUpdateExisting) {
         await this.updateMembersInChunks(toUpdate);
       }
+
+      // Store counts for DataImport record
+      const linesAdded = toCreate.length;
+      const linesUpdated = shouldUpdateExisting ? toUpdate.length : 0;
 
       // Process numeric points with change detection and chunked createMany
       await this.processPointsOptimized(pointsToCreate);
@@ -152,7 +156,7 @@ export class MembersListProcessingService {
       ]);
 
       // Store the new import record with file date
-      await this.storeImport(lines, job.data.playerCategory, fileDate, linesProcessed, this.performanceMetrics.processingTime);
+      await this.storeImport(lines, job.data.playerCategory, fileDate, linesProcessed, this.performanceMetrics.processingTime, { linesAdded, linesUpdated });
 
       // Calculate final metrics
       const totalTime = Date.now() - startTime;
@@ -476,6 +480,7 @@ export class MembersListProcessingService {
     fileDate: Date | null,
     linesProcessed: number,
     processingTimeMs: number,
+    stats?: { linesAdded: number; linesUpdated: number },
   ): Promise<void> {
     // create a master hash of all the lines (skip first line which contains the date)
     const contentLines = lines.length > 1 ? lines.slice(1) : lines;
@@ -490,6 +495,8 @@ export class MembersListProcessingService {
         hash: masterHash,
         fileDate,
         linesProcessed,
+        linesAdded: stats?.linesAdded,
+        linesUpdated: stats?.linesUpdated,
         processingTimeMs,
       },
     });

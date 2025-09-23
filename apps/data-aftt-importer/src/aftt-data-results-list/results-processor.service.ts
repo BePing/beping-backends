@@ -79,13 +79,17 @@ export class ResultsProcessorService {
         `Resolved references - valid results: ${validResults.length}, dropped (missing refs): ${dropped}`,
       );
 
+      // Initialize stats
+      let linesAdded = 0;
+      let linesUpdated = 0;
+
       if (validResults.length === 0) {
         this.logger.log('No valid results to process.');
       } else {
         // Check if we should update existing records (only between 3am-4am)
         const currentHour = new Date().getHours();
         const shouldUpdateExisting = currentHour >= 3 && currentHour < 4;
-        
+
         this.logger.log(
           `Current hour: ${currentHour}, ${shouldUpdateExisting ? 'updating existing records' : 'only processing new records'}`,
         );
@@ -99,10 +103,10 @@ export class ResultsProcessorService {
 
         const existingSet = new Set<number>(existingIds);
         const toCreate = validResults.filter((r) => !existingSet.has(r.id));
-        const toUpdate = shouldUpdateExisting 
+        const toUpdate = shouldUpdateExisting
           ? validResults.filter((r) => existingSet.has(r.id))
           : [];
-        
+
         this.logger.log(
           `Upsert plan - toCreate: ${toCreate.length}, toUpdate: ${toUpdate.length}${!shouldUpdateExisting ? ' (updates skipped - outside 3am-5am window)' : ''}`,
         );
@@ -114,6 +118,10 @@ export class ResultsProcessorService {
         if (shouldUpdateExisting) {
           await this.updateResultsInChunks(toUpdate);
         }
+
+        // Store counts for DataImport record
+        linesAdded = toCreate.length;
+        linesUpdated = shouldUpdateExisting ? toUpdate.length : 0;
       }
 
       // Clean caches impacted by results (global wildcard patterns)
@@ -137,6 +145,7 @@ export class ResultsProcessorService {
         fileDate,
         dataLines.length,
         processingTimeMs,
+        { linesAdded, linesUpdated },
       );
 
       this.logger.log(
@@ -411,6 +420,7 @@ export class ResultsProcessorService {
     fileDate: Date | null,
     linesProcessed: number,
     processingTimeMs: number,
+    stats?: { linesAdded: number; linesUpdated: number },
   ): Promise<void> {
     // create a master hash of all the lines (skip first line which contains the date)
     const contentLines = lines.length > 1 ? lines.slice(1) : lines;
@@ -425,6 +435,8 @@ export class ResultsProcessorService {
         hash: masterHash,
         fileDate,
         linesProcessed,
+        linesAdded: stats?.linesAdded,
+        linesUpdated: stats?.linesUpdated,
         processingTimeMs,
       },
     });
