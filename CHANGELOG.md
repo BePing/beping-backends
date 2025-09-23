@@ -514,6 +514,13 @@
 * separate build image ([73d72e1](https://github.com/BePing/beping-backends/commit/73d72e1526c9443fa5fc165ec752d300a9be0193))
 * sync lock ([2464dbd](https://github.com/BePing/beping-backends/commit/2464dbdd190ccdc7ac946526dedddbbc8935d001))
 
+## [4.3.1](https://github.com/BePing/beping-backends/compare/tabt-rest-v4.3.0...tabt-rest-v4.3.1) (2025-09-23)
+
+
+### Bug Fixes
+
+* add linesAdded and linesUpdated columns to DataImport table ([59d5ea4](https://github.com/BePing/beping-backends/commit/59d5ea40646daf0b7a6b42b06060f009f87d41ee))
+
 ## [4.3.0](https://github.com/BePing/beping-backends/compare/tabt-rest-v4.2.4...tabt-rest-v4.3.0) (2025-09-23)
 
 
