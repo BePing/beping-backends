@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.3.0](https://github.com/BePing/beping-backends/compare/data-aftt-importer-v1.2.6...data-aftt-importer-v1.3.0) (2025-09-23)
+
+
+### Features
+
+* enhance data import tracking with added statistics ([eda6d81](https://github.com/BePing/beping-backends/commit/eda6d81b7432d11b20612f76713a5ff59860b0be))
+
 ## [1.2.6](https://github.com/BePing/beping-backends/compare/data-aftt-importer-v1.2.5...data-aftt-importer-v1.2.6) (2025-09-22)
 
 
