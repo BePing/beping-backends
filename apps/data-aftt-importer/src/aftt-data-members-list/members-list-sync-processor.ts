@@ -273,7 +273,7 @@ export class MembersListProcessingService {
       try {
         const { member, numericPoints } = this.parseLine(line, playerCategory);
         membersToUpsert.push(member);
-        if (numericPoints.points) {
+        if (numericPoints.points >= 0) {
           pointsToCreate.push(numericPoints);
         }
       } catch (e) {
