@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.3.1](https://github.com/BePing/beping-backends/compare/data-aftt-importer-v1.3.0...data-aftt-importer-v1.3.1) (2025-09-24)
+
+
+### Bug Fixes
+
+* update numeric points validation in members list processing ([8e6bf27](https://github.com/BePing/beping-backends/commit/8e6bf276f5ce41f89259fdcecf67705ef1bb2eb0))
+
 ## [1.3.0](https://github.com/BePing/beping-backends/compare/data-aftt-importer-v1.2.6...data-aftt-importer-v1.3.0) (2025-09-23)
 
 
