@@ -514,6 +514,13 @@
 * separate build image ([73d72e1](https://github.com/BePing/beping-backends/commit/73d72e1526c9443fa5fc165ec752d300a9be0193))
 * sync lock ([2464dbd](https://github.com/BePing/beping-backends/commit/2464dbdd190ccdc7ac946526dedddbbc8935d001))
 
+## [4.3.2](https://github.com/BePing/beping-backends/compare/tabt-rest-v4.3.1...tabt-rest-v4.3.2) (2025-09-24)
+
+
+### Bug Fixes
+
+* update numeric points validation in members list processing ([8e6bf27](https://github.com/BePing/beping-backends/commit/8e6bf276f5ce41f89259fdcecf67705ef1bb2eb0))
+
 ## [4.3.1](https://github.com/BePing/beping-backends/compare/tabt-rest-v4.3.0...tabt-rest-v4.3.1) (2025-09-23)
 
 
