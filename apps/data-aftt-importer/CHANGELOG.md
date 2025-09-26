@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.4.0](https://github.com/BePing/beping-backends/compare/data-aftt-importer-v1.3.1...data-aftt-importer-v1.4.0) (2025-09-26)
+
+
+### Features
+
+* implement record append check in results processing ([02f989c](https://github.com/BePing/beping-backends/commit/02f989c47c1f1edc50cdd8918e3ea059975c06fa))
+
 ## [1.3.1](https://github.com/BePing/beping-backends/compare/data-aftt-importer-v1.3.0...data-aftt-importer-v1.3.1) (2025-09-24)
 
 
