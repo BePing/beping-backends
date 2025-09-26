@@ -55,6 +55,13 @@ export class ResultsProcessorService {
       }
 
       const dataLines = lines.slice(1);
+
+      // Check if new records were appended at the end
+      await this.checkIfRecordsAppendedAtEnd(
+        dataLines,
+        job.data.playerCategory,
+      );
+
       const parsedResults = dataLines.map((line) =>
         this.parseLine(line, job.data.playerCategory),
       );
@@ -414,11 +421,110 @@ export class ResultsProcessorService {
     return isNewer;
   }
 
+  private async checkIfRecordsAppendedAtEnd(
+    dataLines: string[],
+    playerCategory: PlayerCategory,
+  ): Promise<void> {
+    const lastImport = await this.prismaService.dataImport.findFirst({
+      where: {
+        type: ImportType.RESULT,
+        playerCategory,
+      },
+      orderBy: { importedAt: 'desc' },
+    });
+
+    if (!lastImport?.linesProcessed) {
+      this.logger.log('📝 APPEND CHECK: No previous import found, cannot verify append behavior');
+      return;
+    }
+
+    const previousLineCount = lastImport.linesProcessed;
+    const currentLineCount = dataLines.length;
+
+    if (currentLineCount <= previousLineCount) {
+      this.logger.log(
+        `📝 APPEND CHECK: File has same or fewer lines (${currentLineCount} vs ${previousLineCount}) - NOT an append operation`,
+      );
+      return;
+    }
+
+    // If we have more lines, check if the first N lines match the previous import
+    const knownLines = dataLines.slice(0, previousLineCount);
+    const knownHash = createHash('sha256')
+      .update(knownLines.join(''))
+      .digest('hex');
+
+    if (knownHash === lastImport.hash) {
+      const newLinesCount = currentLineCount - previousLineCount;
+      this.logger.log(
+        `📝 APPEND CHECK: File structure intact, checking ${newLinesCount} new lines against database (lines ${previousLineCount + 1}-${currentLineCount})`,
+      );
+
+      // Check if the new lines contain unknown records in DB
+      const newLines = dataLines.slice(previousLineCount);
+      const isAppendConfirmed = await this.checkNewLinesAgainstDatabase(newLines, playerCategory);
+
+      if (isAppendConfirmed) {
+        this.logger.log(`✅ APPEND CHECK: CONFIRMED - All ${newLinesCount} new records are unknown to DB, confirming append behavior`);
+      } else {
+        this.logger.log(`❌ APPEND CHECK: Some new lines contain known records - NOT a clean append`);
+      }
+    } else {
+      this.logger.log(
+        `❌ APPEND CHECK: NOT an append - file structure changed. Processing all ${currentLineCount} lines`,
+      );
+    }
+  }
+
+  private async checkNewLinesAgainstDatabase(
+    newLines: string[],
+    playerCategory: PlayerCategory,
+  ): Promise<boolean> {
+    if (newLines.length === 0) {
+      return true;
+    }
+
+    // Parse the new lines to get their IDs
+    const newResultIds = newLines
+      .map((line) => {
+        try {
+          const cols = line.split(';');
+          return parseInt(cols[0], 10);
+        } catch (e) {
+          this.logger.warn(`Failed to parse result ID from line: ${line.substring(0, 50)}...`);
+          return null;
+        }
+      })
+      .filter((id): id is number => id !== null);
+
+    if (newResultIds.length === 0) {
+      this.logger.warn('No valid result IDs found in new lines');
+      return false;
+    }
+
+    this.logger.log(`📝 APPEND CHECK: Checking ${newResultIds.length} new result IDs against database`);
+
+    // Check how many of these IDs already exist in the database
+    const existingIds = await this.findExistingResultIds(newResultIds, playerCategory);
+    const unknownCount = newResultIds.length - existingIds.length;
+
+    this.logger.log(
+      `📝 APPEND CHECK: Database check results - Total: ${newResultIds.length}, Unknown: ${unknownCount}, Known: ${existingIds.length}`,
+    );
+
+    if (existingIds.length > 0) {
+      this.logger.log(`📝 APPEND CHECK: Known IDs found: ${existingIds.slice(0, 5).join(', ')}${existingIds.length > 5 ? '...' : ''}`);
+    }
+
+    // Return true if all new records are unknown (confirming append behavior)
+    return existingIds.length === 0;
+  }
+
   private async storeImport(
     lines: string[],
     playerCategory: PlayerCategory,
     fileDate: Date | null,
-    linesProcessed: number,
+    totalLinesInFile: number,
     processingTimeMs: number,
     stats?: { linesAdded: number; linesUpdated: number },
   ): Promise<void> {
@@ -434,7 +540,7 @@ export class ResultsProcessorService {
         playerCategory,
         hash: masterHash,
         fileDate,
-        linesProcessed,
+        linesProcessed: totalLinesInFile,
         linesAdded: stats?.linesAdded,
         linesUpdated: stats?.linesUpdated,
         processingTimeMs,
