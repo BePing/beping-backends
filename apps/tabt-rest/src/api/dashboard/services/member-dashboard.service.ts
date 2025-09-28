@@ -40,7 +40,7 @@ import {
 import { PointsEstimationService } from '../../../services/members/points-estimation.service';
 import { PrismaService } from '../../../common/prisma.service';
 import { PlayerCategory as PrismaPlayerCategory } from '@prisma/client';
-import { toNumber } from 'lodash';
+import { result, toNumber } from 'lodash';
 
 @Injectable()
 export class MemberDashboardService
@@ -475,9 +475,18 @@ export class MemberDashboardService
           seasonExtremes,
           matchHistory: sortedIndices.map((index) => {
             const entry = memberResultEntries[index];
+
+            // TODO remove this once app is updated
+            if (entry.Result.indexOf('V') >= 0) {
+              entry.Result = 'V';
+            } else {
+              entry.Result = 'D';
+            }
+
+
             return {
               date: entry.Date,
-              result: entry.Result as 'V' | 'D',
+              result: entry.Result,
               opponentName: `${entry.FirstName} ${entry.LastName}`,
               opponentRanking: entry.Ranking,
               score: `${entry.SetFor}-${entry.SetAgainst}`,
@@ -757,8 +766,7 @@ export class MemberDashboardService
         const matchIds = (member.ResultEntries ?? [])
           .map((result) => result.MatchId)
           .filter((item, pos, arr) => arr.indexOf(item) === pos)
-          .slice(0, 3)
-          .reverse();
+          .slice(0, 3);
 
         if (matchIds.length === 0) return [];
 

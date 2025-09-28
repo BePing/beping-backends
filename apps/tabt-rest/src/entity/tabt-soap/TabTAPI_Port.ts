@@ -1053,7 +1053,8 @@ export class MemberEntryResultEntry {
 
   @ApiProperty()
   SetFor: number;
-
+ 
+  /** http://api.frenoy.net/TabTAPI#xsd:integer(undefined) */
   @ApiProperty()
   SetAgainst: number;
   /** http://api.frenoy.net/TabTAPI#CompetitionType(C,T) */
