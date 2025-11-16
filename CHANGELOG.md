@@ -514,6 +514,13 @@
 * separate build image ([73d72e1](https://github.com/BePing/beping-backends/commit/73d72e1526c9443fa5fc165ec752d300a9be0193))
 * sync lock ([2464dbd](https://github.com/BePing/beping-backends/commit/2464dbdd190ccdc7ac946526dedddbbc8935d001))
 
+## [4.4.2](https://github.com/BePing/beping-backends/compare/tabt-rest-v4.4.1...tabt-rest-v4.4.2) (2025-11-16)
+
+
+### Bug Fixes
+
+* remove unnecessary HTTPS agent configuration in head2head service ([48f8096](https://github.com/BePing/beping-backends/commit/48f809695a876f6b9b287c6f45857558e1a8c570))
+
 ## [4.4.1](https://github.com/BePing/beping-backends/compare/tabt-rest-v4.4.0...tabt-rest-v4.4.1) (2025-09-28)
 
 

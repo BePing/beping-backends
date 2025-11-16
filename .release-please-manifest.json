@@ -2,5 +2,5 @@
   "apps/tabt-rest": "1.0.0",
   "apps/data-aftt-importer": "1.4.0",
   "apps/app-notifications": "1.2.3",
-  ".": "4.4.1"
+  ".": "4.4.2"
 }
