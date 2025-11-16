@@ -171,8 +171,7 @@ export class Head2headService {
           {
             headers: {
               'user-agent': UserAgentsUtil.random,
-            },
-            httpsAgent: this.socksProxyService.createHttpsAgent(),
+            }
           },
         ),
       );
