@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.2.4](https://github.com/BePing/beping-backends/compare/app-notifications-v1.2.3...app-notifications-v1.2.4) (2025-11-17)
+
+
+### Bug Fixes
+
+* update individual match result properties and enhance head2head service logging ([53734b4](https://github.com/BePing/beping-backends/commit/53734b4776448abb786ddf51977736ab1edfbedc))
+
 ## [1.2.3](https://github.com/BePing/beping-backends/compare/app-notifications-v1.2.2...app-notifications-v1.2.3) (2025-09-22)
 
 
