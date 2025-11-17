@@ -739,11 +739,11 @@ export class IndividualMatchResult {
   })
   AwayPlayerUniqueIndex: Array<number>;
 
-  @ApiProperty()
-  HomeSetCount: number;
+  @ApiPropertyOptional()
+  HomeSetCount: number|null;
 
-  @ApiProperty()
-  AwaySetCount: number;
+  @ApiPropertyOptional()
+  AwaySetCount: number|null;
 
   @ApiPropertyOptional()
   IsHomeForfeited: boolean;

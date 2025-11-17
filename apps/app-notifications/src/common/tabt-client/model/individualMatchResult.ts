@@ -16,8 +16,8 @@ export interface IndividualMatchResult {
   HomePlayerUniqueIndex: Array<number>;
   AwayPlayerMatchIndex: Array<number>;
   AwayPlayerUniqueIndex: Array<number>;
-  HomeSetCount: number;
-  AwaySetCount: number;
+  HomeSetCount: number|null;
+  AwaySetCount: number|null;
   IsHomeForfeited: boolean;
   IsAwayForfeited: boolean;
   Scores: string;

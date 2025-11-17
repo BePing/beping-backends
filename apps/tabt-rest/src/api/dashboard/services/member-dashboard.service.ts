@@ -765,9 +765,8 @@ export class MemberDashboardService
       try {
         const matchIds = (member.ResultEntries ?? [])
           .map((result) => result.MatchId)
-          .filter((item, pos, arr) => arr.indexOf(item) === pos)
-          .slice(0, 3);
-
+          .filter((item, pos, arr) => arr.indexOf(item) === pos);
+          
         if (matchIds.length === 0) return [];
 
         const clubMatches: TeamMatchesEntry[] =
