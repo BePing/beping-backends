@@ -514,6 +514,13 @@
 * separate build image ([73d72e1](https://github.com/BePing/beping-backends/commit/73d72e1526c9443fa5fc165ec752d300a9be0193))
 * sync lock ([2464dbd](https://github.com/BePing/beping-backends/commit/2464dbdd190ccdc7ac946526dedddbbc8935d001))
 
+## [4.4.4](https://github.com/BePing/beping-backends/compare/tabt-rest-v4.4.3...tabt-rest-v4.4.4) (2025-12-06)
+
+
+### Bug Fixes
+
+* add timeout configuration to health controller requests ([21ac735](https://github.com/BePing/beping-backends/commit/21ac735302550901144e93a4578e9d9fbe78d5c2))
+
 ## [4.4.3](https://github.com/BePing/beping-backends/compare/tabt-rest-v4.4.2...tabt-rest-v4.4.3) (2025-11-17)
 
 
