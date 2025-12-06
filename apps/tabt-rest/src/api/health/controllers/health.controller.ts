@@ -48,6 +48,7 @@ export class HealthController {
               this.configService.get('USE_SOCKS_PROXY') === 'true'
                 ? this.socksProxyService.createHttpsAgent()
                 : undefined,
+            timeout: 5000,
           },
         ),
       () =>
@@ -62,6 +63,7 @@ export class HealthController {
               this.configService.get('USE_SOCKS_PROXY') === 'true'
                 ? this.socksProxyService.createHttpsAgent()
                 : undefined,
+            timeout: 5000,
           },
         ),
     ]);
