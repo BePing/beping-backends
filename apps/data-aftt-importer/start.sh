@@ -19,3 +19,4 @@ echo "Migrations completed successfully. Starting the application..."
 
 # Start the application
 exec node dist/apps/data-aftt-importer/main
+
