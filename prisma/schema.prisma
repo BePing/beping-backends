@@ -157,6 +157,7 @@ model DeviceSubscription {
   deviceToken       String           @unique
   platform          DevicePlatform
   appVersion        String?
+  locale            String           @default("en")
   active            Boolean          @default(true)
   notificationTypes NotificationType[]
   metadata          Json?            // Additional device/user metadata
@@ -164,10 +165,22 @@ model DeviceSubscription {
   updatedAt         DateTime         @updatedAt
   lastUsed          DateTime         @default(now())
   notificationLogs  NotificationLog[]
+  topicSubscriptions TopicSubscription[]
 
   @@index([userId])
   @@index([active])
   @@index([platform])
+}
+
+model TopicSubscription {
+  id                   String             @id @default(cuid())
+  topic                String
+  deviceSubscriptionId String
+  deviceSubscription   DeviceSubscription @relation(fields: [deviceSubscriptionId], references: [id], onDelete: Cascade)
+  createdAt            DateTime           @default(now())
+
+  @@unique([deviceSubscriptionId, topic])
+  @@index([topic])
 }
 
 model NotificationLog {

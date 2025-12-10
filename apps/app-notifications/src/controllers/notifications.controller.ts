@@ -17,13 +17,15 @@ import {
   RegisterDeviceDto,
   UpdateNotificationTypesDto,
   SendNotificationDto,
+  SubscribeTopicDto,
+  UpdateDeviceLocaleDto,
 } from './dto/device-registration.dto';
 import { NotificationType } from '@prisma/client';
 import { AppCheckGuard } from '../auth/app-check.guard';
 
 @Controller('notifications')
 export class NotificationsController {
-  constructor(private readonly fcmService: FcmService) {}
+  constructor(private readonly fcmService: FcmService) { }
 
   // Mobile app endpoints - protected by App Check
   @Post('devices/register')
@@ -37,9 +39,21 @@ export class NotificationsController {
       registerDeviceDto.userId,
       registerDeviceDto.appVersion,
       registerDeviceDto.metadata,
+      registerDeviceDto.locale,
     );
 
     return { message: 'Device registered successfully' };
+  }
+
+  @Put('devices/:deviceToken/locale')
+  @UseGuards(AppCheckGuard)
+  @HttpCode(HttpStatus.OK)
+  async updateDeviceLocale(
+    @Param('deviceToken') deviceToken: string,
+    @Body() updateDto: UpdateDeviceLocaleDto,
+  ) {
+    await this.fcmService.updateDeviceLocale(deviceToken, updateDto.locale);
+    return { message: 'Device locale updated successfully' };
   }
 
   @Delete('devices/:deviceToken')
@@ -62,6 +76,35 @@ export class NotificationsController {
     );
 
     return { message: 'Notification types updated successfully' };
+  }
+
+  @Post('devices/:deviceToken/topics')
+  @UseGuards(AppCheckGuard)
+  @HttpCode(HttpStatus.OK)
+  async subscribeToTopic(
+    @Param('deviceToken') deviceToken: string,
+    @Body() subscribeDto: SubscribeTopicDto,
+  ) {
+    await this.fcmService.subscribeToTopic(deviceToken, subscribeDto.topic);
+    return { message: `Subscribed to topic: ${subscribeDto.topic}` };
+  }
+
+  @Delete('devices/:deviceToken/topics/:topic')
+  @UseGuards(AppCheckGuard)
+  @HttpCode(HttpStatus.NO_CONTENT)
+  async unsubscribeFromTopic(
+    @Param('deviceToken') deviceToken: string,
+    @Param('topic') topic: string,
+  ) {
+    await this.fcmService.unsubscribeFromTopic(deviceToken, topic);
+  }
+
+  @Get('devices/:deviceToken/topics')
+  @UseGuards(AppCheckGuard)
+  @HttpCode(HttpStatus.OK)
+  async getSubscribedTopics(@Param('deviceToken') deviceToken: string) {
+    const topics = await this.fcmService.getSubscribedTopics(deviceToken);
+    return { topics };
   }
 
   // Backend service endpoints - protected by Basic Auth

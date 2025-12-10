@@ -29,6 +29,9 @@ PORT=3002
 
 # Optional: Logging
 LOG_LEVEL=debug
+
+# Gemini API Key (for AI-generated notifications)
+GEMINI_API_KEY=your_gemini_api_key
 ```
 
 ## Firebase Setup

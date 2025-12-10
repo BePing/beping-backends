@@ -27,6 +27,10 @@ export class RegisterDeviceDto {
   @IsOptional()
   appVersion?: string;
 
+  @IsString()
+  @IsOptional()
+  locale?: string;
+
   @IsObject()
   @IsOptional()
   metadata?: any;
@@ -36,6 +40,21 @@ export class UpdateNotificationTypesDto {
   @IsArray()
   @IsEnum(NotificationType, { each: true })
   notificationTypes: NotificationType[];
+}
+
+export class UpdateDeviceLocaleDto {
+  @IsString()
+  locale: string;
+}
+
+export class SubscribeTopicDto {
+  @IsString()
+  topic: string;
+}
+
+export class UnsubscribeTopicDto {
+  @IsString()
+  topic: string;
 }
 
 export class SendNotificationDto {

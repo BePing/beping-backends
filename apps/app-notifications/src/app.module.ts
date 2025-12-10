@@ -9,6 +9,7 @@ import { AuthModule } from './auth/auth.module';
 import { NotificationsModule } from './notifications/notifications.module';
 import { PrismaService } from './common/prisma.service';
 import { NotificationsController } from './controllers/notifications.controller';
+import { EventsController } from './controllers/events.controller';
 
 @Module({
   imports: [
@@ -24,7 +25,7 @@ import { NotificationsController } from './controllers/notifications.controller'
     ConfigModule.forRoot(),
     NotificationsModule,
   ],
-  controllers: [HealthController, NotificationsController],
+  controllers: [HealthController, NotificationsController, EventsController],
   providers: [PrismaService],
 })
-export class AppModule {}
+export class AppModule { }

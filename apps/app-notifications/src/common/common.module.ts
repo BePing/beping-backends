@@ -15,7 +15,7 @@ import { PrismaService } from './prisma.service';
 
 @Injectable()
 export class CacheModuleOptsFactory implements CacheOptionsFactory {
-  constructor(private readonly configService: ConfigService) {}
+  constructor(private readonly configService: ConfigService) { }
 
   async createCacheOptions(): Promise<CacheModuleOptions<Record<string, any>>> {
     if (this.configService.get('REDIS_TLS_URL')) {
@@ -43,4 +43,4 @@ export class CacheModuleOptsFactory implements CacheOptionsFactory {
   providers: [CacheService, EventBusService, PrismaService],
   exports: [CacheService, FirebaseModule, EventBusService, PrismaService],
 })
-export class CommonModule {}
+export class CommonModule { }

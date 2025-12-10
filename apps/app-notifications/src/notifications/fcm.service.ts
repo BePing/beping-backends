@@ -14,13 +14,14 @@ export interface SendNotificationOptions {
   notificationType: NotificationType;
   targetUserId?: string;
   targetDeviceTokens?: string[];
+  targetTopic?: string;
 }
 
 @Injectable()
 export class FcmService implements OnModuleInit {
   private readonly logger = new Logger(FcmService.name);
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(private readonly prisma: PrismaService) { }
 
   async onModuleInit() {
     if (!admin.apps.length) {
@@ -55,6 +56,7 @@ export class FcmService implements OnModuleInit {
     userId?: string,
     appVersion?: string,
     metadata?: any,
+    locale: string = 'fr',
   ): Promise<void> {
     try {
       await this.prisma.deviceSubscription.upsert({
@@ -66,6 +68,7 @@ export class FcmService implements OnModuleInit {
           userId,
           appVersion,
           metadata,
+          locale,
         },
         create: {
           deviceToken,
@@ -74,12 +77,28 @@ export class FcmService implements OnModuleInit {
           userId,
           appVersion,
           metadata,
+          locale,
         },
       });
 
       this.logger.log(`Device registered: ${deviceToken.substring(0, 10)}...`);
     } catch (error) {
       this.logger.error('Failed to register device', error);
+      throw error;
+    }
+  }
+
+  async updateDeviceLocale(deviceToken: string, locale: string): Promise<void> {
+    try {
+      await this.prisma.deviceSubscription.update({
+        where: { deviceToken },
+        data: { locale },
+      });
+      this.logger.log(
+        `Device locale updated: ${deviceToken.substring(0, 10)}... to ${locale}`,
+      );
+    } catch (error) {
+      this.logger.error('Failed to update device locale', error);
       throw error;
     }
   }
@@ -122,6 +141,112 @@ export class FcmService implements OnModuleInit {
     }
   }
 
+  async subscribeToTopic(deviceToken: string, topic: string): Promise<void> {
+    try {
+      const subscription = await this.prisma.deviceSubscription.findUnique({
+        where: { deviceToken },
+      });
+
+      if (!subscription) {
+        throw new Error('Device not registered');
+      }
+
+      await this.prisma.topicSubscription.upsert({
+        where: {
+          deviceSubscriptionId_topic: {
+            deviceSubscriptionId: subscription.id,
+            topic,
+          },
+        },
+        update: {},
+        create: {
+          deviceSubscriptionId: subscription.id,
+          topic,
+        },
+      });
+
+      this.logger.log(
+        `Device ${deviceToken.substring(0, 10)}... subscribed to topic: ${topic}`,
+      );
+    } catch (error) {
+      this.logger.error('Failed to subscribe to topic', error);
+      throw error;
+    }
+  }
+
+  async unsubscribeFromTopic(deviceToken: string, topic: string): Promise<void> {
+    try {
+      const subscription = await this.prisma.deviceSubscription.findUnique({
+        where: { deviceToken },
+      });
+
+      if (!subscription) {
+        return; // Or throw error if preferred
+      }
+
+      await this.prisma.topicSubscription.deleteMany({
+        where: {
+          deviceSubscriptionId: subscription.id,
+          topic,
+        },
+      });
+
+      this.logger.log(
+        `Device ${deviceToken.substring(0, 10)}... unsubscribed from topic: ${topic}`,
+      );
+    } catch (error) {
+      this.logger.error('Failed to unsubscribe from topic', error);
+      throw error;
+    }
+  }
+
+  async getSubscribedTopics(deviceToken: string): Promise<string[]> {
+    const subscription = await this.prisma.deviceSubscription.findUnique({
+      where: { deviceToken },
+      include: {
+        topicSubscriptions: true,
+      },
+    });
+
+    if (!subscription) {
+      return [];
+    }
+
+    return subscription.topicSubscriptions.map((sub) => sub.topic);
+  }
+
+  async getDevicesByTopicGroupedByLocale(
+    topic: string,
+  ): Promise<Record<string, string[]>> {
+    const topicSubscriptions = await this.prisma.topicSubscription.findMany({
+      where: {
+        topic,
+        deviceSubscription: {
+          active: true,
+        },
+      },
+      include: {
+        deviceSubscription: {
+          select: {
+            deviceToken: true,
+            locale: true,
+          },
+        },
+      },
+    });
+
+    const grouped: Record<string, string[]> = {};
+    for (const sub of topicSubscriptions) {
+      const locale = sub.deviceSubscription.locale || 'en';
+      if (!grouped[locale]) {
+        grouped[locale] = [];
+      }
+      grouped[locale].push(sub.deviceSubscription.deviceToken);
+    }
+
+    return grouped;
+  }
+
   async sendNotification(options: SendNotificationOptions): Promise<void> {
     if (!admin.apps.length) {
       this.logger.warn('Firebase not initialized. Skipping notification.');
@@ -133,6 +258,27 @@ export class FcmService implements OnModuleInit {
 
       if (options.targetDeviceTokens) {
         targetDevices = options.targetDeviceTokens;
+      } else if (options.targetTopic) {
+        // Get active devices subscribed to this topic
+        const topicSubscriptions = await this.prisma.topicSubscription.findMany({
+          where: {
+            topic: options.targetTopic,
+            deviceSubscription: {
+              active: true,
+            },
+          },
+          include: {
+            deviceSubscription: {
+              select: {
+                deviceToken: true,
+              },
+            },
+          },
+        });
+
+        targetDevices = topicSubscriptions.map(
+          (sub) => sub.deviceSubscription.deviceToken,
+        );
       } else {
         // Get active devices subscribed to this notification type
         const subscriptions = await this.prisma.deviceSubscription.findMany({
@@ -331,10 +477,10 @@ export class FcmService implements OnModuleInit {
   async getNotificationStats(deviceToken?: string): Promise<any> {
     const where = deviceToken
       ? {
-          deviceSubscription: {
-            deviceToken,
-          },
-        }
+        deviceSubscription: {
+          deviceToken,
+        },
+      }
       : {};
 
     const stats = await this.prisma.notificationLog.groupBy({
