@@ -514,6 +514,13 @@
 * separate build image ([73d72e1](https://github.com/BePing/beping-backends/commit/73d72e1526c9443fa5fc165ec752d300a9be0193))
 * sync lock ([2464dbd](https://github.com/BePing/beping-backends/commit/2464dbdd190ccdc7ac946526dedddbbc8935d001))
 
+## [4.5.1](https://github.com/BePing/beping-backends/compare/tabt-rest-v4.5.0...tabt-rest-v4.5.1) (2025-12-10)
+
+
+### Miscellaneous
+
+* update Dockerfiles and GitHub Actions for multi-platform support ([006b7db](https://github.com/BePing/beping-backends/commit/006b7dbeba623d07ed0a8c9cfa3539aa9ba12136))
+
 ## [4.5.0](https://github.com/BePing/beping-backends/compare/tabt-rest-v4.4.4...tabt-rest-v4.5.0) (2025-12-10)
 
 

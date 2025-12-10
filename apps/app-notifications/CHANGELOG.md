@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.3.1](https://github.com/BePing/beping-backends/compare/app-notifications-v1.3.0...app-notifications-v1.3.1) (2025-12-10)
+
+
+### Miscellaneous
+
+* update Dockerfiles and GitHub Actions for multi-platform support ([006b7db](https://github.com/BePing/beping-backends/commit/006b7dbeba623d07ed0a8c9cfa3539aa9ba12136))
+
 ## [1.3.0](https://github.com/BePing/beping-backends/compare/app-notifications-v1.2.4...app-notifications-v1.3.0) (2025-12-10)
 
 
