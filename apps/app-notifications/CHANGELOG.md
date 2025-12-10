@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.3.0](https://github.com/BePing/beping-backends/compare/app-notifications-v1.2.4...app-notifications-v1.3.0) (2025-12-10)
+
+
+### Features
+
+* integrate Google Generative AI for dynamic notification content ([2817445](https://github.com/BePing/beping-backends/commit/2817445215dcdbe96ebb95b5ae2759054fa36f3e))
+
 ## [1.2.4](https://github.com/BePing/beping-backends/compare/app-notifications-v1.2.3...app-notifications-v1.2.4) (2025-11-17)
 
 
