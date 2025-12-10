@@ -282,6 +282,25 @@ export class RankingDistributionDTOV1 {
   distribution: RankingDistributionEntryDTOV1[];
 }
 
+export class RankingTableDTOV1 {
+  @ApiProperty({ type: Number, description: 'Total number of active players' })
+  totalPlayers: number;
+
+  @ApiProperty({
+    type: String,
+    description: 'Player category (SENIOR_MEN or SENIOR_WOMEN)',
+  })
+  category: string;
+
+  @ApiProperty({
+    type: 'object',
+    additionalProperties: { type: 'number' },
+    description:
+      'Ranking thresholds where key is ranking letter (A, B0, B2, etc.) and value is the maximum position for that ranking',
+  })
+  thresholds: Record<string, number>;
+}
+
 export class MultiCategoryMemberDashboardDTOV1 {
   @ApiProperty({
     type: () => ResponseDTO,

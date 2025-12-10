@@ -1,6 +1,4 @@
 import { Injectable, OnModuleInit, OnModuleDestroy } from '@nestjs/common';
-import { PlayerCategory } from '@prisma/client';
-import { CacheService, TTL_DURATION } from '../../common/cache/cache.service';
 import { PlayerCategoryDTO } from '../../common/dto/player-category.dto';
 import { PrismaService } from '../../common/prisma.service';
 import {
@@ -26,10 +24,7 @@ export class RankingDistributionService
 
   private refreshTimer: NodeJS.Timeout | null = null;
 
-  constructor(
-    private readonly prismaService: PrismaService,
-    private readonly cacheService: CacheService,
-  ) {}
+  constructor(private readonly prismaService: PrismaService) {}
 
   async onModuleInit() {
     // Initialize cache on startup
@@ -49,11 +44,10 @@ export class RankingDistributionService
     category: PlayerCategoryDTO = PlayerCategoryDTO.SENIOR_MEN,
   ): Promise<number> {
     // Check if cache needs refresh (older than 1 day)
-    const shouldRefresh =
+    var shouldRefresh =
       !this.memberCountCache.lastUpdated ||
       Date.now() - this.memberCountCache.lastUpdated.getTime() >
         24 * 60 * 60 * 1000;
-
     if (shouldRefresh || this.memberCountCache[category] === null) {
       await this.refreshMemberCounts();
     }
@@ -78,22 +72,48 @@ export class RankingDistributionService
         return;
       }
 
-      // Parallel fetch for both categories
+      // Count members having at least 10 individual results OR ranking starting with 'A' (excluding 'As')
       const [menCount, womenCount] = await Promise.all([
-        this.prismaService.numericPoints.count({
-          where: {
-            member: { playerCategory: PlayerCategory.SENIOR_MEN },
-            ranking: { not: null },
-            date: { equals: latestDate },
-          },
-        }),
-        this.prismaService.numericPoints.count({
-          where: {
-            member: { playerCategory: PlayerCategory.SENIOR_WOMEN },
-            ranking: { not: null },
-            date: { equals: latestDate },
-          },
-        }),
+        this.prismaService.$queryRaw<[{ count: bigint }]>`
+          SELECT COUNT(*)::int as count
+          FROM (
+            SELECT 
+              m.id,
+              m.licence,
+              m.firstname,
+              m.lastname,
+              m.ranking,
+              m.club,
+              COUNT(ir.id) as total_results
+            FROM "Member" m
+            LEFT JOIN "IndividualResult" ir 
+              ON m.id = ir."memberId" 
+              AND m.licence = ir."memberLicence"
+            WHERE m."playerCategory" = 'SENIOR_MEN'
+            GROUP BY m.id, m.licence, m.firstname, m.lastname, m.ranking, m.club
+            HAVING COUNT(ir.id) >= 10 OR (m.ranking LIKE 'A%' AND m.ranking NOT LIKE 'As%')
+          ) filtered_members
+        `.then((result) => Number(result[0].count)),
+        this.prismaService.$queryRaw<[{ count: bigint }]>`
+          SELECT COUNT(*)::int as count
+          FROM (
+            SELECT 
+              m.id,
+              m.licence,
+              m.firstname,
+              m.lastname,
+              m.ranking,
+              m.club,
+              COUNT(ir.id) as total_results
+            FROM "Member" m
+            LEFT JOIN "IndividualResult" ir 
+              ON m.id = ir."memberId" 
+              AND m.licence = ir."memberLicence"
+            WHERE m."playerCategory" = 'SENIOR_WOMEN'
+            GROUP BY m.id, m.licence, m.firstname, m.lastname, m.ranking, m.club
+            HAVING COUNT(ir.id) >= 10 OR (m.ranking LIKE 'A%' AND m.ranking NOT LIKE 'As%')
+          ) filtered_members
+        `.then((result) => Number(result[0].count)),
       ]);
 
       this.memberCountCache[PlayerCategoryDTO.SENIOR_MEN] = menCount;
@@ -145,7 +165,7 @@ export class RankingDistributionService
       .sort((a, b) => b - a); // Sort in descending order
 
     const selectedCount =
-      availableCounts.find((count) => count <= totalPlayers) || 14000;
+      availableCounts.find((count) => count <= totalPlayers) || estimationTable[availableCounts[0]];
 
     return estimationTable[selectedCount.toString()];
   }
