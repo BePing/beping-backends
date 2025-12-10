@@ -514,6 +514,19 @@
 * separate build image ([73d72e1](https://github.com/BePing/beping-backends/commit/73d72e1526c9443fa5fc165ec752d300a9be0193))
 * sync lock ([2464dbd](https://github.com/BePing/beping-backends/commit/2464dbdd190ccdc7ac946526dedddbbc8935d001))
 
+## [4.5.0](https://github.com/BePing/beping-backends/compare/tabt-rest-v4.4.4...tabt-rest-v4.5.0) (2025-12-10)
+
+
+### Features
+
+* add ranking table endpoint and DTO for member rankings ([d57ebf2](https://github.com/BePing/beping-backends/commit/d57ebf238683c14cf3d3b34c341047a5623b27d7))
+* integrate Google Generative AI for dynamic notification content ([2817445](https://github.com/BePing/beping-backends/commit/2817445215dcdbe96ebb95b5ae2759054fa36f3e))
+
+
+### Miscellaneous
+
+* update GitHub Actions workflow and VSCode launch configuration ([125f266](https://github.com/BePing/beping-backends/commit/125f26646514f78451633961aea64a334a115cc4))
+
 ## [4.4.4](https://github.com/BePing/beping-backends/compare/tabt-rest-v4.4.3...tabt-rest-v4.4.4) (2025-12-06)
 
 
