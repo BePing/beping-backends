@@ -104,7 +104,7 @@ jobs:
         with:
           push: true
           context: .
-          platforms: linux/amd64
+          platforms: linux/arm64/v8,linux/amd64
           file: ./apps/${{ matrix.app }}/Dockerfile
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}

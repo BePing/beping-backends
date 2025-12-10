@@ -1,5 +1,5 @@
 # Build stage
-ARG NODE_VERSION=20.18.0-alpine
+ARG NODE_VERSION=20.19.0-alpine
 FROM node:${NODE_VERSION} AS builder
 
 # Install build dependencies
@@ -17,7 +17,8 @@ WORKDIR /usr/src/app
 COPY package*.json ./
 COPY prisma/ ./prisma/
 
-# Install dependencies
+# Install dependencies with memory limits
+ENV NODE_OPTIONS="--max-old-space-size=4096"
 RUN npm install --legacy-peer-deps && \
     npm cache clean --force
 
@@ -47,6 +48,7 @@ COPY --from=builder --chown=nestjs:nodejs /usr/src/app/package*.json ./
 COPY --from=builder --chown=nestjs:nodejs /usr/src/app/prisma ./prisma
 
 # Install only production dependencies and Prisma CLI
+ENV NODE_OPTIONS="--max-old-space-size=2048"
 RUN npm install --omit=dev --legacy-peer-deps && \
     npm install -g prisma@latest && \
     npm cache clean --force
