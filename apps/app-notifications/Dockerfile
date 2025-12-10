@@ -37,7 +37,7 @@ RUN apk add --no-cache \
     dumb-init \
     openssl \
     wget \
-    && npm install -g prisma@latest \
+    && npm install -g prisma@5.20.0 \
     && addgroup -g 1001 -S nodejs \
     && adduser -S nestjs -u 1001
 
@@ -51,7 +51,7 @@ COPY --from=builder --chown=nestjs:nodejs /usr/src/app/prisma ./prisma
 # Install only production dependencies and Prisma CLI
 ENV NODE_OPTIONS="--max-old-space-size=2048"
 RUN npm install --omit=dev --legacy-peer-deps && \
-    npm install -g prisma@latest && \
+    npm install -g prisma@5.20.0 && \
     npm cache clean --force
 
 # Copy built application
