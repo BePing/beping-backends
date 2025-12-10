@@ -514,6 +514,13 @@
 * separate build image ([73d72e1](https://github.com/BePing/beping-backends/commit/73d72e1526c9443fa5fc165ec752d300a9be0193))
 * sync lock ([2464dbd](https://github.com/BePing/beping-backends/commit/2464dbdd190ccdc7ac946526dedddbbc8935d001))
 
+## [4.5.4](https://github.com/BePing/beping-backends/compare/tabt-rest-v4.5.3...tabt-rest-v4.5.4) (2025-12-10)
+
+
+### Miscellaneous
+
+* add Prisma configuration and update Dockerfiles to use Prisma 5.20.0 ([4d76f5e](https://github.com/BePing/beping-backends/commit/4d76f5e3925c35a9f2c4a3152a0dad7c1fd74412))
+
 ## [4.5.3](https://github.com/BePing/beping-backends/compare/tabt-rest-v4.5.2...tabt-rest-v4.5.3) (2025-12-10)
 
 

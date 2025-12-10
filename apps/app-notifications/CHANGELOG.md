@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.3.2](https://github.com/BePing/beping-backends/compare/app-notifications-v1.3.1...app-notifications-v1.3.2) (2025-12-10)
+
+
+### Miscellaneous
+
+* add Prisma configuration and update Dockerfiles to use Prisma 5.20.0 ([4d76f5e](https://github.com/BePing/beping-backends/commit/4d76f5e3925c35a9f2c4a3152a0dad7c1fd74412))
+
 ## [1.3.1](https://github.com/BePing/beping-backends/compare/app-notifications-v1.3.0...app-notifications-v1.3.1) (2025-12-10)
 
 
