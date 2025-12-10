@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.4.1](https://github.com/BePing/beping-backends/compare/data-aftt-importer-v1.4.0...data-aftt-importer-v1.4.1) (2025-12-10)
+
+
+### Miscellaneous
+
+* update Dockerfiles and GitHub Actions for multi-platform support ([006b7db](https://github.com/BePing/beping-backends/commit/006b7dbeba623d07ed0a8c9cfa3539aa9ba12136))
+
 ## [1.4.0](https://github.com/BePing/beping-backends/compare/data-aftt-importer-v1.3.1...data-aftt-importer-v1.4.0) (2025-09-26)
 
 
