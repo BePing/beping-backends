@@ -18,7 +18,7 @@ import { createHash } from 'crypto';
 @Processor('results')
 export class ResultsProcessorService {
   private readonly logger = new Logger(ResultsProcessorService.name);
-  private readonly competitionByName = new Map<string, { id: string; type: CompetitionType }>();
+    private readonly competitionByKey = new Map<string, { id: string; type: CompetitionType }>();
   private readonly memberByKey = new Map<string, Member>();
 
   constructor(
@@ -215,22 +215,47 @@ export class ResultsProcessorService {
     };
   }
 
-  private async loadCompetitions(parsedResults: any[]): Promise<{ total: number; existing: number; created: number }> {
-    const byName = new Map<string, any>();
-    for (const r of parsedResults) {
-      if (r.competition?.name) byName.set(r.competition.name, r.competition);
+  private getCompetitionKey(competition: { id: string; name: string; type: CompetitionType } | undefined): string | null {
+    if (!competition) {
+      return null;
     }
-    if (byName.size === 0) return { total: 0, existing: 0, created: 0 };
 
-    const names = Array.from(byName.keys());
+    // Championship:
+    // - AFTT provides a code like "PBBWH07/036 - Logis Auderghem"
+    // - We split and store `id` as the code (e.g. "PBBWH07/036") and `name` as the club name.
+    // - For de-duplication we want to key by that **code**, not by the name, to avoid
+    //   unrelated championships with the same club name sharing the same competition.
+    //
+    // Tournament:
+    // - For tournaments, we keep the full string as `id` (cols[12]) and also use that full
+    //   string as the key. This matches the requirement "in case of tournament use all the string".
+    if (competition.type === CompetitionType.CHAMPIONSHIP) {
+      return competition.id;
+    }
+
+    // Tournament (and any other type in the future): use the full `id` string.
+    return competition.id;
+  }
+
+  private async loadCompetitions(parsedResults: any[]): Promise<{ total: number; existing: number; created: number }> {
+    const byKey = new Map<string, any>();
+    for (const r of parsedResults) {
+      const key = this.getCompetitionKey(r.competition);
+      if (key) {
+        byKey.set(key, r.competition);
+      }
+    }
+    if (byKey.size === 0) return { total: 0, existing: 0, created: 0 };
+
+    const keys = Array.from(byKey.keys());
     const existing = await this.prismaService.competition.findMany({
-      where: { name: { in: names } },
+      where: { id: { in: keys } },
     });
 
-    const foundNames = new Set(existing.map((c) => c.name));
-    const missing = names
-      .filter((n) => !foundNames.has(n))
-      .map((n) => byName.get(n));
+    const foundIds = new Set(existing.map((c) => c.id));
+    const missing = keys
+      .filter((id) => !foundIds.has(id))
+      .map((id) => byKey.get(id));
 
     if (missing.length > 0) {
       await this.prismaService.competition.createMany({
@@ -240,11 +265,11 @@ export class ResultsProcessorService {
     }
 
     const all = await this.prismaService.competition.findMany({
-      where: { name: { in: names } },
-      select: { id: true, name: true, type: true },
+      where: { id: { in: keys } },
+      select: { id: true, type: true },
     });
-    for (const c of all) this.competitionByName.set(c.name, { id: c.id, type: c.type });
-    return { total: names.length, existing: existing.length, created: Math.max(0, names.length - existing.length) };
+    for (const c of all) this.competitionByKey.set(c.id, { id: c.id, type: c.type });
+    return { total: keys.length, existing: existing.length, created: Math.max(0, keys.length - existing.length) };
   }
 
   private async loadMembers(parsedResults: any[], playerCategory: PlayerCategory): Promise<{ requested: number; found: number; missing: number }> {
@@ -273,7 +298,8 @@ export class ResultsProcessorService {
     for (const parsed of parsedResults) {
       const member = this.memberByKey.get(`${parsed.memberLicence}-${playerCategory}`);
       const opponent = this.memberByKey.get(`${parsed.opponentLicence}-${playerCategory}`);
-      const competition = this.competitionByName.get(parsed.competition?.name);
+      const competitionKey = this.getCompetitionKey(parsed.competition);
+      const competition = competitionKey ? this.competitionByKey.get(competitionKey) : undefined;
       if (!member || !opponent || !competition) {
         dropped++;
         continue;
