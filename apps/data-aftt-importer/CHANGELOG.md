@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.4.3](https://github.com/BePing/beping-backends/compare/data-aftt-importer-v1.4.2...data-aftt-importer-v1.4.3) (2025-12-23)
+
+
+### Code Refactoring
+
+* update competition handling in ResultsProcessorService ([a31ff36](https://github.com/BePing/beping-backends/commit/a31ff362351051318026860cb21eef8884025236))
+
 ## [1.4.2](https://github.com/BePing/beping-backends/compare/data-aftt-importer-v1.4.1...data-aftt-importer-v1.4.2) (2025-12-10)
 
 
