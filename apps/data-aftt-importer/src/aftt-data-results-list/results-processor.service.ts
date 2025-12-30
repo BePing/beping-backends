@@ -342,7 +342,12 @@ export class ResultsProcessorService {
     const chunkSize = 1000;
     let processed = 0;
     for (let i = 0; i < toCreate.length; i += chunkSize) {
-      const chunk = toCreate.slice(i, i + chunkSize);
+      const chunk = toCreate.slice(i, i + chunkSize).map((r) => ({
+        ...r,
+        score: r.score?.substring(0, 3) || r.score,
+        memberRanking: r.memberRanking?.substring(0, 4) || r.memberRanking,
+        opponentRanking: r.opponentRanking?.substring(0, 4) || r.opponentRanking,
+      }));
       await this.prismaService.individualResult.createMany({
         data: chunk,
         skipDuplicates: true,
@@ -364,12 +369,12 @@ export class ResultsProcessorService {
             where: { id_playerCategory: { id: r.id, playerCategory: r.playerCategory } },
             data: {
               date: r.date,
-              memberRanking: r.memberRanking,
+              memberRanking: r.memberRanking?.substring(0, 4) || r.memberRanking,
               memberPoints: r.memberPoints,
-              opponentRanking: r.opponentRanking,
+              opponentRanking: r.opponentRanking?.substring(0, 4) || r.opponentRanking,
               opponentPoints: r.opponentPoints,
               result: r.result,
-              score: r.score,
+              score: r.score?.substring(0, 3) || r.score,
               diffPoints: r.diffPoints,
               pointsToAdd: r.pointsToAdd,
               looseFactor: r.looseFactor,

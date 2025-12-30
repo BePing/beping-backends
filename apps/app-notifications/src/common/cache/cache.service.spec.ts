@@ -1,10 +1,10 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { CacheService } from './cache.service';
-import { CACHE_MANAGER, CacheStore } from '@nestjs/cache-manager';
+import { CACHE_MANAGER, Cache } from '@nestjs/cache-manager';
 
 describe('CacheService', () => {
   let provider: CacheService;
-  let cache: CacheStore;
+  let cache: Cache;
 
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
@@ -18,7 +18,7 @@ describe('CacheService', () => {
     }).compile();
 
     provider = module.get<CacheService>(CacheService);
-    cache = module.get<CacheStore>(CACHE_MANAGER);
+    cache = module.get<Cache>(CACHE_MANAGER);
   });
 
   it('should be defined', () => {
@@ -37,13 +37,13 @@ describe('CacheService', () => {
     });
   });
   describe('setInCache', () => {
-    it('should set in the cache with the given params', () => {
+    it('should set in the cache with the given params', async () => {
       const spy = jest.spyOn(cache, 'set');
       const key = 'aaa';
       const value = 'bbb';
       const ttl = 10;
 
-      provider.setInCache(key, value as unknown as object, ttl);
+      await provider.setInCache(key, value as unknown as object, ttl);
 
       expect(spy).toHaveBeenCalledWith('aaa', value, { ttl });
     });
@@ -55,7 +55,7 @@ describe('CacheService', () => {
       const ttl = 10;
       const getter = jest.fn();
 
-      const getSpy = jest.spyOn(cache, 'get').mockReturnValue(value);
+      const getSpy = jest.spyOn(cache, 'get').mockResolvedValue(value);
       const setSpy = jest.spyOn(cache, 'set');
 
       const result = await provider.getFromCacheOrGetAndCacheResult(
@@ -76,7 +76,7 @@ describe('CacheService', () => {
       const value = 'bbb';
       const getter = jest.fn().mockResolvedValue(value);
 
-      const getSpy = jest.spyOn(cache, 'get').mockReturnValue(null);
+      const getSpy = jest.spyOn(cache, 'get').mockResolvedValue(null);
       const setSpy = jest.spyOn(cache, 'set');
 
       const result = await provider.getFromCacheOrGetAndCacheResult(
