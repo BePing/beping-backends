@@ -1,4 +1,5 @@
 import { NestFactory } from '@nestjs/core';
+import { NestExpressApplication } from '@nestjs/platform-express';
 import { AppModule } from './app.module';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import helmet from 'helmet';
@@ -9,10 +10,12 @@ import { PackageService } from './common/package/package.service';
 import { Logger } from 'nestjs-pino';
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule, {
+  const app = await NestFactory.create<NestExpressApplication>(AppModule, {
     cors: true,
     bufferLogs: true,
   });
+  // Configure Express v5 query parser to support nested objects and arrays
+  app.set('query parser', 'extended');
   app.useLogger(app.get(Logger));
 
   const packageService = app.get(PackageService);

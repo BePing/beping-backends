@@ -1,6 +1,6 @@
 import { createHash } from 'crypto';
 import { Inject, Injectable, Logger } from '@nestjs/common';
-import { CACHE_MANAGER, CacheStore } from '@nestjs/cache-manager';
+import { CACHE_MANAGER, Cache } from '@nestjs/cache-manager';
 
 // Durations in Seconds
 
@@ -21,16 +21,14 @@ export class CacheService {
     return createHash('md5').update(key).digest('hex');
   }
 
-  constructor(@Inject(CACHE_MANAGER) private cacheManager: CacheStore) {}
+  constructor(@Inject(CACHE_MANAGER) private cacheManager: Cache) {}
 
-  getFromCache<T>(key: string): Promise<T> {
-    return this.cacheManager.get(key) as Promise<T | undefined>;
+  async getFromCache<T>(key: string): Promise<T | undefined> {
+    return await this.cacheManager.get(key);
   }
 
-  setInCache(key: string, value: object, ttl: number): Promise<void> {
-    return this.cacheManager.set(key, value, {
-      ttl,
-    }) as Promise<void>;
+  async setInCache(key: string, value: object, ttl: number): Promise<void> {
+    await this.cacheManager.set(key, value, { ttl } as any);
   }
 
   getCacheKey(prefix: string, input: object, db: string): string {

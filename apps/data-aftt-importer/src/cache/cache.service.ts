@@ -48,9 +48,12 @@ export class CacheService {
   }
 
   async cleanKeys(pattern: string): Promise<void> {
-    const keys = await this.cacheManager.store.keys(pattern);
-
-
+    // In cache-manager v6, store is accessed differently
+    const store = (this.cacheManager as any).store;
+    if (!store || !store.keys) {
+      return;
+    }
+    const keys = await store.keys(pattern);
     for (const key of keys) {
       await this.cacheManager.del(key);
     }

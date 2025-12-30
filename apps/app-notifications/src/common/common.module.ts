@@ -6,10 +6,9 @@ import {
   CacheModule,
   CacheModuleOptions,
   CacheOptionsFactory,
-  CacheStore,
 } from '@nestjs/cache-manager';
 import { ConfigModule, ConfigService } from '@nestjs/config';
-import { memoryStore } from 'cache-manager';
+import memoryStore from 'cache-manager-memory-store';
 import { redisStore } from 'cache-manager-redis-store';
 import { PrismaService } from './prisma.service';
 import { OpenAIService } from './openai.service';
@@ -23,11 +22,11 @@ export class CacheModuleOptsFactory implements CacheOptionsFactory {
       return {
         store: (await redisStore({
           url: this.configService.get('REDIS_TLS_URL'),
-        })) as unknown as CacheStore,
+        })) as unknown as any,
       };
     } else {
       return {
-        store: memoryStore(),
+        store: memoryStore,
       };
     }
   }
@@ -35,6 +34,7 @@ export class CacheModuleOptsFactory implements CacheOptionsFactory {
 
 @Module({
   imports: [
+    ConfigModule,
     CacheModule.registerAsync({
       useClass: CacheModuleOptsFactory,
       imports: [ConfigModule],

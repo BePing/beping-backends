@@ -1,5 +1,6 @@
 import { Global, Module } from '@nestjs/common';
 import { HttpModule } from '@nestjs/axios';
+import { ClientsModule, Transport } from '@nestjs/microservices';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { PrismaService } from './prisma.service';
 import { CacheModule } from '@nestjs/cache-manager';
@@ -22,12 +23,30 @@ import { CacheService } from './cache/cache.service';
       },
       inject: [ConfigService],
     }),
+    ClientsModule.registerAsync({
+      clients: [
+        {
+          name: 'BEPING_NOTIFIER',
+          useFactory: (configService: ConfigService) => {
+            return {
+              transport: Transport.REDIS,
+              options: {
+                host: configService.get('REDIS_HOST'),
+                port: parseInt(configService.get('REDIS_PORT')),
+              },
+            };
+          },
+          inject: [ConfigService],
+          imports: [ConfigModule],
+        },
+      ],
+    }),
     CacheModule.registerAsync({
       useClass: CacheModuleOptsFactory,
       imports: [ConfigModule],
     }),
   ],
   providers: [PrismaService, CacheService],
-  exports: [HttpModule, PrismaService, CacheService],
+  exports: [HttpModule, PrismaService, CacheService, ClientsModule],
 })
 export class CommonModule {}
