@@ -1,6 +1,6 @@
 import { HttpService } from '@nestjs/axios';
 import { firstValueFrom } from 'rxjs';
-import { Logger } from '@nestjs/common';
+import { Logger, Inject } from '@nestjs/common';
 import {
   Member,
   NumericPoints,
@@ -12,6 +12,7 @@ import { PrismaService } from '../prisma.service';
 import { Job } from 'bull';
 import { CacheService } from '../cache/cache.service';
 import { createHash } from 'crypto';
+import { ClientProxy } from '@nestjs/microservices';
 
 // Optimized constants for better performance
 const BATCH_SIZE = 500; // Increased from 25 to 500 records per batch
@@ -44,6 +45,7 @@ export class MembersListProcessingService {
     private readonly httpService: HttpService,
     private readonly prismaService: PrismaService,
     private readonly cacheService: CacheService,
+    @Inject('BEPING_NOTIFIER') private readonly notifierClient: ClientProxy,
   ) {}
 
   @OnQueueActive()
@@ -134,7 +136,29 @@ export class MembersListProcessingService {
       const linesUpdated = shouldUpdateExisting ? toUpdate.length : 0;
 
       // Process numeric points with change detection and chunked createMany
-      await this.processPointsOptimized(pointsToCreate);
+      const rankingEstimationChanges = await this.processPointsOptimized(
+        pointsToCreate,
+        job.data.playerCategory,
+      );
+
+      // Send ranking estimation change events
+      if (rankingEstimationChanges.length > 0) {
+        this.logger.log(
+          `Sending ${rankingEstimationChanges.length} ranking estimation change events`,
+        );
+        for (const change of rankingEstimationChanges) {
+          try {
+            await firstValueFrom(
+              this.notifierClient.emit('RANKING_ESTIMATION_CHANGE', change),
+            );
+          } catch (error) {
+            this.logger.error(
+              `Failed to send ranking estimation change event for player ${change.uniqueIndex}`,
+              error,
+            );
+          }
+        }
+      }
 
       this.performanceMetrics.processingTime = Date.now() - processingStart;
       
@@ -325,12 +349,28 @@ export class MembersListProcessingService {
     }
   }
 
-  private async processPointsOptimized(points: NumericPoints[]) {
+  private async processPointsOptimized(
+    points: NumericPoints[],
+    playerCategory: PlayerCategory,
+  ): Promise<
+    Array<{
+      uniqueIndex: number;
+      oldRankingEstimation: string;
+      newRankingEstimation: string;
+      playerCategory: PlayerCategory;
+    }>
+  > {
     const startTime = Date.now();
     let skippedCount = 0;
     let storedCount = 0;
+    const rankingEstimationChanges: Array<{
+      uniqueIndex: number;
+      oldRankingEstimation: string;
+      newRankingEstimation: string;
+      playerCategory: PlayerCategory;
+    }> = [];
 
-    if (points.length === 0) return;
+    if (points.length === 0) return [];
 
     // Bulk fetch latest points from Redis cache first, fallback to DB
     const latestPointsMap = await this.getLatestPointsBulk(points);
@@ -347,6 +387,21 @@ export class MembersListProcessingService {
         latestRecord.ranking !== point.ranking ||
         latestRecord.rankingWI !== point.rankingWI ||
         latestRecord.rankingLetterEstimation !== point.rankingLetterEstimation;
+
+      // Track ranking estimation changes
+      if (
+        point.rankingLetterEstimation &&
+        point.rankingLetterEstimation !== null &&
+        latestRecord &&
+        latestRecord.rankingLetterEstimation !== point.rankingLetterEstimation
+      ) {
+        rankingEstimationChanges.push({
+          uniqueIndex: point.memberId, // Using memberId as uniqueIndex
+          oldRankingEstimation: latestRecord.rankingLetterEstimation || '',
+          newRankingEstimation: point.rankingLetterEstimation,
+          playerCategory,
+        });
+      }
 
       if (shouldStore) {
         pointsToStore.push(point);
@@ -371,8 +426,10 @@ export class MembersListProcessingService {
 
     const duration = Date.now() - startTime;
     this.logger.log(
-      `Processed ${points.length} points in ${duration}ms - Stored: ${storedCount}, Skipped duplicates: ${skippedCount}`,
+      `Processed ${points.length} points in ${duration}ms - Stored: ${storedCount}, Skipped duplicates: ${skippedCount}, Ranking estimation changes: ${rankingEstimationChanges.length}`,
     );
+
+    return rankingEstimationChanges;
   }
 
   private parseLine(

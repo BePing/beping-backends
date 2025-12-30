@@ -215,6 +215,79 @@ export class FcmService implements OnModuleInit {
     return subscription.topicSubscriptions.map((sub) => sub.topic);
   }
 
+  async subscribeToTopicsBulk(
+    deviceToken: string,
+    topics: string[],
+  ): Promise<void> {
+    try {
+      const subscription = await this.prisma.deviceSubscription.findUnique({
+        where: { deviceToken },
+      });
+
+      if (!subscription) {
+        throw new Error('Device not registered');
+      }
+
+      // Create all topic subscriptions in bulk
+      await Promise.all(
+        topics.map((topic) =>
+          this.prisma.topicSubscription.upsert({
+            where: {
+              deviceSubscriptionId_topic: {
+                deviceSubscriptionId: subscription.id,
+                topic,
+              },
+            },
+            update: {},
+            create: {
+              deviceSubscriptionId: subscription.id,
+              topic,
+            },
+          }),
+        ),
+      );
+
+      this.logger.log(
+        `Device ${deviceToken.substring(0, 10)}... subscribed to ${topics.length} topics`,
+      );
+    } catch (error) {
+      this.logger.error('Failed to bulk subscribe to topics', error);
+      throw error;
+    }
+  }
+
+  async unsubscribeFromTopicsBulk(
+    deviceToken: string,
+    topics: string[],
+  ): Promise<void> {
+    try {
+      const subscription = await this.prisma.deviceSubscription.findUnique({
+        where: { deviceToken },
+      });
+
+      if (!subscription) {
+        return; // Or throw error if preferred
+      }
+
+      // Delete all topic subscriptions in bulk
+      await this.prisma.topicSubscription.deleteMany({
+        where: {
+          deviceSubscriptionId: subscription.id,
+          topic: {
+            in: topics,
+          },
+        },
+      });
+
+      this.logger.log(
+        `Device ${deviceToken.substring(0, 10)}... unsubscribed from ${topics.length} topics`,
+      );
+    } catch (error) {
+      this.logger.error('Failed to bulk unsubscribe from topics', error);
+      throw error;
+    }
+  }
+
   async getDevicesByTopicGroupedByLocale(
     topic: string,
   ): Promise<Record<string, string[]>> {

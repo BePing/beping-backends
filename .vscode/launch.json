@@ -19,6 +19,24 @@
             "skipFiles": ["<node_internals>/**"],
             "envFile": "${workspaceFolder}/.env"
         },
+                {
+            "name": "Debug NestJS (data-aftt-importer)",
+            "type": "node",
+            "request": "launch",
+            "runtimeExecutable": "node",
+            "runtimeArgs": [
+                "--inspect-brk=9229",
+                "${workspaceFolder}/node_modules/@nestjs/cli/bin/nest.js",
+                "start",
+                "data-aftt-importer",
+                "--watch"
+            ],
+            "console": "integratedTerminal",
+            "restart": true,
+            "cwd": "${workspaceFolder}",
+            "skipFiles": ["<node_internals>/**"],
+            "envFile": "${workspaceFolder}/.env"
+        },
         {
             "name": "Attach to NestJS (tabt-rest)",
             "type": "node",

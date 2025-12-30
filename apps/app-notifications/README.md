@@ -12,6 +12,10 @@ A NestJS microservice that handles Firebase Cloud Messaging (FCM) notifications 
 - ✅ **Dual authentication**: App Check for mobile apps, Basic Auth for backend services
 - ✅ Support for Android, iOS, and Web platforms
 - ✅ Automatic invalid token cleanup
+- ✅ **AI-powered notification text generation** using OpenAI
+- ✅ **Federation backend integration** for match result notifications
+- ✅ **Automatic ranking estimation change notifications** from data imports
+- ✅ **Bulk topic subscription** management for mobile apps
 
 ## Security Architecture
 
@@ -39,6 +43,9 @@ DIRECT_URL="postgresql://..."
 # Redis (for microservice communication)
 REDIS_HOST=localhost
 REDIS_PORT=6379
+
+# OpenAI (for AI-powered notification text generation)
+OPENAI_API_KEY=sk-...
 
 # Server
 PORT=3002
@@ -132,9 +139,67 @@ X-Firebase-AppCheck: <app-check-token>
 }
 ```
 
+#### Subscribe to Topic
+```http
+POST /notifications/devices/{deviceToken}/topics
+Content-Type: application/json
+X-Firebase-AppCheck: <app-check-token>
+
+{
+  "topic": "match:12345"
+}
+```
+
+#### Unsubscribe from Topic
+```http
+DELETE /notifications/devices/{deviceToken}/topics/{topic}
+X-Firebase-AppCheck: <app-check-token>
+```
+
+#### Get Subscribed Topics
+```http
+GET /notifications/devices/{deviceToken}/topics
+X-Firebase-AppCheck: <app-check-token>
+```
+
+#### Bulk Subscribe to Topics
+```http
+POST /notifications/devices/{deviceToken}/topics/bulk
+Content-Type: application/json
+X-Firebase-AppCheck: <app-check-token>
+
+{
+  "topics": ["match:12345", "player:67890", "club:11111"]
+}
+```
+
+#### Bulk Unsubscribe from Topics
+```http
+DELETE /notifications/devices/{deviceToken}/topics/bulk
+Content-Type: application/json
+X-Firebase-AppCheck: <app-check-token>
+
+{
+  "topics": ["match:12345", "player:67890"]
+}
+```
+
 ### Backend Service Endpoints (Basic Auth Protected)
 
 These endpoints require Basic Authentication credentials configured in the database.
+
+#### Match Result Event (Federation Backend)
+```http
+POST /events/match-result
+Content-Type: application/json
+Authorization: Basic <credentials>
+
+{
+  "matchId": "12345"
+}
+```
+
+This endpoint is called by the federation backend when a match result is available. It automatically sends notifications to all devices subscribed to the `match:{matchId}` topic with AI-generated, localized content.
 
 #### Send to Subscribed Devices
 ```http
@@ -215,10 +280,44 @@ GET /notifications/stats?deviceToken={token}
 GET /notifications/health
 ```
 
+## Topic Subscription System
+
+The service supports topic-based subscriptions, allowing mobile apps to subscribe to specific entities and receive notifications when those entities are updated.
+
+### Supported Topic Patterns
+
+- `match:{matchId}` - Subscribe to specific match updates
+- `player:{uniqueIndex}` - Subscribe to specific player updates (rankings, results, etc.)
+- `club:{clubId}` - Subscribe to club-related updates
+- `division:{divisionId}` - Subscribe to division updates
+- `tournament:{tournamentId}` - Subscribe to tournament updates
+- `ranking:monthly` - Subscribe to monthly ranking updates (future use)
+- `ranking:weekly` - Subscribe to weekly ranking updates (future use)
+
+### How Topics Work
+
+1. **Mobile apps subscribe** to topics they're interested in using the topic subscription endpoints
+2. **Backend services send events** to the notification service (e.g., match result available, ranking changed)
+3. **Notification service** finds all devices subscribed to the relevant topic
+4. **Notifications are sent** with AI-generated, localized content based on device locale
+
+## AI-Powered Notifications
+
+All notifications use OpenAI to generate engaging, localized notification text. The service:
+
+- Automatically generates title and body text based on event context
+- Localizes content based on device locale (language)
+- Falls back to default text if AI generation fails
+- Uses GPT-4o-mini for cost-effective, fast text generation
+
+### Supported Locales
+
+The service supports any locale code (e.g., `en`, `fr`, `nl`, `de`). Content is generated in the device's configured locale.
+
 ## Notification Types
 
-- `MATCH`: Match-related notifications
-- `RANKING`: Ranking update notifications  
+- `MATCH`: Match-related notifications (match results, match updates)
+- `RANKING`: Ranking update notifications (ranking changes, ranking estimation changes)
 - `CUSTOM`: Custom notifications from other applications
 
 ## Device Platforms
@@ -264,9 +363,51 @@ model NotificationLog {
 }
 ```
 
+## Automatic Notifications
+
+The service automatically sends notifications in the following scenarios:
+
+### Ranking Estimation Changes
+
+When the data importer detects that a player's ranking estimation (`rankingLetterEstimation`) has changed:
+
+1. The data importer sends a `RANKING_ESTIMATION_CHANGE` event via Redis microservice
+2. The notification service receives the event
+3. Notifications are sent to all devices subscribed to the `player:{uniqueIndex}` topic
+4. AI-generated, localized notification text is created for each device's locale
+
+This happens automatically during the members list import process.
+
 ## Usage Examples
 
 ### From Another NestJS Application
+
+#### Sending Match Result Notification (Federation Backend)
+```typescript
+import { HttpService } from '@nestjs/axios';
+
+@Injectable()
+export class FederationService {
+  constructor(private readonly httpService: HttpService) {}
+
+  async notifyMatchResult(matchId: string) {
+    const credentials = Buffer.from(`${username}:${password}`).toString('base64');
+    
+    await this.httpService.post(
+      'http://app-notifications:3002/events/match-result',
+      { matchId },
+      {
+        headers: {
+          'Authorization': `Basic ${credentials}`,
+          'Content-Type': 'application/json'
+        }
+      }
+    ).toPromise();
+  }
+}
+```
+
+#### Sending Custom Notification
 ```typescript
 import { HttpService } from '@nestjs/axios';
 
@@ -299,6 +440,8 @@ export class MyService {
 ### Mobile App Integration
 
 #### Android (Kotlin)
+
+##### Register Device
 ```kotlin
 // Register device with App Check token
 private suspend fun registerDevice(token: String) {
@@ -309,7 +452,8 @@ private suspend fun registerDevice(token: String) {
         platform = "ANDROID",
         notificationTypes = listOf("MATCH", "RANKING"),
         userId = getCurrentUserId(),
-        appVersion = BuildConfig.VERSION_NAME
+        appVersion = BuildConfig.VERSION_NAME,
+        locale = Locale.getDefault().language
     )
     
     val headers = mapOf("X-Firebase-AppCheck" to appCheckToken.token)
@@ -317,7 +461,48 @@ private suspend fun registerDevice(token: String) {
 }
 ```
 
+##### Subscribe to Topics
+```kotlin
+// Subscribe to a specific match
+private suspend fun subscribeToMatch(matchId: String) {
+    val appCheckToken = Firebase.appCheck.getAppCheckToken(false).await()
+    val headers = mapOf("X-Firebase-AppCheck" to appCheckToken.token)
+    
+    apiService.subscribeToTopic(
+        deviceToken = getDeviceToken(),
+        topic = "match:$matchId",
+        headers = headers
+    )
+}
+
+// Subscribe to a player's updates
+private suspend fun subscribeToPlayer(playerId: Int) {
+    val appCheckToken = Firebase.appCheck.getAppCheckToken(false).await()
+    val headers = mapOf("X-Firebase-AppCheck" to appCheckToken.token)
+    
+    apiService.subscribeToTopic(
+        deviceToken = getDeviceToken(),
+        topic = "player:$playerId",
+        headers = headers
+    )
+}
+
+// Bulk subscribe to multiple topics
+private suspend fun subscribeToMultipleTopics(topics: List<String>) {
+    val appCheckToken = Firebase.appCheck.getAppCheckToken(false).await()
+    val headers = mapOf("X-Firebase-AppCheck" to appCheckToken.token)
+    
+    apiService.bulkSubscribeToTopics(
+        deviceToken = getDeviceToken(),
+        topics = topics,
+        headers = headers
+    )
+}
+```
+
 #### iOS (Swift)
+
+##### Register Device
 ```swift
 // Register device with App Check token
 func registerDevice(token: String) async {
@@ -329,13 +514,65 @@ func registerDevice(token: String) async {
             platform: "IOS",
             notificationTypes: ["MATCH", "RANKING"],
             userId: getCurrentUserId(),
-            appVersion: Bundle.main.appVersion
+            appVersion: Bundle.main.appVersion,
+            locale: Locale.current.languageCode ?? "en"
         )
         
         let headers = ["X-Firebase-AppCheck": appCheckToken.token]
         try await apiService.registerDevice(request: request, headers: headers)
     } catch {
         print("Failed to register device: \(error)")
+    }
+}
+```
+
+##### Subscribe to Topics
+```swift
+// Subscribe to a specific match
+func subscribeToMatch(matchId: String) async {
+    do {
+        let appCheckToken = try await AppCheck.appCheck().token(forcingRefresh: false)
+        let headers = ["X-Firebase-AppCheck": appCheckToken.token]
+        
+        try await apiService.subscribeToTopic(
+            deviceToken: getDeviceToken(),
+            topic: "match:\(matchId)",
+            headers: headers
+        )
+    } catch {
+        print("Failed to subscribe to match: \(error)")
+    }
+}
+
+// Subscribe to a player's updates
+func subscribeToPlayer(playerId: Int) async {
+    do {
+        let appCheckToken = try await AppCheck.appCheck().token(forcingRefresh: false)
+        let headers = ["X-Firebase-AppCheck": appCheckToken.token]
+        
+        try await apiService.subscribeToTopic(
+            deviceToken: getDeviceToken(),
+            topic: "player:\(playerId)",
+            headers: headers
+        )
+    } catch {
+        print("Failed to subscribe to player: \(error)")
+    }
+}
+
+// Bulk subscribe to multiple topics
+func subscribeToMultipleTopics(topics: [String]) async {
+    do {
+        let appCheckToken = try await AppCheck.appCheck().token(forcingRefresh: false)
+        let headers = ["X-Firebase-AppCheck": appCheckToken.token]
+        
+        try await apiService.bulkSubscribeToTopics(
+            deviceToken: getDeviceToken(),
+            topics: topics,
+            headers: headers
+        )
+    } catch {
+        print("Failed to bulk subscribe: \(error)")
     }
 }
 ```
@@ -361,8 +598,9 @@ For development/testing without proper Firebase App Check setup:
 1. Set up Firebase project and enable App Check
 2. Download service account key and configure environment variables
 3. Configure attestation providers for your mobile apps
-4. Run database migrations: `npm run prisma:deploy`
-5. Build and start the service: `npm run build:app-notifications && npm run start:prod:app-notifications`
+4. Set up OpenAI API key in environment variables (`OPENAI_API_KEY`)
+5. Run database migrations: `npm run prisma:deploy`
+6. Build and start the service: `npm run build:app-notifications && npm run start:prod:app-notifications`
 
 ## Development
 
@@ -383,4 +621,14 @@ npm run start:dev:app-notifications
 - **Basic Auth**: Secures backend-to-backend communication for sending notifications
 - **Token Validation**: Automatically removes invalid/expired FCM tokens
 - **Request Logging**: Comprehensive audit trail of all notification activities
-- **Firebase Security**: Leverages Google's robust authentication and security infrastructure 
+- **Firebase Security**: Leverages Google's robust authentication and security infrastructure
+- **Microservice Communication**: Internal events use Redis-based microservice communication for secure inter-service messaging
+
+## Architecture
+
+The service operates as both an HTTP API and a microservice:
+
+- **HTTP API**: Exposes REST endpoints for mobile apps and backend services
+- **Microservice**: Listens for internal events via Redis (e.g., ranking estimation changes from data importer)
+- **Event-Driven**: Automatically processes events and sends notifications to subscribed devices
+- **AI Integration**: Uses OpenAI API for generating engaging, localized notification content 

@@ -95,7 +95,7 @@ export class ResultsProcessorService {
       } else {
         // Check if we should update existing records (only between 3am-4am)
         const currentHour = new Date().getHours();
-        const shouldUpdateExisting = currentHour >= 3 && currentHour < 4;
+        const shouldUpdateExisting = true //currentHour >= 3 && currentHour < 4;
 
         this.logger.log(
           `Current hour: ${currentHour}, ${shouldUpdateExisting ? 'updating existing records' : 'only processing new records'}`,

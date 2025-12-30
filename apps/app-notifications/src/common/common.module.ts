@@ -12,6 +12,7 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
 import { memoryStore } from 'cache-manager';
 import { redisStore } from 'cache-manager-redis-store';
 import { PrismaService } from './prisma.service';
+import { OpenAIService } from './openai.service';
 
 @Injectable()
 export class CacheModuleOptsFactory implements CacheOptionsFactory {
@@ -40,7 +41,7 @@ export class CacheModuleOptsFactory implements CacheOptionsFactory {
     }),
     FirebaseModule,
   ],
-  providers: [CacheService, EventBusService, PrismaService],
-  exports: [CacheService, FirebaseModule, EventBusService, PrismaService],
+  providers: [CacheService, EventBusService, PrismaService, OpenAIService],
+  exports: [CacheService, FirebaseModule, EventBusService, PrismaService, OpenAIService],
 })
 export class CommonModule { }

@@ -35,6 +35,8 @@
     "start:azure": "npm run build && func host start",
     "prisma:deploy": "prisma migrate deploy",
     "start:migrate:prod": "npm run prisma:deploy && npm run start:prod",
+    "fix-migration": "node scripts/fix-failed-migration.js",
+    "create-missing-tables": "node scripts/create-missing-tables.js",
     "tabt-generate": "openapi-generator-cli generate -i http://localhost:3050/doc-json --skip-validate-spec --generator-name typescript-nestjs -o apps/app-notifications/src/common/tabt-client",
     "prisma:generate": "prisma generate"
   },
@@ -77,6 +79,7 @@
     "lodash": "4.17.21",
     "lunr": "2.3.9",
     "nestjs-pino": "4.1.0",
+    "openai": "^4.28.0",
     "p-queue": "8.0.1",
     "passport": "0.7.0",
     "passport-http": "0.3.0",

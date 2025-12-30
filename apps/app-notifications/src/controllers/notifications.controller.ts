@@ -20,6 +20,7 @@ import {
   SubscribeTopicDto,
   UpdateDeviceLocaleDto,
 } from './dto/device-registration.dto';
+import { BulkTopicSubscriptionDto } from './dto/bulk-topic.dto';
 import { NotificationType } from '@prisma/client';
 import { AppCheckGuard } from '../auth/app-check.guard';
 
@@ -105,6 +106,34 @@ export class NotificationsController {
   async getSubscribedTopics(@Param('deviceToken') deviceToken: string) {
     const topics = await this.fcmService.getSubscribedTopics(deviceToken);
     return { topics };
+  }
+
+  @Post('devices/:deviceToken/topics/bulk')
+  @UseGuards(AppCheckGuard)
+  @HttpCode(HttpStatus.OK)
+  async subscribeToTopicsBulk(
+    @Param('deviceToken') deviceToken: string,
+    @Body() bulkDto: BulkTopicSubscriptionDto,
+  ) {
+    await this.fcmService.subscribeToTopicsBulk(deviceToken, bulkDto.topics);
+    return {
+      message: `Subscribed to ${bulkDto.topics.length} topics`,
+      topics: bulkDto.topics,
+    };
+  }
+
+  @Delete('devices/:deviceToken/topics/bulk')
+  @UseGuards(AppCheckGuard)
+  @HttpCode(HttpStatus.OK)
+  async unsubscribeFromTopicsBulk(
+    @Param('deviceToken') deviceToken: string,
+    @Body() bulkDto: BulkTopicSubscriptionDto,
+  ) {
+    await this.fcmService.unsubscribeFromTopicsBulk(deviceToken, bulkDto.topics);
+    return {
+      message: `Unsubscribed from ${bulkDto.topics.length} topics`,
+      topics: bulkDto.topics,
+    };
   }
 
   // Backend service endpoints - protected by Basic Auth
