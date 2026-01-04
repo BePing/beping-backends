@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.5.1](https://github.com/BePing/beping-backends/compare/data-aftt-importer-v1.5.0...data-aftt-importer-v1.5.1) (2026-01-04)
+
+
+### Bug Fixes
+
+* add missing line in README.md and update package.json description ([4248d59](https://github.com/BePing/beping-backends/commit/4248d591a742a44847c0ff3fd1f6f9f23435c9fd))
+
 ## [1.5.0](https://github.com/BePing/beping-backends/compare/data-aftt-importer-v1.4.3...data-aftt-importer-v1.5.0) (2026-01-04)
 
 

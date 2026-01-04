@@ -1,6 +1,6 @@
 {
   "name": "app-notifications",
-  "version": "1.4.0",
+  "version": "1.4.1",
   "description": "Mobile app notifications service",
   "private": true
 }
