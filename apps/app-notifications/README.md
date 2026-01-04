@@ -419,6 +419,7 @@ export class MyService {
     const credentials = Buffer.from(`${username}:${password}`).toString('base64');
     
     await this.httpService.post(
+      
       'http://app-notifications:3002/notifications/send',
       {
         title: 'Match Update',
