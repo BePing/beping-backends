@@ -1,5 +1,18 @@
 # Changelog
 
+## [1.5.0](https://github.com/BePing/beping-backends/compare/data-aftt-importer-v1.4.3...data-aftt-importer-v1.5.0) (2026-01-04)
+
+
+### Features
+
+* integrate OpenAI for AI-powered notifications and enhance subscription management ([95effc2](https://github.com/BePing/beping-backends/commit/95effc21aa9605e57630403b00463dbfbc4b59d5))
+* upgrade NestJS dependencies and enhance caching mechanisms ([db3e15a](https://github.com/BePing/beping-backends/commit/db3e15a7ed347ff3f0ec74a8a28e7b0ec35ce7a8))
+
+
+### Code Refactoring
+
+* update cache service tests and improve caching logic ([055166a](https://github.com/BePing/beping-backends/commit/055166a85c0e2c9506a94340f179aae1f6ae2ff4))
+
 ## [1.4.3](https://github.com/BePing/beping-backends/compare/data-aftt-importer-v1.4.2...data-aftt-importer-v1.4.3) (2025-12-23)
 
 

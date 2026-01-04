@@ -514,6 +514,19 @@
 * separate build image ([73d72e1](https://github.com/BePing/beping-backends/commit/73d72e1526c9443fa5fc165ec752d300a9be0193))
 * sync lock ([2464dbd](https://github.com/BePing/beping-backends/commit/2464dbdd190ccdc7ac946526dedddbbc8935d001))
 
+## [4.6.0](https://github.com/BePing/beping-backends/compare/tabt-rest-v4.5.5...tabt-rest-v4.6.0) (2026-01-04)
+
+
+### Features
+
+* integrate OpenAI for AI-powered notifications and enhance subscription management ([95effc2](https://github.com/BePing/beping-backends/commit/95effc21aa9605e57630403b00463dbfbc4b59d5))
+* upgrade NestJS dependencies and enhance caching mechanisms ([db3e15a](https://github.com/BePing/beping-backends/commit/db3e15a7ed347ff3f0ec74a8a28e7b0ec35ce7a8))
+
+
+### Code Refactoring
+
+* update cache service tests and improve caching logic ([055166a](https://github.com/BePing/beping-backends/commit/055166a85c0e2c9506a94340f179aae1f6ae2ff4))
+
 ## [4.5.5](https://github.com/BePing/beping-backends/compare/tabt-rest-v4.5.4...tabt-rest-v4.5.5) (2025-12-23)
 
 
