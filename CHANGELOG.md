@@ -514,6 +514,14 @@
 * separate build image ([73d72e1](https://github.com/BePing/beping-backends/commit/73d72e1526c9443fa5fc165ec752d300a9be0193))
 * sync lock ([2464dbd](https://github.com/BePing/beping-backends/commit/2464dbdd190ccdc7ac946526dedddbbc8935d001))
 
+## [4.6.1](https://github.com/BePing/beping-backends/compare/tabt-rest-v4.6.0...tabt-rest-v4.6.1) (2026-01-04)
+
+
+### Bug Fixes
+
+* add missing line in README.md and update package.json description ([4248d59](https://github.com/BePing/beping-backends/commit/4248d591a742a44847c0ff3fd1f6f9f23435c9fd))
+* update keyv dependency to version 5.5.5 in package.json and package-lock.json ([db4b14b](https://github.com/BePing/beping-backends/commit/db4b14b87de2bff6bcdd087380335a3fd4ad1098))
+
 ## [4.6.0](https://github.com/BePing/beping-backends/compare/tabt-rest-v4.5.5...tabt-rest-v4.6.0) (2026-01-04)
 
 
