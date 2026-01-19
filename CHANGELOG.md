@@ -514,6 +514,13 @@
 * separate build image ([73d72e1](https://github.com/BePing/beping-backends/commit/73d72e1526c9443fa5fc165ec752d300a9be0193))
 * sync lock ([2464dbd](https://github.com/BePing/beping-backends/commit/2464dbdd190ccdc7ac946526dedddbbc8935d001))
 
+## [4.7.1](https://github.com/BePing/beping-backends/compare/tabt-rest-v4.7.0...tabt-rest-v4.7.1) (2026-01-19)
+
+
+### Miscellaneous
+
+* streamline Dockerfiles by removing unnecessary COPY commands ([349f5ac](https://github.com/BePing/beping-backends/commit/349f5ac091180ea54903565bc2b23e81237f3bf8))
+
 ## [4.7.0](https://github.com/BePing/beping-backends/compare/tabt-rest-v4.6.1...tabt-rest-v4.7.0) (2026-01-19)
 
 

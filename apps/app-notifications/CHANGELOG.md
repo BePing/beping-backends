@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.4.3](https://github.com/BePing/beping-backends/compare/app-notifications-v1.4.2...app-notifications-v1.4.3) (2026-01-19)
+
+
+### Miscellaneous
+
+* streamline Dockerfiles by removing unnecessary COPY commands ([349f5ac](https://github.com/BePing/beping-backends/commit/349f5ac091180ea54903565bc2b23e81237f3bf8))
+
 ## [1.4.2](https://github.com/BePing/beping-backends/compare/app-notifications-v1.4.1...app-notifications-v1.4.2) (2026-01-19)
 
 
