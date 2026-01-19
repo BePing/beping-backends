@@ -1,5 +1,22 @@
 # Changelog
 
+## [1.6.0](https://github.com/BePing/beping-backends/compare/data-aftt-importer-v1.5.1...data-aftt-importer-v1.6.0) (2026-01-19)
+
+
+### Features
+
+* enhance results processing with content hash check and improved append logic ([7186a2b](https://github.com/BePing/beping-backends/commit/7186a2ba1b280ab1c809e0114f25692531b8c889))
+
+
+### Miscellaneous
+
+* update Dockerfiles and .dockerignore for improved build efficiency ([15ccd98](https://github.com/BePing/beping-backends/commit/15ccd98e1796ec1e61ff148010d6d4b46aa761a2))
+
+
+### Code Refactoring
+
+* optimize results processing and cache management ([5b92422](https://github.com/BePing/beping-backends/commit/5b92422cd950d2c9eeaa553830a687ae9e7a24b6))
+
 ## [1.5.1](https://github.com/BePing/beping-backends/compare/data-aftt-importer-v1.5.0...data-aftt-importer-v1.5.1) (2026-01-04)
 
 
