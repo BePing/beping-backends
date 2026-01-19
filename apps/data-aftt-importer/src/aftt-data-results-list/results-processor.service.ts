@@ -45,7 +45,9 @@ export class ResultsProcessorService {
 
       const fileDate = this.extractFileDate(lines);
       this.logger.log(`Parsed file date: ${fileDate ? fileDate.toISOString() : 'unknown'}`);
-      const shouldProcess = await this.shouldProcessFile(
+
+      // Fetch lastImport once and check if we should process (avoids duplicate query)
+      const { shouldProcess, lastImport } = await this.getLastImportAndCheckShouldProcess(
         fileDate,
         job.data.playerCategory,
       );
@@ -60,14 +62,6 @@ export class ResultsProcessorService {
       const contentHash = createHash('sha256')
         .update(dataLines.join(''))
         .digest('hex');
-
-      const lastImport = await this.prismaService.dataImport.findFirst({
-        where: {
-          type: ImportType.RESULT,
-          playerCategory: job.data.playerCategory,
-        },
-        orderBy: { importedAt: 'desc' },
-      });
 
       // Skip entirely if content hash matches previous import
       if (lastImport?.hash === contentHash) {
@@ -106,8 +100,8 @@ export class ResultsProcessorService {
         `Members - requested unique licences: ${memberStats.requested}, found: ${memberStats.found}, missing: ${memberStats.missing}`,
       );
 
-      // Build valid results and affected members
-      const { validResults, affectedMembers, dropped } = this.buildValidResults(
+      // Build valid results
+      const { validResults, dropped } = this.buildValidResults(
         parsedResults,
         job.data.playerCategory,
       );
@@ -160,18 +154,23 @@ export class ResultsProcessorService {
         linesUpdated = shouldUpdateExisting ? toUpdate.length : 0;
       }
 
-      // Clean caches impacted by results (global wildcard patterns)
-      await this.cleanAllMemberRelatedCaches();
+      // Only clean caches if we actually changed something
+      if (linesAdded > 0 || linesUpdated > 0) {
+        // Clean caches impacted by results (global wildcard patterns)
+        await this.cleanAllMemberRelatedCaches();
 
-      // Also clean some global caches
-      await Promise.all([
-        this.cacheService.cleanKeys('numeric-ranking-v4:*'),
-        this.cacheService.cleanKeys('search:*'),
-        this.cacheService.cleanKeys('members-ranking-division:*'),
-        this.cacheService.cleanKeys('members-ranking-club:*'),
-        this.cacheService.cleanKeys('members-ranking-team:*'),
-        this.cacheService.cleanKeys('next-match-estimation:*'),
-      ]);
+        // Also clean some global caches
+        await Promise.all([
+          this.cacheService.cleanKeys('numeric-ranking-v4:*'),
+          this.cacheService.cleanKeys('search:*'),
+          this.cacheService.cleanKeys('members-ranking-division:*'),
+          this.cacheService.cleanKeys('members-ranking-club:*'),
+          this.cacheService.cleanKeys('members-ranking-team:*'),
+          this.cacheService.cleanKeys('next-match-estimation:*'),
+        ]);
+      } else {
+        this.logger.log('📝 No changes made - skipping cache invalidation');
+      }
 
       // Store import
       const processingTimeMs = Date.now() - processingStartTime;
@@ -388,35 +387,98 @@ export class ResultsProcessorService {
 
   private async updateResultsInChunks(toUpdate: any[]): Promise<void> {
     if (toUpdate.length === 0) return;
-    const chunkSize = 200;
+    // Use larger chunks with raw SQL for much better performance
+    const chunkSize = 1000;
     let processed = 0;
+
     for (let i = 0; i < toUpdate.length; i += chunkSize) {
       const chunk = toUpdate.slice(i, i + chunkSize);
-      await this.prismaService.$transaction(
-        chunk.map((r) =>
-          this.prismaService.individualResult.update({
-            where: { id_playerCategory: { id: r.id, playerCategory: r.playerCategory } },
-            data: {
-              date: r.date,
-              memberRanking: r.memberRanking?.substring(0, 4) || r.memberRanking,
-              memberPoints: r.memberPoints,
-              opponentRanking: r.opponentRanking?.substring(0, 4) || r.opponentRanking,
-              opponentPoints: r.opponentPoints,
-              result: r.result,
-              score: r.score?.substring(0, 3) || r.score,
-              diffPoints: r.diffPoints,
-              pointsToAdd: r.pointsToAdd,
-              looseFactor: r.looseFactor,
-              definitivePointsToAdd: r.definitivePointsToAdd,
-              competitionId: r.competitionId,
-              memberId: r.memberId,
-              memberLicence: r.memberLicence,
-              opponentId: r.opponentId,
-              opponentLicence: r.opponentLicence,
-            },
-          }),
-        ),
-      );
+
+      // Build a bulk UPDATE using raw SQL with unnest for PostgreSQL
+      // This is ~10x faster than individual UPDATE statements
+      const ids: number[] = [];
+      const playerCategories: string[] = [];
+      const dates: Date[] = [];
+      const memberRankings: string[] = [];
+      const memberPointsArr: number[] = [];
+      const opponentRankings: string[] = [];
+      const opponentPointsArr: number[] = [];
+      const results: string[] = [];
+      const scores: string[] = [];
+      const diffPointsArr: number[] = [];
+      const pointsToAddArr: number[] = [];
+      const looseFactors: number[] = [];
+      const definitivePointsToAddArr: number[] = [];
+      const competitionIds: string[] = [];
+      const memberIds: number[] = [];
+      const memberLicences: number[] = [];
+      const opponentIds: number[] = [];
+      const opponentLicences: number[] = [];
+
+      for (const r of chunk) {
+        ids.push(r.id);
+        playerCategories.push(r.playerCategory);
+        dates.push(r.date);
+        memberRankings.push(r.memberRanking?.substring(0, 4) || r.memberRanking || '');
+        memberPointsArr.push(r.memberPoints);
+        opponentRankings.push(r.opponentRanking?.substring(0, 4) || r.opponentRanking || '');
+        opponentPointsArr.push(r.opponentPoints);
+        results.push(r.result);
+        scores.push(r.score?.substring(0, 3) || r.score || '');
+        diffPointsArr.push(r.diffPoints);
+        pointsToAddArr.push(r.pointsToAdd);
+        looseFactors.push(r.looseFactor);
+        definitivePointsToAddArr.push(r.definitivePointsToAdd);
+        competitionIds.push(r.competitionId);
+        memberIds.push(r.memberId);
+        memberLicences.push(r.memberLicence);
+        opponentIds.push(r.opponentId);
+        opponentLicences.push(r.opponentLicence);
+      }
+
+      await this.prismaService.$executeRaw`
+        UPDATE "IndividualResult" AS t SET
+          date = v.date,
+          "memberRanking" = v."memberRanking",
+          "memberPoints" = v."memberPoints",
+          "opponentRanking" = v."opponentRanking",
+          "opponentPoints" = v."opponentPoints",
+          result = v.result::"Result",
+          score = v.score,
+          "diffPoints" = v."diffPoints",
+          "pointsToAdd" = v."pointsToAdd",
+          "looseFactor" = v."looseFactor",
+          "definitivePointsToAdd" = v."definitivePointsToAdd",
+          "competitionId" = v."competitionId",
+          "memberId" = v."memberId",
+          "memberLicence" = v."memberLicence",
+          "opponentId" = v."opponentId",
+          "opponentLicence" = v."opponentLicence"
+        FROM (
+          SELECT * FROM unnest(
+            ${ids}::int[],
+            ${playerCategories}::"PlayerCategory"[],
+            ${dates}::timestamp[],
+            ${memberRankings}::text[],
+            ${memberPointsArr}::float[],
+            ${opponentRankings}::text[],
+            ${opponentPointsArr}::float[],
+            ${results}::text[],
+            ${scores}::text[],
+            ${diffPointsArr}::float[],
+            ${pointsToAddArr}::float[],
+            ${looseFactors}::float[],
+            ${definitivePointsToAddArr}::float[],
+            ${competitionIds}::text[],
+            ${memberIds}::int[],
+            ${memberLicences}::int[],
+            ${opponentIds}::int[],
+            ${opponentLicences}::int[]
+          ) AS v(id, "playerCategory", date, "memberRanking", "memberPoints", "opponentRanking", "opponentPoints", result, score, "diffPoints", "pointsToAdd", "looseFactor", "definitivePointsToAdd", "competitionId", "memberId", "memberLicence", "opponentId", "opponentLicence")
+        ) AS v
+        WHERE t.id = v.id AND t."playerCategory" = v."playerCategory"
+      `;
+
       processed += chunk.length;
       this.logger.debug(`Updated results progress: ${processed}/${toUpdate.length}`);
     }
@@ -446,15 +508,10 @@ export class ResultsProcessorService {
     }
   }
 
-  private async shouldProcessFile(
+  private async getLastImportAndCheckShouldProcess(
     fileDate: Date | null,
     playerCategory: PlayerCategory,
-  ): Promise<boolean> {
-    if (!fileDate) {
-      this.logger.warn('No file date found, processing anyway');
-      return true;
-    }
-
+  ): Promise<{ shouldProcess: boolean; lastImport: { hash: string | null; linesProcessed: number | null; fileDate: Date | null } | null }> {
     const lastImport = await this.prismaService.dataImport.findFirst({
       where: {
         type: ImportType.RESULT,
@@ -463,14 +520,19 @@ export class ResultsProcessorService {
       orderBy: { importedAt: 'desc' },
     });
 
+    if (!fileDate) {
+      this.logger.warn('No file date found, processing anyway');
+      return { shouldProcess: true, lastImport };
+    }
+
     if (!lastImport) {
       this.logger.log('No previous import found, processing file');
-      return true;
+      return { shouldProcess: true, lastImport: null };
     }
 
     if (!lastImport.fileDate) {
       this.logger.log('Previous import has no file date, processing file');
-      return true;
+      return { shouldProcess: true, lastImport };
     }
 
     const isNewer = fileDate > lastImport.fileDate;
@@ -478,7 +540,7 @@ export class ResultsProcessorService {
       `File date comparison: new=${fileDate.toISOString()}, last=${lastImport.fileDate.toISOString()}, isNewer=${isNewer}`,
     );
 
-    return isNewer;
+    return { shouldProcess: isNewer, lastImport };
   }
 
   private async checkIfRecordsAppendedAtEnd(
