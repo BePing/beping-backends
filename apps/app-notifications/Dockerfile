@@ -27,9 +27,9 @@ COPY prisma/ ./prisma/
 RUN --mount=type=cache,target=/root/.npm \
     npm run prisma:generate
 
-# Copy source code (only what's needed for build)
+# Copy source code (all apps due to cross-dependencies)
 COPY nest-cli.json tsconfig*.json ./
-COPY apps/app-notifications/ ./apps/app-notifications/
+COPY apps/ ./apps/
 
 # Build application
 RUN npm run build:app-notifications
