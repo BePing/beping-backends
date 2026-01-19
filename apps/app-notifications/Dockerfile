@@ -40,8 +40,9 @@ RUN npm prune --omit=dev --legacy-peer-deps
 # Production stage
 FROM node:${NODE_VERSION} AS production
 
-# Install runtime dependencies only
+# Install runtime dependencies and prisma CLI for migrations
 RUN apk add --no-cache dumb-init openssl wget \
+    && npm install -g prisma@5.20.0 \
     && addgroup -g 1001 -S nodejs \
     && adduser -S nestjs -u 1001
 
