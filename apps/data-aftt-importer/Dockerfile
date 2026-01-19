@@ -28,8 +28,10 @@ RUN --mount=type=cache,target=/root/.npm \
     npm run prisma:generate
 
 # Copy source code (only what's needed for build)
+# Note: data-aftt-importer imports from tabt-rest, so we need both
 COPY nest-cli.json tsconfig*.json ./
 COPY apps/data-aftt-importer/ ./apps/data-aftt-importer/
+COPY apps/tabt-rest/ ./apps/tabt-rest/
 
 # Build application
 RUN npm run build:data-aftt-importer
