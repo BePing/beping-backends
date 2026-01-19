@@ -514,6 +514,13 @@
 * separate build image ([73d72e1](https://github.com/BePing/beping-backends/commit/73d72e1526c9443fa5fc165ec752d300a9be0193))
 * sync lock ([2464dbd](https://github.com/BePing/beping-backends/commit/2464dbdd190ccdc7ac946526dedddbbc8935d001))
 
+## [4.7.3](https://github.com/BePing/beping-backends/compare/tabt-rest-v4.7.2...tabt-rest-v4.7.3) (2026-01-19)
+
+
+### Miscellaneous
+
+* update Dockerfiles to copy all application source code for build ([59ad669](https://github.com/BePing/beping-backends/commit/59ad6691c40b6d38161fc5ee994ec3f083d28cf2))
+
 ## [4.7.2](https://github.com/BePing/beping-backends/compare/tabt-rest-v4.7.1...tabt-rest-v4.7.2) (2026-01-19)
 
 

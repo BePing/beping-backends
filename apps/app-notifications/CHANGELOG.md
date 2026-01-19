@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.4.4](https://github.com/BePing/beping-backends/compare/app-notifications-v1.4.3...app-notifications-v1.4.4) (2026-01-19)
+
+
+### Miscellaneous
+
+* update Dockerfiles to copy all application source code for build ([59ad669](https://github.com/BePing/beping-backends/commit/59ad6691c40b6d38161fc5ee994ec3f083d28cf2))
+
 ## [1.4.3](https://github.com/BePing/beping-backends/compare/app-notifications-v1.4.2...app-notifications-v1.4.3) (2026-01-19)
 
 
