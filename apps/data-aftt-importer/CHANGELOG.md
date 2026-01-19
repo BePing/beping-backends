@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.6.1](https://github.com/BePing/beping-backends/compare/data-aftt-importer-v1.6.0...data-aftt-importer-v1.6.1) (2026-01-19)
+
+
+### Miscellaneous
+
+* streamline Dockerfiles by removing unnecessary COPY commands ([349f5ac](https://github.com/BePing/beping-backends/commit/349f5ac091180ea54903565bc2b23e81237f3bf8))
+
 ## [1.6.0](https://github.com/BePing/beping-backends/compare/data-aftt-importer-v1.5.1...data-aftt-importer-v1.6.0) (2026-01-19)
 
 
