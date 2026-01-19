@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.4.2](https://github.com/BePing/beping-backends/compare/app-notifications-v1.4.1...app-notifications-v1.4.2) (2026-01-19)
+
+
+### Miscellaneous
+
+* update Dockerfiles and .dockerignore for improved build efficiency ([15ccd98](https://github.com/BePing/beping-backends/commit/15ccd98e1796ec1e61ff148010d6d4b46aa761a2))
+
 ## [1.4.1](https://github.com/BePing/beping-backends/compare/app-notifications-v1.4.0...app-notifications-v1.4.1) (2026-01-04)
 
 

@@ -514,6 +514,23 @@
 * separate build image ([73d72e1](https://github.com/BePing/beping-backends/commit/73d72e1526c9443fa5fc165ec752d300a9be0193))
 * sync lock ([2464dbd](https://github.com/BePing/beping-backends/commit/2464dbdd190ccdc7ac946526dedddbbc8935d001))
 
+## [4.7.0](https://github.com/BePing/beping-backends/compare/tabt-rest-v4.6.1...tabt-rest-v4.7.0) (2026-01-19)
+
+
+### Features
+
+* enhance results processing with content hash check and improved append logic ([7186a2b](https://github.com/BePing/beping-backends/commit/7186a2ba1b280ab1c809e0114f25692531b8c889))
+
+
+### Miscellaneous
+
+* update Dockerfiles and .dockerignore for improved build efficiency ([15ccd98](https://github.com/BePing/beping-backends/commit/15ccd98e1796ec1e61ff148010d6d4b46aa761a2))
+
+
+### Code Refactoring
+
+* optimize results processing and cache management ([5b92422](https://github.com/BePing/beping-backends/commit/5b92422cd950d2c9eeaa553830a687ae9e7a24b6))
+
 ## [4.6.1](https://github.com/BePing/beping-backends/compare/tabt-rest-v4.6.0...tabt-rest-v4.6.1) (2026-01-04)
 
 
