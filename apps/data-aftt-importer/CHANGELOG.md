@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.6.4](https://github.com/BePing/beping-backends/compare/data-aftt-importer-v1.6.3...data-aftt-importer-v1.6.4) (2026-01-19)
+
+
+### Bug Fixes
+
+* update Dockerfiles to include prisma CLI for migrations ([5c5aa9b](https://github.com/BePing/beping-backends/commit/5c5aa9bcc3ea1e21a2d6e481259ef1de4a392755))
+
 ## [1.6.3](https://github.com/BePing/beping-backends/compare/data-aftt-importer-v1.6.2...data-aftt-importer-v1.6.3) (2026-01-19)
 
 
