@@ -56,13 +56,42 @@ export class ResultsProcessorService {
 
       const dataLines = lines.slice(1);
 
+      // Compute content hash early to check if content actually changed
+      const contentHash = createHash('sha256')
+        .update(dataLines.join(''))
+        .digest('hex');
+
+      const lastImport = await this.prismaService.dataImport.findFirst({
+        where: {
+          type: ImportType.RESULT,
+          playerCategory: job.data.playerCategory,
+        },
+        orderBy: { importedAt: 'desc' },
+      });
+
+      // Skip entirely if content hash matches previous import
+      if (lastImport?.hash === contentHash) {
+        this.logger.log('📝 Content hash matches previous import - skipping processing entirely');
+        return;
+      }
+
       // Check if new records were appended at the end
-      await this.checkIfRecordsAppendedAtEnd(
+      const appendInfo = await this.checkIfRecordsAppendedAtEnd(
         dataLines,
         job.data.playerCategory,
+        lastImport,
       );
 
-      const parsedResults = dataLines.map((line) =>
+      // If it's a pure append, only process new lines
+      const linesToProcess = appendInfo.isAppend
+        ? dataLines.slice(appendInfo.previousLineCount)
+        : dataLines;
+
+      if (appendInfo.isAppend) {
+        this.logger.log(`📝 APPEND MODE: Processing only ${linesToProcess.length} new lines (skipping ${appendInfo.previousLineCount} existing)`);
+      }
+
+      const parsedResults = linesToProcess.map((line) =>
         this.parseLine(line, job.data.playerCategory),
       );
       this.logger.log(`Parsed ${parsedResults.length} results lines for ${job.data.playerCategory}`);
@@ -93,9 +122,9 @@ export class ResultsProcessorService {
       if (validResults.length === 0) {
         this.logger.log('No valid results to process.');
       } else {
-        // Check if we should update existing records (only between 3am-4am)
+        // Check if we should update existing records (only between 3am-5am to reduce load on small VPS)
         const currentHour = new Date().getHours();
-        const shouldUpdateExisting = true //currentHour >= 3 && currentHour < 4;
+        const shouldUpdateExisting = currentHour >= 3 && currentHour < 5;
 
         this.logger.log(
           `Current hour: ${currentHour}, ${shouldUpdateExisting ? 'updating existing records' : 'only processing new records'}`,
@@ -147,7 +176,7 @@ export class ResultsProcessorService {
       // Store import
       const processingTimeMs = Date.now() - processingStartTime;
       await this.storeImport(
-        lines,
+        contentHash,
         job.data.playerCategory,
         fileDate,
         dataLines.length,
@@ -455,18 +484,11 @@ export class ResultsProcessorService {
   private async checkIfRecordsAppendedAtEnd(
     dataLines: string[],
     playerCategory: PlayerCategory,
-  ): Promise<void> {
-    const lastImport = await this.prismaService.dataImport.findFirst({
-      where: {
-        type: ImportType.RESULT,
-        playerCategory,
-      },
-      orderBy: { importedAt: 'desc' },
-    });
-
+    lastImport: { hash: string | null; linesProcessed: number | null } | null,
+  ): Promise<{ isAppend: boolean; previousLineCount: number }> {
     if (!lastImport?.linesProcessed) {
       this.logger.log('📝 APPEND CHECK: No previous import found, cannot verify append behavior');
-      return;
+      return { isAppend: false, previousLineCount: 0 };
     }
 
     const previousLineCount = lastImport.linesProcessed;
@@ -476,7 +498,7 @@ export class ResultsProcessorService {
       this.logger.log(
         `📝 APPEND CHECK: File has same or fewer lines (${currentLineCount} vs ${previousLineCount}) - NOT an append operation`,
       );
-      return;
+      return { isAppend: false, previousLineCount };
     }
 
     // If we have more lines, check if the first N lines match the previous import
@@ -497,13 +519,16 @@ export class ResultsProcessorService {
 
       if (isAppendConfirmed) {
         this.logger.log(`✅ APPEND CHECK: CONFIRMED - All ${newLinesCount} new records are unknown to DB, confirming append behavior`);
+        return { isAppend: true, previousLineCount };
       } else {
         this.logger.log(`❌ APPEND CHECK: Some new lines contain known records - NOT a clean append`);
+        return { isAppend: false, previousLineCount };
       }
     } else {
       this.logger.log(
         `❌ APPEND CHECK: NOT an append - file structure changed. Processing all ${currentLineCount} lines`,
       );
+      return { isAppend: false, previousLineCount };
     }
   }
 
@@ -552,24 +577,18 @@ export class ResultsProcessorService {
   }
 
   private async storeImport(
-    lines: string[],
+    contentHash: string,
     playerCategory: PlayerCategory,
     fileDate: Date | null,
     totalLinesInFile: number,
     processingTimeMs: number,
     stats?: { linesAdded: number; linesUpdated: number },
   ): Promise<void> {
-    // create a master hash of all the lines (skip first line which contains the date)
-    const contentLines = lines.length > 1 ? lines.slice(1) : lines;
-    const masterHash = createHash('sha256')
-      .update(contentLines.join(''))
-      .digest('hex');
-
     await this.prismaService.dataImport.create({
       data: {
         type: ImportType.RESULT,
         playerCategory,
-        hash: masterHash,
+        hash: contentHash,
         fileDate,
         linesProcessed: totalLinesInFile,
         linesAdded: stats?.linesAdded,
