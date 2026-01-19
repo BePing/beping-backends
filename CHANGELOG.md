@@ -514,6 +514,13 @@
 * separate build image ([73d72e1](https://github.com/BePing/beping-backends/commit/73d72e1526c9443fa5fc165ec752d300a9be0193))
 * sync lock ([2464dbd](https://github.com/BePing/beping-backends/commit/2464dbdd190ccdc7ac946526dedddbbc8935d001))
 
+## [4.7.4](https://github.com/BePing/beping-backends/compare/tabt-rest-v4.7.3...tabt-rest-v4.7.4) (2026-01-19)
+
+
+### Bug Fixes
+
+* update Dockerfiles to include prisma CLI for migrations ([5c5aa9b](https://github.com/BePing/beping-backends/commit/5c5aa9bcc3ea1e21a2d6e481259ef1de4a392755))
+
 ## [4.7.3](https://github.com/BePing/beping-backends/compare/tabt-rest-v4.7.2...tabt-rest-v4.7.3) (2026-01-19)
 
 
