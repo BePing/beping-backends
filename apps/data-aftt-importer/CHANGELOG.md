@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.6.2](https://github.com/BePing/beping-backends/compare/data-aftt-importer-v1.6.1...data-aftt-importer-v1.6.2) (2026-01-19)
+
+
+### Miscellaneous
+
+* update Dockerfile to include tabt-rest source code for build ([7030b4a](https://github.com/BePing/beping-backends/commit/7030b4a5880221eb716434d5f67baa246ef73565))
+
 ## [1.6.1](https://github.com/BePing/beping-backends/compare/data-aftt-importer-v1.6.0...data-aftt-importer-v1.6.1) (2026-01-19)
 
 
