@@ -1,3 +1,5 @@
+# syntax=docker/dockerfile:1.4
+
 # Build stage
 ARG NODE_VERSION=20.19.0-alpine
 FROM node:${NODE_VERSION} AS builder
@@ -10,73 +12,60 @@ RUN apk add --no-cache \
     g++ \
     libc6-compat
 
-# Create app directory
 WORKDIR /usr/src/app
 
-# Copy package files for better caching
+# Copy only package files first for better layer caching
 COPY package*.json ./
-COPY prisma/ ./prisma/
 
-# Install dependencies with memory limits
+# Use BuildKit cache mount for npm - persists across builds
 ENV NODE_OPTIONS="--max-old-space-size=4096"
-RUN npm install --legacy-peer-deps && \
-    npm cache clean --force
+RUN --mount=type=cache,target=/root/.npm \
+    npm ci --legacy-peer-deps
 
-# Copy source code
-COPY . .
+# Copy prisma schema and generate client
+COPY prisma/ ./prisma/
+RUN --mount=type=cache,target=/root/.npm \
+    npm run prisma:generate
 
-# Generate Prisma client and build application
-RUN npm run prisma:generate && \
-    npm run build:app-notifications
+# Copy source code (only what's needed for build)
+COPY nest-cli.json tsconfig*.json ./
+COPY apps/app-notifications/ ./apps/app-notifications/
+COPY libs/ ./libs/
+
+# Build application
+RUN npm run build:app-notifications
+
+# Prune devDependencies in place (faster than re-installing)
+RUN npm prune --omit=dev --legacy-peer-deps
 
 # Production stage
 FROM node:${NODE_VERSION} AS production
 
-# Install dumb-init and prisma for proper signal handling and database migrations
-RUN apk add --no-cache \
-    dumb-init \
-    openssl \
-    wget \
-    && npm install -g prisma@5.20.0 \
+# Install runtime dependencies only
+RUN apk add --no-cache dumb-init openssl wget \
     && addgroup -g 1001 -S nodejs \
     && adduser -S nestjs -u 1001
 
-# Create app directory
 WORKDIR /usr/src/app
 
-# Copy package files first for production install
-COPY --from=builder --chown=nestjs:nodejs /usr/src/app/package*.json ./
-COPY --from=builder --chown=nestjs:nodejs /usr/src/app/prisma ./prisma
+# Copy pruned node_modules from builder (skip second npm install)
+COPY --from=builder --chown=nestjs:nodejs /usr/src/app/node_modules ./node_modules
 
-# Install only production dependencies and Prisma CLI
-ENV NODE_OPTIONS="--max-old-space-size=2048"
-RUN npm install --omit=dev --legacy-peer-deps && \
-    npm install -g prisma@5.20.0 && \
-    npm cache clean --force
-
-# Copy built application
+# Copy built application and prisma
 COPY --from=builder --chown=nestjs:nodejs /usr/src/app/dist ./dist
-COPY --from=builder --chown=nestjs:nodejs /usr/src/app/node_modules/@prisma ./node_modules/@prisma
-COPY --from=builder --chown=nestjs:nodejs /usr/src/app/node_modules/.prisma ./node_modules/.prisma
+COPY --from=builder --chown=nestjs:nodejs /usr/src/app/prisma ./prisma
+COPY --from=builder --chown=nestjs:nodejs /usr/src/app/package.json ./
 
-# Copy startup script
+# Copy startup script and setup
 COPY --chown=nestjs:nodejs apps/app-notifications/start.sh ./start.sh
+RUN chmod +x ./start.sh && mkdir -p /usr/src/app/logs
 
-# Create logs directory and make startup script executable
-RUN mkdir -p /usr/src/app/logs && \
-    chmod +x /usr/src/app/start.sh && \
-    chown -R nestjs:nodejs /usr/src/app
-
-# Switch to non-root user
 USER nestjs
 
-# Expose port
 EXPOSE 3000
 
-# Health check
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
     CMD wget --no-verbose --tries=1 --spider http://localhost:3000/health || exit 1
 
-# Use dumb-init to handle signals properly
 ENTRYPOINT ["dumb-init", "--"]
 CMD ["./start.sh"]

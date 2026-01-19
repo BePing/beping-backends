@@ -1,5 +1,55 @@
+# Docker
 Dockerfile
 .dockerignore
+docker-compose*.yml
+
+# Dependencies (will be installed fresh)
 node_modules
 npm-debug.log
+yarn-error.log
+
+# Build output (will be built fresh)
 dist
+
+# Git
+.git
+.gitignore
+
+# IDE
+.idea
+.vscode
+*.swp
+*.swo
+
+# Test files
+coverage
+test
+**/*.spec.ts
+**/*.test.ts
+jest.config.*
+jest-e2e.json
+
+# Documentation
+*.md
+docs
+CHANGELOG.md
+
+# CI/CD (not needed in image)
+.github
+.gitlab-ci.yml
+.circleci
+
+# Development configs
+.env*
+.editorconfig
+.eslintrc*
+.prettierrc*
+.release-please*
+release-please*
+release-it.*
+
+# Misc
+*.log
+.DS_Store
+tmp
+temp
