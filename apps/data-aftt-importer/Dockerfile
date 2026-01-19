@@ -30,7 +30,6 @@ RUN --mount=type=cache,target=/root/.npm \
 # Copy source code (only what's needed for build)
 COPY nest-cli.json tsconfig*.json ./
 COPY apps/data-aftt-importer/ ./apps/data-aftt-importer/
-COPY libs/ ./libs/
 
 # Build application
 RUN npm run build:data-aftt-importer

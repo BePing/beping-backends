@@ -30,7 +30,6 @@ RUN --mount=type=cache,target=/root/.npm \
 # Copy source code (only what's needed for build)
 COPY nest-cli.json tsconfig*.json ./
 COPY apps/tabt-rest/ ./apps/tabt-rest/
-COPY libs/ ./libs/
 
 # Build application
 RUN npm run build:tabt-rest
