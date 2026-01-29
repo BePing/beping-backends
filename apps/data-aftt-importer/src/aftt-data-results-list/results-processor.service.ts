@@ -6,63 +6,201 @@ import {
   Member,
   PlayerCategory,
   Result,
+  ImportType,
 } from '@prisma/client';
 import { OnQueueActive, Process, Processor } from '@nestjs/bull';
 import { Job } from 'bull';
 import { PrismaService } from '../prisma.service';
 import { CacheService } from '../cache/cache.service';
+import { createHash } from 'crypto';
+
 
 @Processor('results')
 export class ResultsProcessorService {
   private readonly logger = new Logger(ResultsProcessorService.name);
+    private readonly competitionByKey = new Map<string, { id: string; type: CompetitionType }>();
+  private readonly memberByKey = new Map<string, Member>();
 
   constructor(
     private readonly httpService: HttpService,
     private readonly prismaService: PrismaService,
-    private readonly cacheService: CacheService
+    private readonly cacheService: CacheService,
   ) {
-    console.log('ResultsProcessorService constructor');
   }
 
   @OnQueueActive()
   onActive(job: Job) {
-    console.log(
-      `Processing job ${job.id} of type ${job.name} with data ${job.data}...`,
+    this.logger.log(
+      `Processing results job ${job.id} for ${job.data.playerCategory}`,
     );
-  
   }
 
   @Process()
   async process(job: Job<{ playerCategory: PlayerCategory }>): Promise<void> {
     this.logger.log('Processing results...');
+    const processingStartTime = Date.now();
+
     try {
       const lines = await this.downloadMemberLines(job.data.playerCategory);
 
-      const chunkSize = 100;
-      for (let i = 0; i < lines.length; i += chunkSize) {
-        this.logger.debug(
-          `Processing chunk ${i / chunkSize + 1}/${Math.ceil(lines.length / chunkSize)}...`,
-        );
+      const fileDate = this.extractFileDate(lines);
+      this.logger.log(`Parsed file date: ${fileDate ? fileDate.toISOString() : 'unknown'}`);
 
-        const chunk = lines.slice(i, i + chunkSize);
-
-        // Process each chunk in parallel
-        await Promise.all(
-          chunk.map((line) => {
-            const cols = line.split(';');
-            return this.updateDB(cols, job.data.playerCategory);
-          }),
-        );
-
+      // Fetch lastImport once and check if we should process (avoids duplicate query)
+      const { shouldProcess, lastImport } = await this.getLastImportAndCheckShouldProcess(
+        fileDate,
+        job.data.playerCategory,
+      );
+      if (!shouldProcess) {
+        this.logger.log('No newer data detected, skipping.');
+        return;
       }
-      await this.cacheService.cleanKeys(`numeric-ranking-v4:*:${job.data.playerCategory == PlayerCategory.MEN ? 1 : 2}`)
-      this.logger.log(`Processing done. (${lines.length} lines)`);
 
-    } catch (e){
-      this.logger.error("Failed to finish results job", e.message);
+      const dataLines = lines.slice(1);
 
+      // Compute content hash early to check if content actually changed
+      const joinedContent = dataLines.join('');
+      const contentHash = createHash('sha256')
+        .update(joinedContent)
+        .digest('hex');
+
+      // Debug logging to diagnose hash comparison
+      const firstResultId = dataLines[0]?.split(';')[0];
+      const lastResultId = dataLines[dataLines.length - 1]?.split(';')[0];
+      this.logger.log(`🔍 DEBUG: dataLines count = ${dataLines.length}, joinedContent length = ${joinedContent.length}`);
+      this.logger.log(`🔍 DEBUG: lastImport.linesProcessed = ${lastImport?.linesProcessed}`);
+      this.logger.log(`🔍 DEBUG: First result ID = ${firstResultId}, Last result ID = ${lastResultId}`);
+      this.logger.log(`🔍 DEBUG: Computed contentHash = ${contentHash}`);
+      this.logger.log(`🔍 DEBUG: lastImport.hash = ${lastImport?.hash}`);
+      this.logger.log(`🔍 DEBUG: Hashes equal = ${lastImport?.hash === contentHash}`);
+
+      // Skip entirely if content hash matches previous import
+      if (lastImport?.hash === contentHash) {
+        this.logger.log('📝 Content hash matches previous import - skipping processing entirely');
+        return;
+      }
+
+      // Check if new records were appended at the end
+      const appendInfo = await this.checkIfRecordsAppendedAtEnd(
+        dataLines,
+        job.data.playerCategory,
+        lastImport,
+      );
+
+      // If it's a pure append, only process new lines
+      const linesToProcess = appendInfo.isAppend
+        ? dataLines.slice(appendInfo.previousLineCount)
+        : dataLines;
+
+      if (appendInfo.isAppend) {
+        this.logger.log(`📝 APPEND MODE: Processing only ${linesToProcess.length} new lines (skipping ${appendInfo.previousLineCount} existing)`);
+      }
+
+      const parsedResults = linesToProcess.map((line) =>
+        this.parseLine(line, job.data.playerCategory),
+      );
+      this.logger.log(`Parsed ${parsedResults.length} results lines for ${job.data.playerCategory}`);
+
+      // Preload all required competitions and members in bulk (no Redis roundtrips)
+      const competitionStats = await this.loadCompetitions(parsedResults);
+      this.logger.log(
+        `Competitions - total unique: ${competitionStats.total}, existing: ${competitionStats.existing}, created: ${competitionStats.created}`,
+      );
+      const memberStats = await this.loadMembers(parsedResults, job.data.playerCategory);
+      this.logger.log(
+        `Members - requested unique licences: ${memberStats.requested}, found: ${memberStats.found}, missing: ${memberStats.missing}`,
+      );
+
+      // Build valid results
+      const { validResults, dropped } = this.buildValidResults(
+        parsedResults,
+        job.data.playerCategory,
+      );
+      this.logger.log(
+        `Resolved references - valid results: ${validResults.length}, dropped (missing refs): ${dropped}`,
+      );
+
+      // Initialize stats
+      let linesAdded = 0;
+      let linesUpdated = 0;
+
+      if (validResults.length === 0) {
+        this.logger.log('No valid results to process.');
+      } else {
+        // Check if we should update existing records (only between 3am-5am to reduce load on small VPS)
+        const currentHour = new Date().getHours();
+        const shouldUpdateExisting = currentHour >= 3 && currentHour < 5;
+
+        this.logger.log(
+          `Current hour: ${currentHour}, ${shouldUpdateExisting ? 'updating existing records' : 'only processing new records'}`,
+        );
+
+        // Partition into create vs update
+        const ids = validResults.map((r) => r.id);
+        const existingIds = await this.findExistingResultIds(
+          ids,
+          job.data.playerCategory,
+        );
+
+        const existingSet = new Set<number>(existingIds);
+        const toCreate = validResults.filter((r) => !existingSet.has(r.id));
+        const toUpdate = shouldUpdateExisting
+          ? validResults.filter((r) => existingSet.has(r.id))
+          : [];
+
+        this.logger.log(
+          `Upsert plan - toCreate: ${toCreate.length}, toUpdate: ${toUpdate.length}${!shouldUpdateExisting ? ' (updates skipped - outside 3am-5am window)' : ''}`,
+        );
+
+        // Fast-path creates
+        await this.createResultsInChunks(toCreate);
+
+        // Batched updates (only between 3am-5am)
+        if (shouldUpdateExisting) {
+          await this.updateResultsInChunks(toUpdate);
+        }
+
+        // Store counts for DataImport record
+        linesAdded = toCreate.length;
+        linesUpdated = shouldUpdateExisting ? toUpdate.length : 0;
+      }
+
+      // Only clean caches if we actually changed something
+      if (linesAdded > 0 || linesUpdated > 0) {
+        // Clean caches impacted by results (global wildcard patterns)
+        await this.cleanAllMemberRelatedCaches();
+
+        // Also clean some global caches
+        await Promise.all([
+          this.cacheService.cleanKeys('numeric-ranking-v4:*'),
+          this.cacheService.cleanKeys('search:*'),
+          this.cacheService.cleanKeys('members-ranking-division:*'),
+          this.cacheService.cleanKeys('members-ranking-club:*'),
+          this.cacheService.cleanKeys('members-ranking-team:*'),
+          this.cacheService.cleanKeys('next-match-estimation:*'),
+        ]);
+      } else {
+        this.logger.log('📝 No changes made - skipping cache invalidation');
+      }
+
+      // Store import
+      const processingTimeMs = Date.now() - processingStartTime;
+      await this.storeImport(
+        contentHash,
+        job.data.playerCategory,
+        fileDate,
+        dataLines.length,
+        processingTimeMs,
+        { linesAdded, linesUpdated },
+      );
+
+      this.logger.log(
+        `Results processing completed. Processed ${dataLines.length} lines in ${processingTimeMs}ms`,
+      );
+    } catch (e) {
+      this.logger.error('Failed to finish results job', e);
+      throw e;
     }
-
   }
 
   private async downloadMemberLines(playerCategory: PlayerCategory) {
@@ -72,19 +210,22 @@ export class ResultsProcessorService {
 
     const file = await firstValueFrom(
       this.httpService.get<string>(
-        `export/liste_result_${playerCategory == PlayerCategory.MEN ? 1 : 2}.txt`,
+        `export/liste_result_${playerCategory == PlayerCategory.SENIOR_MEN ? 1 : 2}.txt`,
       ),
     );
-    const lines = file.data.split('\n').slice(0, -1);
+    const lines = file.data
+      .split('\n')
+      .filter((line) => line.trim().length > 0);
     this.logger.debug(
       `File downloaded, start processing ${lines.length} lines...`,
     );
     return lines;
   }
 
-  private async updateDB(cols: string[], playerCategory: PlayerCategory) {
-    try {
-      const result = {
+  private parseLine(line: string, playerCategory: PlayerCategory) {
+    const cols = line.split(';');
+    return {
+      result: {
         id: parseInt(cols[0], 10),
         date: new Date(cols[1]),
         memberRanking: cols[10],
@@ -93,122 +234,464 @@ export class ResultsProcessorService {
         opponentPoints: parseFloat(cols[14]),
         result: cols[4] === 'V' ? Result.VICTORY : Result.DEFEAT,
         score: cols[5],
-        competitionType:
-          cols[9] === 'T'
-            ? CompetitionType.TOURNAMENT
-            : CompetitionType.CHAMPIONSHIP,
-        competitionCoef: parseFloat(cols[11]),
-        competitionName: cols[12],
         diffPoints: cols[15]?.length ? parseFloat(cols[15]) : 0,
         pointsToAdd: cols[16]?.length ? parseFloat(cols[16]) : 0,
         looseFactor: cols[17]?.length ? parseFloat(cols[17]) : 0,
         definitivePointsToAdd: cols[18]?.length ? parseFloat(cols[18]) : 0,
         playerCategory: playerCategory,
-      };
+      },
+      competition: {
+        id: cols[9] === 'T' ? cols[12] : cols[12].split(' - ')[0],
+        name: cols[9] === 'T' ? cols[12] : cols[12].split(' - ')[1],
+        type:
+          cols[9] === 'T'
+            ? CompetitionType.TOURNAMENT
+            : CompetitionType.CHAMPIONSHIP,
+        coefficient: parseFloat(cols[11]),
+      },
+      memberLicence: parseInt(cols[2], 10),
+      opponentLicence: parseInt(cols[3], 10),
+    };
+  }
 
-      // check if result has changed
-      const existingResult =
-        await this.prismaService.individualResult.findUnique({
-          where: {
-            id_playerCategory: {
-              id: result.id,
-              playerCategory: playerCategory,
-            },
-          },
-        });
+  private getCompetitionKey(competition: { id: string; name: string; type: CompetitionType } | undefined): string | null {
+    if (!competition) {
+      return null;
+    }
 
-      // deep equal
-      if (
-        existingResult &&
-        existingResult.competitionCoef === result.competitionCoef &&
-        existingResult.competitionName === result.competitionName &&
-        existingResult.competitionType === result.competitionType &&
-        existingResult.definitivePointsToAdd === result.definitivePointsToAdd &&
-        existingResult.diffPoints === result.diffPoints &&
-        existingResult.looseFactor === result.looseFactor &&
-        existingResult.memberPoints === result.memberPoints &&
-        existingResult.memberRanking === result.memberRanking &&
-        existingResult.opponentPoints === result.opponentPoints &&
-        existingResult.opponentRanking === result.opponentRanking &&
-        existingResult.result === result.result &&
-        existingResult.score === result.score &&
-        existingResult.pointsToAdd === result.pointsToAdd
-      ) {
-        return;
+    // Championship:
+    // - AFTT provides a code like "PBBWH07/036 - Logis Auderghem"
+    // - We split and store `id` as the code (e.g. "PBBWH07/036") and `name` as the club name.
+    // - For de-duplication we want to key by that **code**, not by the name, to avoid
+    //   unrelated championships with the same club name sharing the same competition.
+    //
+    // Tournament:
+    // - For tournaments, we keep the full string as `id` (cols[12]) and also use that full
+    //   string as the key. This matches the requirement "in case of tournament use all the string".
+    if (competition.type === CompetitionType.CHAMPIONSHIP) {
+      return competition.id;
+    }
+
+    // Tournament (and any other type in the future): use the full `id` string.
+    return competition.id;
+  }
+
+  private async loadCompetitions(parsedResults: any[]): Promise<{ total: number; existing: number; created: number }> {
+    const byKey = new Map<string, any>();
+    for (const r of parsedResults) {
+      const key = this.getCompetitionKey(r.competition);
+      if (key) {
+        byKey.set(key, r.competition);
       }
+    }
+    if (byKey.size === 0) return { total: 0, existing: 0, created: 0 };
 
-      const memberLicence = parseInt(cols[2], 10);
-      const opponentLicence = parseInt(cols[3], 10);
-      const [member, opponent]: Member[] = await Promise.all([
-        this.prismaService.member.findFirst({
-          where: {
-            licence: memberLicence,
-            playerCategory: playerCategory,
-          },
-        }),
-        this.prismaService.member.findFirst({
-          where: {
-            licence: opponentLicence,
-            playerCategory: playerCategory,
-          },
-        }),
-      ]);
+    const keys = Array.from(byKey.keys());
+    const existing = await this.prismaService.competition.findMany({
+      where: { id: { in: keys } },
+    });
 
-      if (!member || !opponent) {
-        this.logger.error(
-          `Member or opponent not found for result ${result.id}`,
-        );
-        return;
-      }
+    const foundIds = new Set(existing.map((c) => c.id));
+    const missing = keys
+      .filter((id) => !foundIds.has(id))
+      .map((id) => byKey.get(id));
 
-      await this.prismaService.individualResult.upsert({
-        where: {
-          id_playerCategory: {
-            id: result.id,
-            playerCategory: playerCategory,
-          },
-        },
-        update: {
-          ...result,
-          member: {
-            connect: {
-              id_licence: {
-                id: member.id,
-                licence: member.licence,
-              },
-            },
-          },
-          memberOpponent: {
-            connect: {
-              id_licence: {
-                id: opponent.id,
-                licence: opponent.licence,
-              },
-            },
-          },
-        },
-        create: {
-          ...result,
-          member: {
-            connect: {
-              id_licence: {
-                id: member.id,
-                licence: member.licence,
-              },
-            },
-          },
-          memberOpponent: {
-            connect: {
-              id_licence: {
-                id: opponent.id,
-                licence: opponent.licence,
-              },
-            },
-          },
-        },
+    if (missing.length > 0) {
+      await this.prismaService.competition.createMany({
+        data: missing,
+        skipDuplicates: true,
       });
-    } catch (e) {
-      this.logger.error(e.message);
+    }
+
+    const all = await this.prismaService.competition.findMany({
+      where: { id: { in: keys } },
+      select: { id: true, type: true },
+    });
+    for (const c of all) this.competitionByKey.set(c.id, { id: c.id, type: c.type });
+    return { total: keys.length, existing: existing.length, created: Math.max(0, keys.length - existing.length) };
+  }
+
+  private async loadMembers(parsedResults: any[], playerCategory: PlayerCategory): Promise<{ requested: number; found: number; missing: number }> {
+    const licences = new Set<number>();
+    for (const r of parsedResults) {
+      licences.add(r.memberLicence);
+      licences.add(r.opponentLicence);
+    }
+    if (licences.size === 0) return { requested: 0, found: 0, missing: 0 };
+
+    const members = await this.prismaService.member.findMany({
+      where: {
+        licence: { in: Array.from(licences) },
+        playerCategory,
+      },
+    });
+    for (const m of members) this.memberByKey.set(`${m.licence}-${playerCategory}`, m);
+    return { requested: licences.size, found: members.length, missing: Math.max(0, licences.size - members.length) };
+  }
+
+  private buildValidResults(parsedResults: any[], playerCategory: PlayerCategory) {
+    const validResults: any[] = [];
+    const affectedMembers = new Map<number, { id: number; licence: number }>();
+    let dropped = 0;
+
+    for (const parsed of parsedResults) {
+      const member = this.memberByKey.get(`${parsed.memberLicence}-${playerCategory}`);
+      const opponent = this.memberByKey.get(`${parsed.opponentLicence}-${playerCategory}`);
+      const competitionKey = this.getCompetitionKey(parsed.competition);
+      const competition = competitionKey ? this.competitionByKey.get(competitionKey) : undefined;
+      if (!member || !opponent || !competition) {
+        dropped++;
+        continue;
+      }
+
+      validResults.push({
+        ...parsed.result,
+        competitionId: competition.id,
+        memberId: member.id,
+        memberLicence: member.licence,
+        opponentId: opponent.id,
+        opponentLicence: opponent.licence,
+      });
+
+      affectedMembers.set(member.id, { id: member.id, licence: member.licence });
+      affectedMembers.set(opponent.id, { id: opponent.id, licence: opponent.licence });
+    }
+
+    return { validResults, affectedMembers, dropped };
+  }
+
+  private async findExistingResultIds(ids: number[], playerCategory: PlayerCategory): Promise<number[]> {
+    if (ids.length === 0) return [];
+    // Chunk to avoid extremely large IN lists
+    const chunkSize = 5000;
+    const results: number[] = [];
+    for (let i = 0; i < ids.length; i += chunkSize) {
+      const chunk = ids.slice(i, i + chunkSize);
+      const found = await this.prismaService.individualResult.findMany({
+        where: { id: { in: chunk }, playerCategory },
+        select: { id: true },
+      });
+      for (const f of found) results.push(f.id);
+    }
+    return results;
+  }
+
+  private async createResultsInChunks(toCreate: any[]): Promise<void> {
+    if (toCreate.length === 0) return;
+    const chunkSize = 1000;
+    let processed = 0;
+    for (let i = 0; i < toCreate.length; i += chunkSize) {
+      const chunk = toCreate.slice(i, i + chunkSize).map((r) => ({
+        ...r,
+        score: r.score?.substring(0, 3) || r.score,
+        memberRanking: r.memberRanking?.substring(0, 4) || r.memberRanking,
+        opponentRanking: r.opponentRanking?.substring(0, 4) || r.opponentRanking,
+      }));
+      await this.prismaService.individualResult.createMany({
+        data: chunk,
+        skipDuplicates: true,
+      });
+      processed += chunk.length;
+      this.logger.debug(`Created results progress: ${processed}/${toCreate.length}`);
+    }
+  }
+
+  private async updateResultsInChunks(toUpdate: any[]): Promise<void> {
+    if (toUpdate.length === 0) return;
+    // Use larger chunks with raw SQL for much better performance
+    const chunkSize = 1000;
+    let processed = 0;
+
+    for (let i = 0; i < toUpdate.length; i += chunkSize) {
+      const chunk = toUpdate.slice(i, i + chunkSize);
+
+      // Build a bulk UPDATE using raw SQL with unnest for PostgreSQL
+      // This is ~10x faster than individual UPDATE statements
+      const ids: number[] = [];
+      const playerCategories: string[] = [];
+      const dates: Date[] = [];
+      const memberRankings: string[] = [];
+      const memberPointsArr: number[] = [];
+      const opponentRankings: string[] = [];
+      const opponentPointsArr: number[] = [];
+      const results: string[] = [];
+      const scores: string[] = [];
+      const diffPointsArr: number[] = [];
+      const pointsToAddArr: number[] = [];
+      const looseFactors: number[] = [];
+      const definitivePointsToAddArr: number[] = [];
+      const competitionIds: string[] = [];
+      const memberIds: number[] = [];
+      const memberLicences: number[] = [];
+      const opponentIds: number[] = [];
+      const opponentLicences: number[] = [];
+
+      for (const r of chunk) {
+        ids.push(r.id);
+        playerCategories.push(r.playerCategory);
+        dates.push(r.date);
+        memberRankings.push(r.memberRanking?.substring(0, 4) || r.memberRanking || '');
+        memberPointsArr.push(r.memberPoints);
+        opponentRankings.push(r.opponentRanking?.substring(0, 4) || r.opponentRanking || '');
+        opponentPointsArr.push(r.opponentPoints);
+        results.push(r.result);
+        scores.push(r.score?.substring(0, 3) || r.score || '');
+        diffPointsArr.push(r.diffPoints);
+        pointsToAddArr.push(r.pointsToAdd);
+        looseFactors.push(r.looseFactor);
+        definitivePointsToAddArr.push(r.definitivePointsToAdd);
+        competitionIds.push(r.competitionId);
+        memberIds.push(r.memberId);
+        memberLicences.push(r.memberLicence);
+        opponentIds.push(r.opponentId);
+        opponentLicences.push(r.opponentLicence);
+      }
+
+      await this.prismaService.$executeRaw`
+        UPDATE "IndividualResult" AS t SET
+          date = v.date,
+          "memberRanking" = v."memberRanking",
+          "memberPoints" = v."memberPoints",
+          "opponentRanking" = v."opponentRanking",
+          "opponentPoints" = v."opponentPoints",
+          result = v.result::"Result",
+          score = v.score,
+          "diffPoints" = v."diffPoints",
+          "pointsToAdd" = v."pointsToAdd",
+          "looseFactor" = v."looseFactor",
+          "definitivePointsToAdd" = v."definitivePointsToAdd",
+          "competitionId" = v."competitionId",
+          "memberId" = v."memberId",
+          "memberLicence" = v."memberLicence",
+          "opponentId" = v."opponentId",
+          "opponentLicence" = v."opponentLicence"
+        FROM (
+          SELECT * FROM unnest(
+            ${ids}::int[],
+            ${playerCategories}::"PlayerCategory"[],
+            ${dates}::timestamp[],
+            ${memberRankings}::text[],
+            ${memberPointsArr}::float[],
+            ${opponentRankings}::text[],
+            ${opponentPointsArr}::float[],
+            ${results}::text[],
+            ${scores}::text[],
+            ${diffPointsArr}::float[],
+            ${pointsToAddArr}::float[],
+            ${looseFactors}::float[],
+            ${definitivePointsToAddArr}::float[],
+            ${competitionIds}::text[],
+            ${memberIds}::int[],
+            ${memberLicences}::int[],
+            ${opponentIds}::int[],
+            ${opponentLicences}::int[]
+          ) AS v(id, "playerCategory", date, "memberRanking", "memberPoints", "opponentRanking", "opponentPoints", result, score, "diffPoints", "pointsToAdd", "looseFactor", "definitivePointsToAdd", "competitionId", "memberId", "memberLicence", "opponentId", "opponentLicence")
+        ) AS v
+        WHERE t.id = v.id AND t."playerCategory" = v."playerCategory"
+      `;
+
+      processed += chunk.length;
+      this.logger.debug(`Updated results progress: ${processed}/${toUpdate.length}`);
+    }
+  }
+
+  private extractFileDate(lines: string[]): Date | null {
+    if (lines.length === 0) {
+      return null;
+    }
+
+    const firstLine = lines[0].trim();
+
+    // Try to parse as ISO-8601 format
+    try {
+      const date = new Date(firstLine);
+      if (isNaN(date.getTime())) {
+        this.logger.warn(`Invalid date format in first line: ${firstLine}`);
+        return null;
+      }
+      return date;
+    } catch (error) {
+      this.logger.warn(
+        `Failed to parse date from first line: ${firstLine}`,
+        error,
+      );
+      return null;
+    }
+  }
+
+  private async getLastImportAndCheckShouldProcess(
+    fileDate: Date | null,
+    playerCategory: PlayerCategory,
+  ): Promise<{ shouldProcess: boolean; lastImport: { hash: string | null; linesProcessed: number | null; fileDate: Date | null } | null }> {
+    const lastImport = await this.prismaService.dataImport.findFirst({
+      where: {
+        type: ImportType.RESULT,
+        playerCategory,
+      },
+      orderBy: { importedAt: 'desc' },
+    });
+
+    if (!fileDate) {
+      this.logger.warn('No file date found, processing anyway');
+      return { shouldProcess: true, lastImport };
+    }
+
+    if (!lastImport) {
+      this.logger.log('No previous import found, processing file');
+      return { shouldProcess: true, lastImport: null };
+    }
+
+    if (!lastImport.fileDate) {
+      this.logger.log('Previous import has no file date, processing file');
+      return { shouldProcess: true, lastImport };
+    }
+
+    const isNewer = fileDate > lastImport.fileDate;
+    this.logger.log(
+      `File date comparison: new=${fileDate.toISOString()}, last=${lastImport.fileDate.toISOString()}, isNewer=${isNewer}`,
+    );
+    this.logger.log(
+      `🔍 DEBUG: lastImport.id=${lastImport.id}, importedAt=${lastImport.importedAt.toISOString()}`,
+    );
+
+    return { shouldProcess: isNewer, lastImport };
+  }
+
+  private async checkIfRecordsAppendedAtEnd(
+    dataLines: string[],
+    playerCategory: PlayerCategory,
+    lastImport: { hash: string | null; linesProcessed: number | null } | null,
+  ): Promise<{ isAppend: boolean; previousLineCount: number }> {
+    if (!lastImport?.linesProcessed) {
+      this.logger.log('📝 APPEND CHECK: No previous import found, cannot verify append behavior');
+      return { isAppend: false, previousLineCount: 0 };
+    }
+
+    const previousLineCount = lastImport.linesProcessed;
+    const currentLineCount = dataLines.length;
+
+    if (currentLineCount <= previousLineCount) {
+      this.logger.log(
+        `📝 APPEND CHECK: File has same or fewer lines (${currentLineCount} vs ${previousLineCount}) - NOT an append operation`,
+      );
+      return { isAppend: false, previousLineCount };
+    }
+
+    // If we have more lines, check if the first N lines match the previous import
+    const knownLines = dataLines.slice(0, previousLineCount);
+    const knownHash = createHash('sha256')
+      .update(knownLines.join(''))
+      .digest('hex');
+
+    if (knownHash === lastImport.hash) {
+      const newLinesCount = currentLineCount - previousLineCount;
+      this.logger.log(
+        `📝 APPEND CHECK: File structure intact, checking ${newLinesCount} new lines against database (lines ${previousLineCount + 1}-${currentLineCount})`,
+      );
+
+      // Check if the new lines contain unknown records in DB
+      const newLines = dataLines.slice(previousLineCount);
+      const isAppendConfirmed = await this.checkNewLinesAgainstDatabase(newLines, playerCategory);
+
+      if (isAppendConfirmed) {
+        this.logger.log(`✅ APPEND CHECK: CONFIRMED - All ${newLinesCount} new records are unknown to DB, confirming append behavior`);
+        return { isAppend: true, previousLineCount };
+      } else {
+        this.logger.log(`❌ APPEND CHECK: Some new lines contain known records - NOT a clean append`);
+        return { isAppend: false, previousLineCount };
+      }
+    } else {
+      this.logger.log(
+        `❌ APPEND CHECK: NOT an append - file structure changed. Processing all ${currentLineCount} lines`,
+      );
+      return { isAppend: false, previousLineCount };
+    }
+  }
+
+  private async checkNewLinesAgainstDatabase(
+    newLines: string[],
+    playerCategory: PlayerCategory,
+  ): Promise<boolean> {
+    if (newLines.length === 0) {
+      return true;
+    }
+
+    // Parse the new lines to get their IDs
+    const newResultIds = newLines
+      .map((line) => {
+        try {
+          const cols = line.split(';');
+          return parseInt(cols[0], 10);
+        } catch (e) {
+          this.logger.warn(`Failed to parse result ID from line: ${line.substring(0, 50)}...`);
+          return null;
+        }
+      })
+      .filter((id): id is number => id !== null);
+
+    if (newResultIds.length === 0) {
+      this.logger.warn('No valid result IDs found in new lines');
+      return false;
+    }
+
+    this.logger.log(`📝 APPEND CHECK: Checking ${newResultIds.length} new result IDs against database`);
+
+    // Check how many of these IDs already exist in the database
+    const existingIds = await this.findExistingResultIds(newResultIds, playerCategory);
+    const unknownCount = newResultIds.length - existingIds.length;
+
+    this.logger.log(
+      `📝 APPEND CHECK: Database check results - Total: ${newResultIds.length}, Unknown: ${unknownCount}, Known: ${existingIds.length}`,
+    );
+
+    if (existingIds.length > 0) {
+      this.logger.log(`📝 APPEND CHECK: Known IDs found: ${existingIds.slice(0, 5).join(', ')}${existingIds.length > 5 ? '...' : ''}`);
+    }
+
+    // Return true if all new records are unknown (confirming append behavior)
+    return existingIds.length === 0;
+  }
+
+  private async storeImport(
+    contentHash: string,
+    playerCategory: PlayerCategory,
+    fileDate: Date | null,
+    totalLinesInFile: number,
+    processingTimeMs: number,
+    stats?: { linesAdded: number; linesUpdated: number },
+  ): Promise<void> {
+    await this.prismaService.dataImport.create({
+      data: {
+        type: ImportType.RESULT,
+        playerCategory,
+        hash: contentHash,
+        fileDate,
+        linesProcessed: totalLinesInFile,
+        linesAdded: stats?.linesAdded,
+        linesUpdated: stats?.linesUpdated,
+        processingTimeMs,
+      },
+    });
+  }
+
+  private async cleanAllMemberRelatedCaches(): Promise<void> {
+    const patterns: string[] = [
+      'member-stats:*',
+      'member-dashboard:*',
+      'member-dashboard-all-categories:*',
+      'member:weekly-ranking:*',
+      'member:points-history:*',
+      'member:match-results:*',
+      'latest-matches:*',
+      'numeric-ranking:*',
+      'numeric-ranking-v4:*',
+      'head2head:*',
+      'member-categories:*',
+    ];
+    this.logger.log(`Cleaning global member-related caches: ${patterns.length} patterns`);
+    for (let i = 0; i < patterns.length; i += 5) {
+      const batch = patterns.slice(i, i + 5);
+      await Promise.all(batch.map((p) => this.cacheService.cleanKeys(p)));
     }
   }
 }
