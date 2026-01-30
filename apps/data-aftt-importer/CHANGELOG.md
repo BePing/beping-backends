@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.7.0](https://github.com/BePing/beping-backends/compare/data-aftt-importer-v1.6.4...data-aftt-importer-v1.7.0) (2026-01-30)
+
+
+### Features
+
+* enhance results processing and synchronization ([fa1675f](https://github.com/BePing/beping-backends/commit/fa1675fd8e8008850461a6568e9d6d3af1712187))
+
 ## [1.6.4](https://github.com/BePing/beping-backends/compare/data-aftt-importer-v1.6.3...data-aftt-importer-v1.6.4) (2026-01-19)
 
 
