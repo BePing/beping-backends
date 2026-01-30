@@ -119,6 +119,7 @@ export interface ImportCheckResult {
 export interface ProcessingStats {
   linesAdded: number;
   linesUpdated: number;
+  skipped?: boolean;
 }
 
 /**

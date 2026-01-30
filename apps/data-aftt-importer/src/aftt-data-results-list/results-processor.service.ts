@@ -71,20 +71,25 @@ export class ResultsProcessorService {
         fileDate,
         job.data.playerCategory,
       );
+      const dataLines = lines.slice(1);
+      const contentHash = this.computeContentHash(dataLines);
+      const getElapsedMs = () => Date.now() - processingStartTime;
+
       if (!shouldProcess) {
         this.logger.log('No newer data detected, skipping.');
+        await this.storeImport(contentHash, job.data.playerCategory, fileDate, 0, getElapsedMs(), { linesAdded: 0, linesUpdated: 0 });
         return;
       }
 
-      const dataLines = lines.slice(1);
-
-      // Compute content hash early to check if content actually changed
-      const contentHash = this.computeContentHash(dataLines);
-
-      // Skip entirely if content hash matches previous import
-      if (lastImport?.hash === contentHash) {
+      // Skip if content hash matches previous import (except during off-peak hours for full refresh)
+      if (lastImport?.hash === contentHash && !this.isOffPeakHours()) {
         this.logger.log('📝 Content hash matches previous import - skipping processing entirely');
+        await this.storeImport(contentHash, job.data.playerCategory, fileDate, 0, getElapsedMs(), { linesAdded: 0, linesUpdated: 0 });
         return;
+      }
+
+      if (lastImport?.hash === contentHash && this.isOffPeakHours()) {
+        this.logger.log('📝 Content hash matches but off-peak hours - forcing full refresh');
       }
 
       // Check if new records were appended at the end

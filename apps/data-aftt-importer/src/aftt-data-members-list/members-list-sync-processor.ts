@@ -72,15 +72,23 @@ export class MembersListProcessingService {
       this.logger.log(`File date: ${fileDate?.toISOString() || 'Not found'}`);
 
       // Check if processing is needed based on file date
-      const shouldProcess = await this.shouldProcessFile(
+      const { shouldProcess, lastImport } = await this.shouldProcessFile(
         fileDate,
         job.data.playerCategory,
       );
-      if (!shouldProcess) {
+
+      const getElapsedMs = () => Date.now() - startTime;
+
+      if (!shouldProcess && !this.isOffPeakHours()) {
         this.logger.log(
           'File date is not newer than last import, skipping processing',
         );
+        await this.storeImport(lines, job.data.playerCategory, fileDate, 0, getElapsedMs(), { linesAdded: 0, linesUpdated: 0 });
         return;
+      }
+
+      if (!shouldProcess && this.isOffPeakHours()) {
+        this.logger.log('File date not newer but off-peak hours - forcing full refresh');
       }
 
       // Parse entire file once (skip header inside parser)
@@ -499,12 +507,7 @@ export class MembersListProcessingService {
   private async shouldProcessFile(
     fileDate: Date | null,
     playerCategory: PlayerCategory,
-  ): Promise<boolean> {
-    if (!fileDate) {
-      this.logger.warn('No file date found, processing anyway');
-      return true;
-    }
-
+  ): Promise<{ shouldProcess: boolean; lastImport: { hash: string | null; linesProcessed: number | null; fileDate: Date | null } | null }> {
     const lastImport = await this.prismaService.dataImport.findFirst({
       where: {
         type: ImportType.MEMBER,
@@ -513,14 +516,19 @@ export class MembersListProcessingService {
       orderBy: { importedAt: 'desc' },
     });
 
+    if (!fileDate) {
+      this.logger.warn('No file date found, processing anyway');
+      return { shouldProcess: true, lastImport };
+    }
+
     if (!lastImport) {
       this.logger.log('No previous import found, processing file');
-      return true;
+      return { shouldProcess: true, lastImport: null };
     }
 
     if (!lastImport.fileDate) {
       this.logger.log('Previous import has no file date, processing file');
-      return true;
+      return { shouldProcess: true, lastImport };
     }
 
     const isNewer = fileDate > lastImport.fileDate;
@@ -528,7 +536,12 @@ export class MembersListProcessingService {
       `File date comparison: new=${fileDate.toISOString()}, last=${lastImport.fileDate.toISOString()}, isNewer=${isNewer}`,
     );
 
-    return isNewer;
+    return { shouldProcess: isNewer, lastImport };
+  }
+
+  private isOffPeakHours(): boolean {
+    const currentHour = new Date().getHours();
+    return currentHour >= 3 && currentHour < 5;
   }
 
   private async storeImport(
