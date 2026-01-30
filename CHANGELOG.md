@@ -514,6 +514,13 @@
 * separate build image ([73d72e1](https://github.com/BePing/beping-backends/commit/73d72e1526c9443fa5fc165ec752d300a9be0193))
 * sync lock ([2464dbd](https://github.com/BePing/beping-backends/commit/2464dbdd190ccdc7ac946526dedddbbc8935d001))
 
+## [4.8.1](https://github.com/BePing/beping-backends/compare/tabt-rest-v4.8.0...tabt-rest-v4.8.1) (2026-01-30)
+
+
+### Bug Fixes
+
+* enhance members and results processing with off-peak logic ([f9590a5](https://github.com/BePing/beping-backends/commit/f9590a52ba730a5c66f9ad912043c472ed4e5829))
+
 ## [4.8.0](https://github.com/BePing/beping-backends/compare/tabt-rest-v4.7.4...tabt-rest-v4.8.0) (2026-01-30)
 
 

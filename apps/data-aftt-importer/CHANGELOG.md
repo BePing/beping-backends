@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.7.1](https://github.com/BePing/beping-backends/compare/data-aftt-importer-v1.7.0...data-aftt-importer-v1.7.1) (2026-01-30)
+
+
+### Bug Fixes
+
+* enhance members and results processing with off-peak logic ([f9590a5](https://github.com/BePing/beping-backends/commit/f9590a52ba730a5c66f9ad912043c472ed4e5829))
+
 ## [1.7.0](https://github.com/BePing/beping-backends/compare/data-aftt-importer-v1.6.4...data-aftt-importer-v1.7.0) (2026-01-30)
 
 
