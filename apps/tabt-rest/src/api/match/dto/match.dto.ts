@@ -34,12 +34,9 @@ export class GetMatches {
   @IsOptional()
   divisionCategory?: DivisionCategoryDTO;
 
-  @ApiPropertyOptional({
-    type: Number,
-  })
+  @ApiPropertyOptional()
   @IsOptional()
-  @IsNumber()
-  @Transform(({ value }) => parseInt(value), { toClassOnly: true })
+  @IsString()
   weekName?: string;
 
   @ApiPropertyOptional({

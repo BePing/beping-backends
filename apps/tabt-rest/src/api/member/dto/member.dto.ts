@@ -339,7 +339,7 @@ export class WeeklyNumericPointsV1 {
   ranking: number;
 
   @ApiPropertyOptional()
-  rankingLetterEstimation: string;
+  rankingLetterEstimation?: string;
 }
 
 export class NumericRankingPerWeekOpponentsV1 {
@@ -392,49 +392,37 @@ export class NumericRankingDetailsV1 {
 }
 
 export class GetPlayerCategoriesInputV1 {
-  @ApiProperty()
+  @ApiPropertyOptional()
   uniqueIndex?: string;
-  @ApiProperty()
+  @ApiPropertyOptional()
   shortNameSearch?: string;
-  @ApiProperty()
+  @ApiPropertyOptional()
   rankingCategory?: string;
 }
 export class PlayerCategoryEntriesDTOV1 {
-  /** xsd:integer */
-  @ApiProperty()
+  @ApiPropertyOptional()
   uniqueIndex?: string;
-  /** xsd:string */
-  @ApiProperty()
+  @ApiPropertyOptional()
   name?: string;
-  /** xsd:string */
-  @ApiProperty()
+  @ApiPropertyOptional()
   shortName?: string;
-  /** xsd:integer */
-  @ApiProperty()
+  @ApiPropertyOptional()
   rankingCategory?: string;
-  /** xsd:boolean */
-  @ApiProperty()
+  @ApiPropertyOptional()
   isGroup?: string;
-  /** xsd:string */
-  @ApiProperty()
+  @ApiPropertyOptional()
   groupMembers?: string;
-  /** xsd:string */
-  @ApiProperty()
+  @ApiPropertyOptional()
   sex?: string;
-  /** xsd:string */
-  @ApiProperty()
+  @ApiPropertyOptional()
   strictSex?: string;
-  /** xsd:integer */
-  @ApiProperty()
+  @ApiPropertyOptional()
   minimumAge?: string;
-  /** xsd:integer */
-  @ApiProperty()
+  @ApiPropertyOptional()
   maximumAge?: string;
-  /** xsd:integer */
-  @ApiProperty()
+  @ApiPropertyOptional()
   strictMinimumAge?: string;
-  /** xsd:integer */
-  @ApiProperty()
+  @ApiPropertyOptional()
   strictMaximumAge?: string;
 
   static fromTabT(input: PlayerCategoryEntries): PlayerCategoryEntriesDTOV1 {

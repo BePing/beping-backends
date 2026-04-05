@@ -834,10 +834,12 @@ export class MemberDashboardService
           return undefined;
         }
 
-        const playerPoints =
-          playerRanking.numericRankingHistory[
-            playerRanking.numericRankingHistory.length - 1
-          ].numericPoints;
+        const latestPlayerRanking =
+          playerRanking.numericRankingHistory.at(-1);
+        if (!latestPlayerRanking) {
+          return undefined;
+        }
+        const playerPoints = latestPlayerRanking.numericPoints;
 
         // OPTIMIZED: Sequential processing to avoid cache stampede
         // Instead of parallel batches, process sequentially to allow cache to work
@@ -849,10 +851,8 @@ export class MemberDashboardService
               player.uniqueIndex,
               category,
             );
-            const latestRanking =
-              ranking.numericRankingHistory[
-                ranking.numericRankingHistory.length - 1
-              ];
+            const latestRanking = ranking.numericRankingHistory.at(-1);
+            if (!latestRanking) continue;
 
             opponentPlayersRanking.push({
               ...player,
