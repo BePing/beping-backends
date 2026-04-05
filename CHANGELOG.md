@@ -514,6 +514,13 @@
 * separate build image ([73d72e1](https://github.com/BePing/beping-backends/commit/73d72e1526c9443fa5fc165ec752d300a9be0193))
 * sync lock ([2464dbd](https://github.com/BePing/beping-backends/commit/2464dbdd190ccdc7ac946526dedddbbc8935d001))
 
+## [4.8.3](https://github.com/BePing/beping-backends/compare/tabt-rest-v4.8.2...tabt-rest-v4.8.3) (2026-04-05)
+
+
+### Bug Fixes
+
+* bounds checks, OpenAPI schema mismatches, and DTO corrections ([2760bde](https://github.com/BePing/beping-backends/commit/2760bde30873069f7208eb276af415ecc68a1f5b))
+
 ## [4.8.2](https://github.com/BePing/beping-backends/compare/tabt-rest-v4.8.1...tabt-rest-v4.8.2) (2026-04-05)
 
 
