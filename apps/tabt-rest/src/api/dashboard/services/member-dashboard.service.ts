@@ -129,11 +129,11 @@ export class MemberDashboardService
 
       const results = await Promise.all(dashboardPromises);
 
-      // Build response object
+      // Build response object — only include dashboards that loaded successfully
       const response: { [key in PrismaPlayerCategory]?: MemberDashboardDTOV1 } =
         {};
       results.forEach((result) => {
-        if (result) {
+        if (result && result.dashboard?.member) {
           response[result.category] = result.dashboard;
         }
       });
@@ -226,9 +226,7 @@ export class MemberDashboardService
             );
 
         if (member.status === RESPONSE_STATUS.ERROR) {
-          return new MemberDashboardDTOV1(
-            ResponseDTO.error('No member found for given id'),
-          );
+          throw new Error('No member found for given id');
         }
 
         // Parallelize all data fetching operations

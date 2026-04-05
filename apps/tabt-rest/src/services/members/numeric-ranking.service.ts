@@ -210,7 +210,7 @@ export class NumericRankingService {
         }
 
         const eventGroupedArray: NumericRankingDetailsV1[] = [];
-        let basePoints = results[0]?.memberPoints.toNumber() ?? 0;
+        let basePoints = results[0]?.memberPoints?.toNumber() ?? 0;
 
         // Process events in chronological order
         for (const [key, events] of Array.from(eventMap.entries()).sort()) {
@@ -224,7 +224,7 @@ export class NumericRankingService {
             opponentName: `${result.memberOpponent.firstname} ${result.memberOpponent.lastname}`,
             opponentRanking: result.opponentRanking,
             opponentUniqueIndex: result.opponentLicence,
-            opponentNumericPoints: result.opponentPoints.toNumber(),
+            opponentNumericPoints: result.opponentPoints?.toNumber() ?? 0,
             pointsWon: result.definitivePointsToAdd.toNumber(),
             score: result.score,
           }));

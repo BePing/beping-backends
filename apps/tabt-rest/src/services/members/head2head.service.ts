@@ -53,7 +53,7 @@ export class MatchEntryHistory {
   @ApiProperty()
   opponentRanking: string;
 
-  @ApiProperty()
+  @ApiPropertyOptional()
   score?: string;
 }
 
