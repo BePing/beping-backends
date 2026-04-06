@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.7.2](https://github.com/BePing/beping-backends/compare/data-aftt-importer-v1.7.1...data-aftt-importer-v1.7.2) (2026-04-06)
+
+
+### Performance Improvements
+
+* rewrite aftt-import with bulk SQL for 100x speedup ([7305eb8](https://github.com/BePing/beping-backends/commit/7305eb829c38ff8076699791db50f6585139a798))
+
 ## [1.7.1](https://github.com/BePing/beping-backends/compare/data-aftt-importer-v1.7.0...data-aftt-importer-v1.7.1) (2026-01-30)
 
 
