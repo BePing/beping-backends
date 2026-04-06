@@ -81,15 +81,11 @@ export class ResultsProcessorService {
         return;
       }
 
-      // Skip if content hash matches previous import (except during off-peak hours for full refresh)
-      if (lastImport?.hash === contentHash && !this.isOffPeakHours()) {
-        this.logger.log('📝 Content hash matches previous import - skipping processing entirely');
+      // Skip if content hash matches previous import
+      if (lastImport?.hash === contentHash) {
+        this.logger.log('Content hash matches previous import - skipping processing entirely');
         await this.storeImport(contentHash, job.data.playerCategory, fileDate, 0, getElapsedMs(), { linesAdded: 0, linesUpdated: 0 });
         return;
-      }
-
-      if (lastImport?.hash === contentHash && this.isOffPeakHours()) {
-        this.logger.log('📝 Content hash matches but off-peak hours - forcing full refresh');
       }
 
       // Check if new records were appended at the end
@@ -139,14 +135,6 @@ export class ResultsProcessorService {
       if (validResults.length === 0) {
         this.logger.log('No valid results to process.');
       } else {
-        // Check if we should update existing records (only between 3am-5am to reduce load on small VPS)
-        const shouldUpdateExisting = this.isOffPeakHours();
-
-        const currentHour = new Date().getHours();
-        this.logger.log(
-          `Current hour: ${currentHour}, ${shouldUpdateExisting ? 'updating existing records' : 'only processing new records'}`,
-        );
-
         // Partition into create vs update
         const ids = validResults.map((r) => r.id);
         const existingIds = await this.findExistingResultIds(
@@ -156,25 +144,21 @@ export class ResultsProcessorService {
 
         const existingSet = new Set<number>(existingIds);
         const toCreate = validResults.filter((r) => !existingSet.has(r.id));
-        const toUpdate = shouldUpdateExisting
-          ? validResults.filter((r) => existingSet.has(r.id))
-          : [];
+        const toUpdate = validResults.filter((r) => existingSet.has(r.id));
 
         this.logger.log(
-          `Upsert plan - toCreate: ${toCreate.length}, toUpdate: ${toUpdate.length}${!shouldUpdateExisting ? ' (updates skipped - outside 3am-5am window)' : ''}`,
+          `Upsert plan - toCreate: ${toCreate.length}, toUpdate: ${toUpdate.length}`,
         );
 
         // Fast-path creates
         await this.createResultsInChunks(toCreate);
 
-        // Batched updates (only between 3am-5am)
-        if (shouldUpdateExisting) {
-          await this.updateResultsInChunks(toUpdate);
-        }
+        // Bulk updates via raw SQL unnest
+        await this.updateResultsInChunks(toUpdate);
 
         // Store counts for DataImport record
         linesAdded = toCreate.length;
-        linesUpdated = shouldUpdateExisting ? toUpdate.length : 0;
+        linesUpdated = toUpdate.length;
       }
 
       // Only clean caches if we actually changed something
@@ -698,11 +682,6 @@ export class ResultsProcessorService {
   // ============================================================================
   // UTILITIES
   // ============================================================================
-
-  private isOffPeakHours(): boolean {
-    const currentHour = new Date().getHours();
-    return currentHour >= 3 && currentHour < 5;
-  }
 
   private computeContentHash(lines: string[]): string {
     return createHash('sha256')

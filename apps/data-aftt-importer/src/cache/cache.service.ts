@@ -48,14 +48,17 @@ export class CacheService {
   }
 
   async cleanKeys(pattern: string): Promise<void> {
-    // In cache-manager v6, store is accessed differently
     const store = (this.cacheManager as any).store;
-    if (!store || !store.keys) {
-      return;
-    }
+    if (!store?.keys) return;
+
     const keys = await store.keys(pattern);
-    for (const key of keys) {
-      await this.cacheManager.del(key);
+    if (keys.length === 0) return;
+
+    // Batch delete: use mDel if available, otherwise parallel del
+    if (store.mDel) {
+      await store.mDel(...keys);
+    } else {
+      await Promise.all(keys.map((k) => this.cacheManager.del(k)));
     }
   }
 }
