@@ -514,6 +514,13 @@
 * separate build image ([73d72e1](https://github.com/BePing/beping-backends/commit/73d72e1526c9443fa5fc165ec752d300a9be0193))
 * sync lock ([2464dbd](https://github.com/BePing/beping-backends/commit/2464dbdd190ccdc7ac946526dedddbbc8935d001))
 
+## [4.8.4](https://github.com/BePing/beping-backends/compare/tabt-rest-v4.8.3...tabt-rest-v4.8.4) (2026-04-06)
+
+
+### Performance Improvements
+
+* rewrite aftt-import with bulk SQL for 100x speedup ([7305eb8](https://github.com/BePing/beping-backends/commit/7305eb829c38ff8076699791db50f6585139a798))
+
 ## [4.8.3](https://github.com/BePing/beping-backends/compare/tabt-rest-v4.8.2...tabt-rest-v4.8.3) (2026-04-05)
 
 
