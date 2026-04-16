@@ -44,8 +44,8 @@ async function bootstrap() {
     .addTag('Divisions')
     .addTag('Tournaments')
     .addTag('Search')
+    .addServer('https://api-v2.beping.be', 'production')
     .addServer('http://localhost:3004', 'development')
-    .addServer('https://api.beping.be', 'production')
     .build();
 
   app.enableVersioning({
