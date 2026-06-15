@@ -23,6 +23,7 @@ model Member {
   category          String
   worldRanking      Int
   nationality       String
+  
   pointsHistory     NumericPoints[]
   results           IndividualResult[] @relation("member")
   resultsAsOpponent IndividualResult[] @relation("memberopponent")

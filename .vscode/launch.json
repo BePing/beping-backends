@@ -5,53 +5,43 @@
             "name": "Debug NestJS (tabt-rest)",
             "type": "node",
             "request": "launch",
-            "runtimeExecutable": "node",
-            "runtimeArgs": [
-                "--inspect-brk=9229",
-                "${workspaceFolder}/node_modules/@nestjs/cli/bin/nest.js",
-                "start",
-                "tabt-rest",
-                "--watch"
-            ],
+            "program": "${workspaceFolder}/node_modules/@nestjs/cli/bin/nest.js",
+            "args": ["start", "tabt-rest", "--watch"],
             "console": "integratedTerminal",
-            "restart": true,
             "cwd": "${workspaceFolder}",
             "skipFiles": ["<node_internals>/**"],
-            "envFile": "${workspaceFolder}/.env"
+            "envFile": "${workspaceFolder}/.env",
+            "env": {
+                "NODE_OPTIONS": ""
+            }
         },
-                {
+        {
             "name": "Debug NestJS (data-aftt-importer)",
             "type": "node",
             "request": "launch",
-            "runtimeExecutable": "node",
-            "runtimeArgs": [
-                "--inspect-brk=9229",
-                "${workspaceFolder}/node_modules/@nestjs/cli/bin/nest.js",
-                "start",
-                "data-aftt-importer",
-                "--watch"
-            ],
+            "program": "${workspaceFolder}/node_modules/@nestjs/cli/bin/nest.js",
+            "args": ["start", "data-aftt-importer", "--watch"],
             "console": "integratedTerminal",
-            "restart": true,
             "cwd": "${workspaceFolder}",
             "skipFiles": ["<node_internals>/**"],
-            "envFile": "${workspaceFolder}/.env"
+            "envFile": "${workspaceFolder}/.env",
+            "env": {
+                "NODE_OPTIONS": ""
+            }
         },
         {
-            "name": "Attach to NestJS (tabt-rest)",
+            "name": "Debug NestJS (app-notifications)",
             "type": "node",
-            "request": "attach",
-            "port": 9229,
-            "restart": true,
+            "request": "launch",
+            "program": "${workspaceFolder}/node_modules/@nestjs/cli/bin/nest.js",
+            "args": ["start", "app-notifications", "--watch"],
+            "console": "integratedTerminal",
             "cwd": "${workspaceFolder}",
-            "skipFiles": ["<node_internals>/**"]
-        },
-        {
-            "name": "Attach to Node Functions",
-            "type": "node",
-            "request": "attach",
-            "port": 9229,
-            "preLaunchTask": "func: host start"
+            "skipFiles": ["<node_internals>/**"],
+            "envFile": "${workspaceFolder}/.env",
+            "env": {
+                "NODE_OPTIONS": ""
+            }
         }
     ]
 }

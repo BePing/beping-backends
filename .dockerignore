@@ -1,14 +1,8 @@
-# Docker
-Dockerfile
-.dockerignore
-docker-compose*.yml
-
-# Dependencies (will be installed fresh)
+# Dependencies (installed fresh in build)
 node_modules
 npm-debug.log
-yarn-error.log
 
-# Build output (will be built fresh)
+# Build output (built fresh in build)
 dist
 
 # Git
@@ -18,28 +12,21 @@ dist
 # IDE
 .idea
 .vscode
-*.swp
-*.swo
 
-# Test files
+# Tests
 coverage
-test
 **/*.spec.ts
 **/*.test.ts
 jest.config.*
-jest-e2e.json
 
-# Documentation
+# Docs
 *.md
 docs
-CHANGELOG.md
 
-# CI/CD (not needed in image)
+# CI/CD
 .github
-.gitlab-ci.yml
-.circleci
 
-# Development configs
+# Dev configs
 .env*
 .editorconfig
 .eslintrc*
@@ -48,8 +35,12 @@ CHANGELOG.md
 release-please*
 release-it.*
 
+# Docker (avoid recursive copy)
+Dockerfile
+.dockerignore
+docker-compose*.yml
+
 # Misc
 *.log
 .DS_Store
 tmp
-temp

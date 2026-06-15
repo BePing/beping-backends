@@ -6,6 +6,7 @@ import helmet from 'helmet';
 import * as compression from 'compression';
 import * as responseTime from 'response-time';
 import { ValidationPipe, VersioningType } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { PackageService } from './common/package/package.service';
 import { Logger } from 'nestjs-pino';
 
@@ -19,7 +20,8 @@ async function bootstrap() {
   app.useLogger(app.get(Logger));
 
   const packageService = app.get(PackageService);
-  app.setGlobalPrefix(process.env.API_PREFIX);
+  const configService = app.get(ConfigService);
+  app.setGlobalPrefix(configService.get('API_PREFIX'));
 
   const options = new DocumentBuilder()
     .setTitle('TabT Rest')
@@ -59,7 +61,7 @@ async function bootstrap() {
 
   app.useGlobalPipes(new ValidationPipe());
 
-  await app.listen(process.env.PORT || 3004);
+  await app.listen(configService.get('PORT') || 3004);
 }
 
 bootstrap();
