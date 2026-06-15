@@ -18,6 +18,10 @@ services:
       AFTT_DATA_BASE_URL: '${AFTT_DATA_BASE_URL:-https://data.aftt.be}'
       AFTT_DATA_USERNAME: '${AFTT_DATA_USERNAME}'
       AFTT_DATA_PASSWORD: '${AFTT_DATA_PASSWORD}'
+      MEMBER_BATCH_SIZE: '${MEMBER_BATCH_SIZE:-500}'
+      MEMBER_POINTS_BATCH_SIZE: '${MEMBER_POINTS_BATCH_SIZE:-500}'
+      RESULTS_BATCH_SIZE: '${RESULTS_BATCH_SIZE:-500}'
+      IMPORT_BATCH_COOLDOWN_MS: '${IMPORT_BATCH_COOLDOWN_MS:-100}'
     labels:
       - coolify.managed=true
       - coolify.name=data-importer

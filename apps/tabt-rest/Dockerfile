@@ -1,64 +1,55 @@
 # syntax=docker/dockerfile:1.4
 
-# Build stage
+# ──────────────────────────────────────────────
+# Build stage — shared npm ci + prisma + compile
+# ──────────────────────────────────────────────
 ARG NODE_VERSION=20.19.0-alpine
 FROM node:${NODE_VERSION} AS builder
 
-# Install build dependencies
-RUN apk add --no-cache \
-    openssl \
-    python3 \
-    make \
-    g++ \
-    libc6-compat
+RUN apk add --no-cache openssl python3 make g++ libc6-compat
 
 WORKDIR /usr/src/app
 
-# Copy only package files first for better layer caching
+# 1. Install deps (layer cached unless package*.json changes)
 COPY package*.json ./
-
-# Use BuildKit cache mount for npm - persists across builds
-ENV NODE_OPTIONS="--max-old-space-size=4096"
 RUN --mount=type=cache,target=/root/.npm \
-    npm ci --legacy-peer-deps
+    npm ci --legacy-peer-deps --ignore-scripts && \
+    npm rebuild
 
-# Copy prisma schema and generate client
+# 2. Generate Prisma client
 COPY prisma/ ./prisma/
-RUN --mount=type=cache,target=/root/.npm \
-    npm run prisma:generate
+RUN npx prisma generate
 
-# Copy source code (all apps due to cross-dependencies)
+# 3. Build this app only
 COPY nest-cli.json tsconfig*.json ./
 COPY apps/ ./apps/
-
-# Build application
 RUN npm run build:tabt-rest
 
-# Prune devDependencies in place (faster than re-installing)
+# 4. Prune to production deps only
 RUN npm prune --omit=dev --legacy-peer-deps
 
-# Production stage
+# ──────────────────────────────────────────────
+# Production stage — minimal runtime
+# ──────────────────────────────────────────────
 FROM node:${NODE_VERSION} AS production
 
-# Install runtime dependencies and prisma CLI for migrations
 RUN apk add --no-cache dumb-init openssl wget \
-    && npm install -g prisma@5.20.0 \
     && addgroup -g 1001 -S nodejs \
     && adduser -S nestjs -u 1001
 
 WORKDIR /usr/src/app
 
-# Copy pruned node_modules from builder (skip second npm install)
+# Copy only production node_modules (no devDeps)
 COPY --from=builder --chown=nestjs:nodejs /usr/src/app/node_modules ./node_modules
 
-# Copy built application and prisma
-COPY --from=builder --chown=nestjs:nodejs /usr/src/app/dist ./dist
+# Copy built app + prisma schema/migrations
+COPY --from=builder --chown=nestjs:nodejs /usr/src/app/dist/apps/tabt-rest ./dist/apps/tabt-rest
 COPY --from=builder --chown=nestjs:nodejs /usr/src/app/prisma ./prisma
 COPY --from=builder --chown=nestjs:nodejs /usr/src/app/package.json ./
 
-# Copy startup script and setup
+# Startup script
 COPY --chown=nestjs:nodejs apps/tabt-rest/start.sh ./start.sh
-RUN chmod +x ./start.sh && mkdir -p /usr/src/app/logs
+RUN chmod +x ./start.sh
 
 USER nestjs
 

@@ -1,21 +1,23 @@
 #!/bin/sh
 set -e
 
-echo "Starting app-notifications application..."
+echo "Starting app-notifications..."
 
-# Wait for database to be ready
-echo "Waiting for database to be ready..."
-until echo "SELECT 1;" | npx prisma db execute --stdin --schema /usr/src/app/prisma/schema.prisma >/dev/null 2>&1; do
-  echo "Database is not ready yet. Waiting..."
+# Wait for database (bounded so a stuck DB surfaces as a failed container)
+MAX_RETRIES=60
+RETRY_COUNT=0
+while [ $RETRY_COUNT -lt $MAX_RETRIES ]; do
+  if node -e "const{PrismaClient}=require('@prisma/client');new PrismaClient().\$queryRaw\`SELECT 1\`.then(()=>process.exit(0)).catch(()=>process.exit(1))" >/dev/null 2>&1; then
+    break
+  fi
+  RETRY_COUNT=$((RETRY_COUNT + 1))
+  if [ $RETRY_COUNT -ge $MAX_RETRIES ]; then
+    echo "ERROR: Database unreachable after $MAX_RETRIES attempts"
+    exit 1
+  fi
   sleep 2
 done
 
-echo "Database is ready. Running Prisma migrations..."
+./node_modules/.bin/prisma migrate deploy --schema /usr/src/app/prisma/schema.prisma
 
-# Run Prisma migrations
-npx prisma migrate deploy --schema /usr/src/app/prisma/schema.prisma
-
-echo "Migrations completed successfully. Starting the application..."
-
-# Start the application
 exec node dist/apps/app-notifications/main
