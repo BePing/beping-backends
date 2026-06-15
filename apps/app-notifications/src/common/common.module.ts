@@ -10,7 +10,7 @@ import {
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import memoryStore from 'cache-manager-memory-store';
 import { redisStore } from 'cache-manager-redis-store';
-import { PrismaService } from './prisma.service';
+import { PrismaService } from '@app/common';
 import { OpenAIService } from './openai.service';
 
 @Injectable()

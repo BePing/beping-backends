@@ -13,10 +13,10 @@ import pino from 'pino';
 import { cloneDeep } from 'lodash';
 import { SocksProxyHttpClient } from './socks-proxy/socks-proxy-http-client';
 import { createSoapClient } from './tabt-client/soap-client.factory';
-import { CacheModuleOptsFactory } from './cache/cache-module-opts.factory';
+import { CacheModuleOptsFactory } from '@app/common';
 import { HttpModule } from '@nestjs/axios';
 import { CacheModule } from '@nestjs/cache-manager';
-import { PrismaService } from './prisma.service';
+import { PrismaService } from '@app/common';
 import { MemberService } from '../services/members/member.service';
 import { ClientsModule, Transport } from '@nestjs/microservices';
 

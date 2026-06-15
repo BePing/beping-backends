@@ -1,6 +1,6 @@
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import * as admin from 'firebase-admin';
-import { PrismaService } from '../common/prisma.service';
+import { PrismaService } from '@app/common';
 import {
   DevicePlatform,
   NotificationStatus,

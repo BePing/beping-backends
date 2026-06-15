@@ -7,7 +7,7 @@ import { HealthController } from './controllers/health.controller';
 import { CommonModule } from './common/common.module';
 import { AuthModule } from './auth/auth.module';
 import { NotificationsModule } from './notifications/notifications.module';
-import { PrismaService } from './common/prisma.service';
+import { PrismaService } from '@app/common';
 import { NotificationsController } from './controllers/notifications.controller';
 import { EventsController } from './controllers/events.controller';
 

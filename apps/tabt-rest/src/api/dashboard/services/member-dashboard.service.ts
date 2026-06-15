@@ -37,7 +37,7 @@ import {
   SortSystem,
 } from '../../../services/matches/matches-members-ranker.service';
 import { PointsEstimationService } from '../../../services/members/points-estimation.service';
-import { PrismaService } from '../../../common/prisma.service';
+import { PrismaService } from '@app/common';
 import { PlayerCategory as PrismaPlayerCategory } from '@prisma/client';
 
 @Injectable()

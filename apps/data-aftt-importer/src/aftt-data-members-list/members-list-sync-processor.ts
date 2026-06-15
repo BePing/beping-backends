@@ -3,7 +3,7 @@ import { firstValueFrom } from 'rxjs';
 import { Logger, Inject } from '@nestjs/common';
 import { PlayerCategory, ImportType } from '@prisma/client';
 import { OnQueueActive, Process, Processor } from '@nestjs/bull';
-import { PrismaService } from '../prisma.service';
+import { PrismaService } from '@app/common';
 import { Job } from 'bull';
 import { CacheService } from '../cache/cache.service';
 import { createHash } from 'crypto';

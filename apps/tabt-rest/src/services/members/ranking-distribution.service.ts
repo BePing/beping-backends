@@ -1,6 +1,6 @@
 import { Injectable, OnModuleInit, OnModuleDestroy } from '@nestjs/common';
 import { PlayerCategoryDTO } from '../../common/dto/player-category.dto';
-import { PrismaService } from '../../common/prisma.service';
+import { PrismaService } from '@app/common';
 import {
   MEN_RANKING_ESTIMATION,
   WOMAN_RANKING_ESTIMATION,

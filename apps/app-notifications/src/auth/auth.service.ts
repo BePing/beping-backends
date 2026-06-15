@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { createHash } from 'crypto';
-import { PrismaService } from '../common/prisma.service';
+import { PrismaService } from '@app/common';
 
 @Injectable()
 export class AuthService {

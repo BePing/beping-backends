@@ -9,7 +9,7 @@ import {
 } from '@prisma/client';
 import { OnQueueActive, Process, Processor } from '@nestjs/bull';
 import { Job } from 'bull';
-import { PrismaService } from '../prisma.service';
+import { PrismaService } from '@app/common';
 import { CacheService } from '../cache/cache.service';
 import { createHash } from 'crypto';
 import { PERFORMANCE_CONFIG } from '../constants';

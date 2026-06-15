@@ -13,7 +13,7 @@ import {
 } from '../../api/member/dto/member.dto';
 import { ConfigService } from '@nestjs/config';
 import { PlayerCategoryDTO } from '../../common/dto/player-category.dto';
-import { PrismaService } from '../../common/prisma.service';
+import { PrismaService } from '@app/common';
 import { BepingNotifierService } from '../notifications/beping-notifier.service';
 import { RankingDistributionService } from './ranking-distribution.service';
 import { ApiProperty } from '@nestjs/swagger';
