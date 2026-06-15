@@ -12,7 +12,6 @@ import {
   Version,
 } from '@nestjs/common';
 import { ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
-import { TournamentSerieEntry } from '../../../entity/tabt-soap/TabTAPI_Port';
 import { TabtException } from '../../../common/filter/tabt-exceptions.filter';
 import { TournamentService } from '../../../services/tournaments/tournament.service';
 import {

@@ -1,7 +1,7 @@
 import { Client } from 'soap';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Transform } from 'class-transformer';
-import { Level, PlayerCategory } from '../tabt-input.interface';
+import { Level } from '../tabt-input.interface';
 import { decode } from 'he';
 
 export enum DivisionCategory {
@@ -740,10 +740,10 @@ export class IndividualMatchResult {
   AwayPlayerUniqueIndex: Array<number>;
 
   @ApiPropertyOptional()
-  HomeSetCount: number|null;
+  HomeSetCount: number | null;
 
   @ApiPropertyOptional()
-  AwaySetCount: number|null;
+  AwaySetCount: number | null;
 
   @ApiPropertyOptional()
   IsHomeForfeited: boolean;
@@ -1053,7 +1053,7 @@ export class MemberEntryResultEntry {
 
   @ApiProperty()
   SetFor: number;
- 
+
   /** http://api.frenoy.net/TabTAPI#xsd:integer(undefined) */
   @ApiProperty()
   SetAgainst: number;

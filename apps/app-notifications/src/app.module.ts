@@ -28,4 +28,4 @@ import { EventsController } from './controllers/events.controller';
   controllers: [HealthController, NotificationsController, EventsController],
   providers: [PrismaService],
 })
-export class AppModule { }
+export class AppModule {}

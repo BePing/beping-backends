@@ -13,7 +13,6 @@ import {
   ApiResponse,
   ApiTags,
 } from '@nestjs/swagger';
-import { MemberEntry } from '../../../entity/tabt-soap/TabTAPI_Port';
 import { ClubService } from '../../../services/clubs/club.service';
 import { ClubTeamService } from '../../../services/clubs/club-team.service';
 import { TabtException } from '../../../common/filter/tabt-exceptions.filter';

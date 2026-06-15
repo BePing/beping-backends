@@ -1,8 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import {
-  Level,
-  PlayerCategory,
-} from 'apps/tabt-rest/src/entity/tabt-input.interface';
+import { PlayerCategory } from 'apps/tabt-rest/src/entity/tabt-input.interface';
 
 export class TeamEntryDto {
   @ApiProperty()

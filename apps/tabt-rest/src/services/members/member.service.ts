@@ -1,18 +1,9 @@
 import { Injectable, Logger } from '@nestjs/common';
-import {
-  GetMembersInput,
-  MemberEntry,
-} from '../../entity/tabt-soap/TabTAPI_Port';
+import { MemberEntry } from '../../entity/tabt-soap/TabTAPI_Port';
 import { TabtClientService } from '../../common/tabt-client/tabt-client.service';
 import { ContextService } from '../../common/context/context.service';
-import { HeaderKeys } from '../../common/context/context.constants';
-import { PlayerCategory } from '../../entity/tabt-input.interface';
 import { GetMembersV1 } from '../../api/member/dto/member.dto';
-import {
-  mapPlayerCategoryDTOToPlayerCategory,
-  mapPlayerCategoryToPlayerCategoryDTO,
-  PlayerCategoryDTO,
-} from '../../common/dto/player-category.dto';
+import { mapPlayerCategoryDTOToPlayerCategory } from '../../common/dto/player-category.dto';
 
 @Injectable()
 export class MemberService {

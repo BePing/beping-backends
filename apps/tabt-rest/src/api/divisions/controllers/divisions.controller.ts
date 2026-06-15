@@ -9,11 +9,6 @@ import {
   UseInterceptors,
   Version,
 } from '@nestjs/common';
-import {
-  DivisionEntry,
-  RankingEntry,
-  TeamMatchesEntry,
-} from '../../../entity/tabt-soap/TabTAPI_Port';
 import { DivisionService } from '../../../services/divisions/division.service';
 import {
   ApiNotFoundResponse,
@@ -146,6 +141,7 @@ export class DivisionsController {
   @Version('1')
   async findMatchesDivisionV1(
     @Param('divisionId', ParseIntPipe) id: number,
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars -- documents query params for OpenAPI; not yet wired into the service
     @Query() query: GetDivisionMatchesV1,
   ): Promise<TeamMatchesEntryDTO[]> {
     const matches = await this.matchesService.getMatches({

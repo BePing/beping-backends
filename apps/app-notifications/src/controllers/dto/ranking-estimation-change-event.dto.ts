@@ -14,4 +14,3 @@ export class RankingEstimationChangeEventDto {
   @IsEnum(PlayerCategory)
   playerCategory: PlayerCategory;
 }
-

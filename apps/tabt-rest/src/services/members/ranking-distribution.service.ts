@@ -44,7 +44,7 @@ export class RankingDistributionService
     category: PlayerCategoryDTO = PlayerCategoryDTO.SENIOR_MEN,
   ): Promise<number> {
     // Check if cache needs refresh (older than 1 day)
-    var shouldRefresh =
+    const shouldRefresh =
       !this.memberCountCache.lastUpdated ||
       Date.now() - this.memberCountCache.lastUpdated.getTime() >
         24 * 60 * 60 * 1000;
@@ -165,7 +165,8 @@ export class RankingDistributionService
       .sort((a, b) => b - a); // Sort in descending order
 
     const selectedCount =
-      availableCounts.find((count) => count <= totalPlayers) || estimationTable[availableCounts[0]];
+      availableCounts.find((count) => count <= totalPlayers) ||
+      estimationTable[availableCounts[0]];
 
     return estimationTable[selectedCount.toString()];
   }
@@ -178,7 +179,7 @@ export class RankingDistributionService
     const rankingTable = this.getRankingTable(totalPlayers, category);
     return (
       Object.entries(rankingTable).find(
-        ([_, threshold]) => ranking <= threshold,
+        ([, threshold]) => ranking <= threshold,
       )?.[0] || 'NC'
     );
   }

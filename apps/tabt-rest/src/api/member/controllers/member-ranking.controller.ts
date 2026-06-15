@@ -26,14 +26,17 @@ export class MemberRankingController {
     description: 'Player category (defaults to SENIOR_MEN)',
   })
   async getRankingTable(
-    @Query('category') category: PlayerCategoryDTO = PlayerCategoryDTO.SENIOR_MEN,
+    @Query('category')
+    category: PlayerCategoryDTO = PlayerCategoryDTO.SENIOR_MEN,
   ): Promise<RankingTableDTOV1> {
     const totalPlayers =
       await this.rankingDistributionService.getMembersWithRankingCount(
         category,
       );
-    const thresholds =
-      this.rankingDistributionService.getRankingTable(totalPlayers, category);
+    const thresholds = this.rankingDistributionService.getRankingTable(
+      totalPlayers,
+      category,
+    );
 
     return {
       totalPlayers,

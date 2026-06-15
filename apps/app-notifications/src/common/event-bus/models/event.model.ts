@@ -15,4 +15,7 @@ export interface TabtEvent<T = TabtEventPayloadTypes> {
   corrId: string;
 }
 
-export type TabtEventPayloadTypes = TeamMatchEventDTO | NumericRankingEventDto | RankingEstimationChangeEventDto;
+export type TabtEventPayloadTypes =
+  | TeamMatchEventDTO
+  | NumericRankingEventDto
+  | RankingEstimationChangeEventDto;

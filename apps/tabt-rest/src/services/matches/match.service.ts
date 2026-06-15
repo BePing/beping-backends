@@ -4,9 +4,6 @@ import {
   TeamMatchesEntry,
 } from '../../entity/tabt-soap/TabTAPI_Port';
 import { TabtClientService } from '../../common/tabt-client/tabt-client.service';
-import { PlayerCategory, Level } from '../../entity/tabt-input.interface';
-import { PlayerCategoryDTO } from '../../common/dto/player-category.dto';
-import { LevelDTO } from '../../common/dto/levels.dto';
 import { WeeklyPerformanceMetricsDTO } from '../../api/match/dto/performance-metrics.dto';
 import { MemberEntryResultEntry } from '../../common/tabt-client/model/memberEntryResultEntry';
 
@@ -26,6 +23,7 @@ export class MatchService {
     playerUniqueIndex: number,
     weekName: string,
   ): Promise<WeeklyPerformanceMetricsDTO> {
+    void weekName;
     const player = await this.tabtClient.GetMembersAsync({
       UniqueIndex: playerUniqueIndex,
       WithResults: true,

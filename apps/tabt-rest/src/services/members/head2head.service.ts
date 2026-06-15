@@ -13,7 +13,6 @@ import { UserAgentsUtil } from '../../common/utils/user-agents.util';
 // Constants
 const AFTT_BASE_URL = 'https://resultats.aftt.be/index.php';
 const CACHE_PREFIX = 'head2head';
-const QUERY_PARAMS = ['season', 'week_name', 'div_id'];
 
 // Interfaces
 export interface ExtractedMatchInfo {
@@ -191,14 +190,18 @@ export class Head2headService {
       const url = `${AFTT_BASE_URL}?menu=4&head=1&player_1=${playerA}&player_2=${playerB}`;
       this.logger.debug(`Fetching AFTT page from ${url}`);
       const result = await firstValueFrom(
-        this.httpService.post(url, {
-          responseType: 'text',
-          maxRedirects: 0,
-        }, {
-          headers: {
-            'user-agent': UserAgentsUtil.random,
+        this.httpService.post(
+          url,
+          {
+            responseType: 'text',
+            maxRedirects: 0,
           },
-        }),
+          {
+            headers: {
+              'user-agent': UserAgentsUtil.random,
+            },
+          },
+        ),
       );
       const htmlLength = result.data?.length || 0;
       this.logger.debug(
@@ -285,9 +288,10 @@ export class Head2headService {
     // If no matches found, try alternative patterns and log samples
     if (matches.length === 0) {
       this.logger.warn('No matches extracted. Trying alternative patterns...');
-      
+
       // Try a more flexible pattern that doesn't require exact order
-      const flexiblePattern = /<A[^>]*href="[^"]*season=(\d+)[^"]*"[^>]*>([^<]+)<\/A>/gi;
+      const flexiblePattern =
+        /<A[^>]*href="[^"]*season=(\d+)[^"]*"[^>]*>([^<]+)<\/A>/gi;
       const flexibleMatches = htmlPage.matchAll(flexiblePattern);
       let flexibleCount = 0;
       for (const flexMatch of flexibleMatches) {
@@ -298,8 +302,10 @@ export class Head2headService {
           );
         }
       }
-      this.logger.debug(`Found ${flexibleCount} links with season parameter using flexible pattern`);
-      
+      this.logger.debug(
+        `Found ${flexibleCount} links with season parameter using flexible pattern`,
+      );
+
       // Try to find any links with season parameter
       const seasonLinks = htmlPage.match(/href="[^"]*season=\d+[^"]*"/gi);
       if (seasonLinks && seasonLinks.length > 0) {
@@ -308,14 +314,18 @@ export class Head2headService {
         );
       }
       // Try to find any A tags with href containing week_name
-      const weekLinks = htmlPage.match(/<A[^>]*href="[^"]*week_name=[^"]*"[^>]*>.*?<\/A>/gi);
+      const weekLinks = htmlPage.match(
+        /<A[^>]*href="[^"]*week_name=[^"]*"[^>]*>.*?<\/A>/gi,
+      );
       if (weekLinks && weekLinks.length > 0) {
         this.logger.debug(
           `Found ${weekLinks.length} links with week_name. Sample: ${weekLinks[0]?.substring(0, 200)}`,
         );
       }
       // Try to find table rows with match data
-      const tableRows = htmlPage.match(/<tr[^>]*class="DBTable"[^>]*>[\s\S]{0,500}?<\/tr>/gi);
+      const tableRows = htmlPage.match(
+        /<tr[^>]*class="DBTable"[^>]*>[\s\S]{0,500}?<\/tr>/gi,
+      );
       if (tableRows && tableRows.length > 0) {
         this.logger.debug(
           `Found ${tableRows.length} DBTable rows. Sample row: ${tableRows[1]?.substring(0, 300)}`,
@@ -362,10 +372,14 @@ export class Head2headService {
       const altPattern1 = htmlPage.match(/id="player_1"[^>]*value="([^"]+)"/i);
       const altPattern2 = htmlPage.match(/id="player_2"[^>]*value="([^"]+)"/i);
       if (altPattern1) {
-        this.logger.debug(`Alternative pattern found player_1: ${altPattern1[1]}`);
+        this.logger.debug(
+          `Alternative pattern found player_1: ${altPattern1[1]}`,
+        );
       }
       if (altPattern2) {
-        this.logger.debug(`Alternative pattern found player_2: ${altPattern2[1]}`);
+        this.logger.debug(
+          `Alternative pattern found player_2: ${altPattern2[1]}`,
+        );
       }
       throw new Error('Failed to extract player information');
     }
@@ -402,7 +416,7 @@ export class Head2headService {
         Season: matchExtracted.season,
         WeekName: weekNameStr,
         WithDetails: true,
-       // MatchId: matchExtracted.matchId, // Also try filtering by MatchId directly
+        // MatchId: matchExtracted.matchId, // Also try filtering by MatchId directly
       };
       this.logger.debug(
         `Querying matches with params: ${JSON.stringify(queryParams)}`,
@@ -484,7 +498,9 @@ export class Head2headService {
 
       // Match using includes since MatchId from API might have prefix (e.g., "PBBWH04/036" vs "04/036")
       const linkedExtractedMatch = extractedMatches.find(
-        (m) => match.MatchId.includes(m.matchId) || m.matchId.includes(match.MatchId),
+        (m) =>
+          match.MatchId.includes(m.matchId) ||
+          m.matchId.includes(match.MatchId),
       );
 
       if (!linkedExtractedMatch) {
@@ -498,9 +514,10 @@ export class Head2headService {
         `Found linked match: extracted matchId=${linkedExtractedMatch.matchId}, API MatchId=${match.MatchId}`,
       );
 
-      const isHomePlayer = match.MatchDetails?.HomePlayers?.Players?.some(
-        (p) => p.UniqueIndex === playersInfo.playerUniqueIndex,
-      ) ?? false;
+      const isHomePlayer =
+        match.MatchDetails?.HomePlayers?.Players?.some(
+          (p) => p.UniqueIndex === playersInfo.playerUniqueIndex,
+        ) ?? false;
 
       this.logger.debug(
         `Player ${playersInfo.playerUniqueIndex} is ${isHomePlayer ? 'home' : 'away'}`,
@@ -557,7 +574,10 @@ export class Head2headService {
       }
 
       // Check if match is forfeited
-      if (individualResult.IsHomeForfeited || individualResult.IsAwayForfeited) {
+      if (
+        individualResult.IsHomeForfeited ||
+        individualResult.IsAwayForfeited
+      ) {
         this.logger.debug(
           `Match is forfeited: IsHomeForfeited=${individualResult.IsHomeForfeited}, IsAwayForfeited=${individualResult.IsAwayForfeited}`,
         );
@@ -657,13 +677,17 @@ export class Head2headService {
 
     const result = match.MatchDetails.IndividualMatchResults.find(
       (individualMatch) => {
-        const homePlayerMatch = Array.isArray(individualMatch.HomePlayerUniqueIndex)
+        const homePlayerMatch = Array.isArray(
+          individualMatch.HomePlayerUniqueIndex,
+        )
           ? individualMatch.HomePlayerUniqueIndex.includes(
               playersInfo.playerUniqueIndex,
             )
           : individualMatch.HomePlayerUniqueIndex ===
             playersInfo.playerUniqueIndex;
-        const awayPlayerMatch = Array.isArray(individualMatch.AwayPlayerUniqueIndex)
+        const awayPlayerMatch = Array.isArray(
+          individualMatch.AwayPlayerUniqueIndex,
+        )
           ? individualMatch.AwayPlayerUniqueIndex.includes(
               playersInfo.opponentPlayerUniqueIndex,
             )
@@ -673,13 +697,17 @@ export class Head2headService {
         if (isHomePlayer) {
           return homePlayerMatch && awayPlayerMatch;
         } else {
-          const awayPlayerMatch2 = Array.isArray(individualMatch.AwayPlayerUniqueIndex)
+          const awayPlayerMatch2 = Array.isArray(
+            individualMatch.AwayPlayerUniqueIndex,
+          )
             ? individualMatch.AwayPlayerUniqueIndex.includes(
                 playersInfo.playerUniqueIndex,
               )
             : individualMatch.AwayPlayerUniqueIndex ===
               playersInfo.playerUniqueIndex;
-          const homePlayerMatch2 = Array.isArray(individualMatch.HomePlayerUniqueIndex)
+          const homePlayerMatch2 = Array.isArray(
+            individualMatch.HomePlayerUniqueIndex,
+          )
             ? individualMatch.HomePlayerUniqueIndex.includes(
                 playersInfo.opponentPlayerUniqueIndex,
               )
@@ -757,7 +785,7 @@ export class Head2headService {
     lastDefeat?: Date;
   } {
     const matchDateObj = new Date(matchDate);
-    
+
     // Handle null, undefined, or NaN values
     const homeSetCount =
       individualResult.HomeSetCount != null &&
@@ -775,7 +803,13 @@ export class Head2headService {
       this.logger.warn(
         `Cannot determine victory/defeat: HomeSetCount=${individualResult.HomeSetCount} (parsed: ${homeSetCount}), AwaySetCount=${individualResult.AwaySetCount} (parsed: ${awaySetCount})`,
       );
-      return { victoryCount, defeatCount, lastVictory, firstVictory, lastDefeat };
+      return {
+        victoryCount,
+        defeatCount,
+        lastVictory,
+        firstVictory,
+        lastDefeat,
+      };
     }
 
     const playerSetCount = isHomePlayer ? homeSetCount : awaySetCount;

@@ -30,7 +30,7 @@ describe('TournamentController', () => {
   describe('Tournaments', () => {
     it('should call tournaments service with correct params', async () => {
       const spy = jest.spyOn(tournamentService, 'getTournaments');
-      const result = await controller.findAll();
+      const result = await controller.findAllV1();
 
       expect(result).toBeDefined();
       expect(result[0]).toBeDefined();
@@ -42,7 +42,7 @@ describe('TournamentController', () => {
         withRegistrations: true,
       };
       const spy = jest.spyOn(tournamentService, 'getTournaments');
-      const result = await controller.findById(input, 123);
+      const result = await controller.findByIdV1(input, 123);
 
       expect(result).toBeDefined();
       expect(spy).toHaveBeenCalledWith({
@@ -55,7 +55,7 @@ describe('TournamentController', () => {
       const input: GetTournamentDetails = {};
       jest.spyOn(tournamentService, 'getTournaments').mockResolvedValue([]);
 
-      await expect(controller.findById(input, 142453)).rejects.toEqual(
+      await expect(controller.findByIdV1(input, 142453)).rejects.toEqual(
         new NotFoundException(),
       );
     });
@@ -63,7 +63,7 @@ describe('TournamentController', () => {
   describe('Tournament series', () => {
     it('should call tournaments service with correct params to find series of one tournament', async () => {
       const spy = jest.spyOn(tournamentService, 'getTournaments');
-      const result = await controller.getSeries(123);
+      const result = await controller.getSeriesV1(123);
 
       expect(result).toBeDefined();
       expect(spy).toHaveBeenCalledWith({
@@ -74,7 +74,7 @@ describe('TournamentController', () => {
     it('should throw 404 exception if not found', async () => {
       jest.spyOn(tournamentService, 'getTournaments').mockResolvedValue([]);
 
-      await expect(controller.getSeries(142453)).rejects.toEqual(
+      await expect(controller.getSeriesV1(142453)).rejects.toEqual(
         new NotFoundException(),
       );
     });
@@ -88,7 +88,7 @@ describe('TournamentController', () => {
         notifyPlayer: true,
       };
       const spy = jest.spyOn(tournamentService, 'registerToTournament');
-      const result = await controller.register(input, 1, 2);
+      const result = await controller.registerV1(input, 1, 2);
 
       expect(result).toBeDefined();
       expect(spy).toHaveBeenCalledWith({

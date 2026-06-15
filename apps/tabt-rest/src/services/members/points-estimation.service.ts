@@ -3,8 +3,6 @@ import { PlayerCategoryDTO } from '../../common/dto/player-category.dto';
 import {
   MEN_POINTS_DIFFERENCE_TABLE,
   WOMEN_POINTS_DIFFERENCE_TABLE,
-  MEN_INTERCLUB_COEFFICIENTS,
-  WOMEN_INTERCLUB_COEFFICIENTS,
 } from '../../common/consts/ranking-equivalence';
 
 interface PointsEstimation {
@@ -34,11 +32,6 @@ export class PointsEstimationService {
       category === PlayerCategoryDTO.SENIOR_MEN
         ? MEN_POINTS_DIFFERENCE_TABLE.difference_of_points_table
         : WOMEN_POINTS_DIFFERENCE_TABLE.difference_of_points_table;
-
-    const coefficients =
-      category === PlayerCategoryDTO.SENIOR_MEN
-        ? MEN_INTERCLUB_COEFFICIENTS
-        : WOMEN_INTERCLUB_COEFFICIENTS;
 
     // Calculate points difference (positive if player is stronger, negative if opponent is stronger)
     const pointsDifference = playerPoints - opponentPoints;

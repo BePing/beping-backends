@@ -55,12 +55,12 @@ export class CacheService {
     // In cache-manager v6, store is accessed through type assertion
     const cacheManagerAny = this.cacheManager as any;
     const store = cacheManagerAny.store || cacheManagerAny.stores?.[0];
-    
+
     if (!store) {
       this.logger.warn('Store not available for pattern matching');
       return;
     }
-    
+
     // Check if store supports keys method with pattern
     if (typeof store.keys === 'function') {
       try {
@@ -68,7 +68,7 @@ export class CacheService {
         this.logger.debug(
           `Cleaning cache for pattern ${pattern}. Found ${keys.length} keys.`,
         );
-        
+
         // Try mdel first, fallback to individual deletes
         if (typeof store.mdel === 'function') {
           await store.mdel(...keys);

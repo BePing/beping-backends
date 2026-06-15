@@ -10,9 +10,6 @@ import { SocksProxyHttpClient } from '../../common/socks-proxy/socks-proxy-http-
 
 describe('Head2headService', () => {
   let service: Head2headService;
-  let httpService: jest.Mocked<HttpService>;
-  let matchService: jest.Mocked<MatchService>;
-  let cacheService: jest.Mocked<CacheService>;
 
   const mockHttpService = {
     post: jest.fn(),
@@ -43,9 +40,6 @@ describe('Head2headService', () => {
     }).compile();
 
     service = module.get<Head2headService>(Head2headService);
-    httpService = module.get(HttpService);
-    matchService = module.get(MatchService);
-    cacheService = module.get(CacheService);
   });
 
   it('should be defined', () => {

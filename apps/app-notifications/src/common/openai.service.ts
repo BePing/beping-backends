@@ -63,7 +63,10 @@ Return ONLY a JSON object with "title" and "body" keys. Do not use markdown code
       }
 
       // Clean up potential markdown code blocks if the model ignores instructions
-      const jsonString = content.replace(/```json/g, '').replace(/```/g, '').trim();
+      const jsonString = content
+        .replace(/```json/g, '')
+        .replace(/```/g, '')
+        .trim();
 
       return JSON.parse(jsonString);
     } catch (error) {
@@ -72,4 +75,3 @@ Return ONLY a JSON object with "title" and "body" keys. Do not use markdown code
     }
   }
 }
-

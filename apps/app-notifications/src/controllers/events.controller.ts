@@ -1,4 +1,11 @@
-import { Controller, Post, Body, UseGuards, HttpCode, HttpStatus } from '@nestjs/common';
+import {
+  Controller,
+  Post,
+  Body,
+  UseGuards,
+  HttpCode,
+  HttpStatus,
+} from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
 import { FcmService } from '../notifications/fcm.service';
 import { OpenAIService } from '../common/openai.service';
@@ -12,155 +19,159 @@ import { MessagePattern } from '@nestjs/microservices';
 @Controller('events')
 @UseGuards(AuthGuard('basic'))
 export class EventsController {
-    constructor(
-        private readonly fcmService: FcmService,
-        private readonly openaiService: OpenAIService,
-    ) { }
+  constructor(
+    private readonly fcmService: FcmService,
+    private readonly openaiService: OpenAIService,
+  ) {}
 
-    @Post('team-match')
-    @HttpCode(HttpStatus.ACCEPTED)
-    async handleTeamMatchEvent(@Body() event: TeamMatchEventDTO) {
-        const topic = `match:${event.MatchId}`;
-        const devicesByLocale = await this.fcmService.getDevicesByTopicGroupedByLocale(topic);
+  @Post('team-match')
+  @HttpCode(HttpStatus.ACCEPTED)
+  async handleTeamMatchEvent(@Body() event: TeamMatchEventDTO) {
+    const topic = `match:${event.MatchId}`;
+    const devicesByLocale =
+      await this.fcmService.getDevicesByTopicGroupedByLocale(topic);
 
-        for (const [locale, tokens] of Object.entries(devicesByLocale)) {
-            let title = 'Match Update';
-            let body = 'A match you are following has been updated.';
+    for (const [locale, tokens] of Object.entries(devicesByLocale)) {
+      let title = 'Match Update';
+      let body = 'A match you are following has been updated.';
 
-            // Try to get AI-generated content
-            const aiContent = await this.openaiService.generateNotificationContent(
-                `Team Match Update: Match ID ${event.MatchId}, Week ${event.WeekName}`,
-                locale,
-            );
+      // Try to get AI-generated content
+      const aiContent = await this.openaiService.generateNotificationContent(
+        `Team Match Update: Match ID ${event.MatchId}, Week ${event.WeekName}`,
+        locale,
+      );
 
-            if (aiContent) {
-                title = aiContent.title;
-                body = aiContent.body;
-            }
+      if (aiContent) {
+        title = aiContent.title;
+        body = aiContent.body;
+      }
 
-            await this.fcmService.sendNotification({
-                title,
-                body,
-                notificationType: NotificationType.MATCH,
-                data: {
-                    matchId: event.MatchId,
-                    weekName: event.WeekName.toString(),
-                },
-                targetDeviceTokens: tokens,
-            });
-        }
-
-        return { message: 'Event processed' };
+      await this.fcmService.sendNotification({
+        title,
+        body,
+        notificationType: NotificationType.MATCH,
+        data: {
+          matchId: event.MatchId,
+          weekName: event.WeekName.toString(),
+        },
+        targetDeviceTokens: tokens,
+      });
     }
 
-    @Post('ranking')
-    @HttpCode(HttpStatus.ACCEPTED)
-    async handleRankingEvent(@Body() event: NumericRankingEventDto) {
-        const topic = `player:${event.uniqueIndex}`;
-        const devicesByLocale = await this.fcmService.getDevicesByTopicGroupedByLocale(topic);
+    return { message: 'Event processed' };
+  }
 
-        for (const [locale, tokens] of Object.entries(devicesByLocale)) {
-            let title = 'Ranking Update';
-            let body = `Ranking updated. New ranking: ${event.newRanking}`;
+  @Post('ranking')
+  @HttpCode(HttpStatus.ACCEPTED)
+  async handleRankingEvent(@Body() event: NumericRankingEventDto) {
+    const topic = `player:${event.uniqueIndex}`;
+    const devicesByLocale =
+      await this.fcmService.getDevicesByTopicGroupedByLocale(topic);
 
-            // Try to get AI-generated content
-            const aiContent = await this.openaiService.generateNotificationContent(
-                `Player Ranking Update: Old Ranking ${event.oldRanking}, New Ranking ${event.newRanking}`,
-                locale,
-            );
+    for (const [locale, tokens] of Object.entries(devicesByLocale)) {
+      let title = 'Ranking Update';
+      let body = `Ranking updated. New ranking: ${event.newRanking}`;
 
-            if (aiContent) {
-                title = aiContent.title;
-                body = aiContent.body;
-            }
+      // Try to get AI-generated content
+      const aiContent = await this.openaiService.generateNotificationContent(
+        `Player Ranking Update: Old Ranking ${event.oldRanking}, New Ranking ${event.newRanking}`,
+        locale,
+      );
 
-            await this.fcmService.sendNotification({
-                title,
-                body,
-                notificationType: NotificationType.RANKING,
-                data: {
-                    uniqueIndex: event.uniqueIndex.toString(),
-                    oldRanking: event.oldRanking.toString(),
-                    newRanking: event.newRanking.toString(),
-                },
-                targetDeviceTokens: tokens,
-            });
-        }
+      if (aiContent) {
+        title = aiContent.title;
+        body = aiContent.body;
+      }
 
-        return { message: 'Event processed' };
+      await this.fcmService.sendNotification({
+        title,
+        body,
+        notificationType: NotificationType.RANKING,
+        data: {
+          uniqueIndex: event.uniqueIndex.toString(),
+          oldRanking: event.oldRanking.toString(),
+          newRanking: event.newRanking.toString(),
+        },
+        targetDeviceTokens: tokens,
+      });
     }
 
-    @Post('match-result')
-    @HttpCode(HttpStatus.ACCEPTED)
-    async handleMatchResultEvent(@Body() event: MatchResultEventDto) {
-        const topic = `match:${event.matchId}`;
-        const devicesByLocale = await this.fcmService.getDevicesByTopicGroupedByLocale(topic);
+    return { message: 'Event processed' };
+  }
 
-        for (const [locale, tokens] of Object.entries(devicesByLocale)) {
-            let title = 'Match Result';
-            let body = 'A match result is now available.';
+  @Post('match-result')
+  @HttpCode(HttpStatus.ACCEPTED)
+  async handleMatchResultEvent(@Body() event: MatchResultEventDto) {
+    const topic = `match:${event.matchId}`;
+    const devicesByLocale =
+      await this.fcmService.getDevicesByTopicGroupedByLocale(topic);
 
-            // Try to get AI-generated content
-            const aiContent = await this.openaiService.generateNotificationContent(
-                `Match Result Available: Match ID ${event.matchId}`,
-                locale,
-            );
+    for (const [locale, tokens] of Object.entries(devicesByLocale)) {
+      let title = 'Match Result';
+      let body = 'A match result is now available.';
 
-            if (aiContent) {
-                title = aiContent.title;
-                body = aiContent.body;
-            }
+      // Try to get AI-generated content
+      const aiContent = await this.openaiService.generateNotificationContent(
+        `Match Result Available: Match ID ${event.matchId}`,
+        locale,
+      );
 
-            await this.fcmService.sendNotification({
-                title,
-                body,
-                notificationType: NotificationType.MATCH,
-                data: {
-                    matchId: event.matchId,
-                },
-                targetDeviceTokens: tokens,
-            });
-        }
+      if (aiContent) {
+        title = aiContent.title;
+        body = aiContent.body;
+      }
 
-        return { message: 'Match result event processed' };
+      await this.fcmService.sendNotification({
+        title,
+        body,
+        notificationType: NotificationType.MATCH,
+        data: {
+          matchId: event.matchId,
+        },
+        targetDeviceTokens: tokens,
+      });
     }
 
-    @MessagePattern('RANKING_ESTIMATION_CHANGE')
-    async handleRankingEstimationChangeEvent(
-        event: RankingEstimationChangeEventDto,
-    ) {
-        const topic = `player:${event.uniqueIndex}`;
-        const devicesByLocale = await this.fcmService.getDevicesByTopicGroupedByLocale(topic);
+    return { message: 'Match result event processed' };
+  }
 
-        for (const [locale, tokens] of Object.entries(devicesByLocale)) {
-            let title = 'Ranking Estimation Update';
-            let body = `Your ranking estimation changed from ${event.oldRankingEstimation} to ${event.newRankingEstimation}.`;
+  @MessagePattern('RANKING_ESTIMATION_CHANGE')
+  async handleRankingEstimationChangeEvent(
+    event: RankingEstimationChangeEventDto,
+  ) {
+    const topic = `player:${event.uniqueIndex}`;
+    const devicesByLocale =
+      await this.fcmService.getDevicesByTopicGroupedByLocale(topic);
 
-            // Try to get AI-generated content
-            const aiContent = await this.openaiService.generateNotificationContent(
-                `Player Ranking Estimation Change: Old Estimation ${event.oldRankingEstimation}, New Estimation ${event.newRankingEstimation}, Category ${event.playerCategory}`,
-                locale,
-            );
+    for (const [locale, tokens] of Object.entries(devicesByLocale)) {
+      let title = 'Ranking Estimation Update';
+      let body = `Your ranking estimation changed from ${event.oldRankingEstimation} to ${event.newRankingEstimation}.`;
 
-            if (aiContent) {
-                title = aiContent.title;
-                body = aiContent.body;
-            }
+      // Try to get AI-generated content
+      const aiContent = await this.openaiService.generateNotificationContent(
+        `Player Ranking Estimation Change: Old Estimation ${event.oldRankingEstimation}, New Estimation ${event.newRankingEstimation}, Category ${event.playerCategory}`,
+        locale,
+      );
 
-            await this.fcmService.sendNotification({
-                title,
-                body,
-                notificationType: NotificationType.RANKING,
-                data: {
-                    uniqueIndex: event.uniqueIndex.toString(),
-                    oldRankingEstimation: event.oldRankingEstimation,
-                    newRankingEstimation: event.newRankingEstimation,
-                    playerCategory: event.playerCategory,
-                },
-                targetDeviceTokens: tokens,
-            });
-        }
+      if (aiContent) {
+        title = aiContent.title;
+        body = aiContent.body;
+      }
 
-        return { message: 'Ranking estimation change event processed' };
+      await this.fcmService.sendNotification({
+        title,
+        body,
+        notificationType: NotificationType.RANKING,
+        data: {
+          uniqueIndex: event.uniqueIndex.toString(),
+          oldRankingEstimation: event.oldRankingEstimation,
+          newRankingEstimation: event.newRankingEstimation,
+          playerCategory: event.playerCategory,
+        },
+        targetDeviceTokens: tokens,
+      });
     }
+
+    return { message: 'Ranking estimation change event processed' };
+  }
 }

@@ -1,6 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Transform } from 'class-transformer';
-import { Level } from '../../../entity/tabt-input.interface';
 import {
   TournamentEntry,
   TournamentSerieEntry,

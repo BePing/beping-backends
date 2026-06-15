@@ -1,4 +1,4 @@
-import { Module, OnModuleInit } from '@nestjs/common';
+import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import * as admin from 'firebase-admin';
 import { ServiceAccount } from 'firebase-admin';
@@ -20,7 +20,11 @@ import { MessagingFirebaseService } from './messaging-firebase.service';
             clientEmail: configService.get<string>('FIREBASE_CLIENT_EMAIL'),
           };
           // Initialize the firebase admin app
-          if (adminConfig.projectId && adminConfig.privateKey && adminConfig.clientEmail) {
+          if (
+            adminConfig.projectId &&
+            adminConfig.privateKey &&
+            adminConfig.clientEmail
+          ) {
             admin.initializeApp({
               credential: admin.credential.cert(adminConfig),
             });

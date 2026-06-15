@@ -1,7 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { VenueEntry } from '../../../entity/tabt-soap/TabTAPI_Port';
-import { ClubCategory } from '../../../entity/tabt-input.interface';
-import { Transform } from 'class-transformer';
 
 export class VenueDto {
   @ApiProperty()

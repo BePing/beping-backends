@@ -16,7 +16,6 @@ import {
 } from '../../../entity/tabt-soap/TabTAPI_Port';
 import { RESPONSE_STATUS, ResponseDTO } from '../dto/common.dto';
 import { PlayerCategoryDTO } from '../../../common/dto/player-category.dto';
-import { PlayerCategory } from '../../../entity/tabt-input.interface';
 
 @Injectable()
 export class ClubDashboardService
@@ -38,13 +37,13 @@ export class ClubDashboardService
         this.getClubMembers(
           clubUniqueIndex,
           PlayerCategoryDTO.SENIOR_MEN,
-        ).catch((error) => null),
+        ).catch(() => null),
         this.getClubMembers(
           clubUniqueIndex,
           PlayerCategoryDTO.SENIOR_WOMEN,
-        ).catch((error) => null),
-        this.getClubTeams(clubUniqueIndex).catch((error) => null),
-        this.getClubMatchesGrouped(clubUniqueIndex).catch((error) => null),
+        ).catch(() => null),
+        this.getClubTeams(clubUniqueIndex).catch(() => null),
+        this.getClubMatchesGrouped(clubUniqueIndex).catch(() => null),
       ]);
 
       return {

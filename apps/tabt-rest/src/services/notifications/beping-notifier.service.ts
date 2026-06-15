@@ -15,7 +15,6 @@ interface NumericRankingUpdatePayload {
 export class BepingNotifierService {
   private readonly logger = new Logger(BepingNotifierService.name);
   private readonly notificationURL: string;
-  private readonly isDevMode: boolean;
 
   constructor(
     private readonly httpClient: HttpService,
@@ -24,11 +23,15 @@ export class BepingNotifierService {
     this.notificationURL = this.configService.get<string>(
       'BEPING_NOTIFICATION_URL',
     );
-    this.isDevMode = this.configService.get('NODE_ENV') === 'dev';
 
     if (!this.notificationURL && !this.isDevMode) {
       throw new Error('BEPING_NOTIFICATION_URL is not configured');
     }
+  }
+
+  // Read at call time so runtime NODE_ENV is always honored.
+  private get isDevMode(): boolean {
+    return this.configService.get('NODE_ENV') === 'dev';
   }
 
   async notifyNumericRankingChanged(
@@ -56,13 +59,14 @@ export class BepingNotifierService {
       );
       return ack;
     } catch (error) {
-      const errorMessage =
-        error instanceof AxiosError
-          ? `${error.message} (Status: ${error.response?.status})`
-          : error.message;
+      // Transient transport failures are swallowed so a failed notification
+      // never breaks the caller; configuration/programming errors propagate.
+      if (!(error instanceof AxiosError)) {
+        throw error;
+      }
 
       this.logger.error(
-        `Failed to send numeric ranking update notification for player ${uniqueIndex}: ${errorMessage}`,
+        `Failed to send numeric ranking update notification for player ${uniqueIndex}: ${error.message} (Status: ${error.response?.status})`,
         error.stack,
       );
       return { sent: false };

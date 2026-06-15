@@ -10,7 +10,6 @@ import {
 } from '../dto/divisions.dto';
 import { NotFoundException } from '@nestjs/common';
 import { MatchesMembersRankerService } from '../../../services/matches/matches-members-ranker.service';
-import { Level } from '../../../entity/tabt-input.interface';
 import { DivisionCategoryDTO } from '../../../common/dto/division-category.dto';
 
 jest.mock('../../../services/matches/match.service');

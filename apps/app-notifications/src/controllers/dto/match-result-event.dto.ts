@@ -4,4 +4,3 @@ export class MatchResultEventDto {
   @IsString()
   matchId: string;
 }
-

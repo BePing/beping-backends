@@ -1,16 +1,6 @@
 import { ApiProperty, ApiPropertyOptional, OmitType } from '@nestjs/swagger';
-import {
-  IsBoolean,
-  IsEnum,
-  IsNumber,
-  IsOptional,
-  IsString,
-  Matches,
-  MinLength,
-} from 'class-validator';
+import { IsBoolean, IsEnum, IsOptional, IsString } from 'class-validator';
 import { Transform } from 'class-transformer';
-import { PlayerCategory } from '../../../entity/tabt-input.interface';
-import { RequestBySeasonDto } from '../../../common/dto/request-by-season.dto';
 import {
   MemberEntry,
   RankingPointsEntry,
@@ -18,7 +8,6 @@ import {
   Address,
   RankingEvaluationEntry,
   MemberEntryResultEntry,
-  GetPlayerCategoriesResponse,
   PlayerCategoryEntries,
 } from '../../../entity/tabt-soap/TabTAPI_Port';
 import { PlayerCategoryDTO } from '../../../common/dto/player-category.dto';

@@ -10,9 +10,7 @@ import { CacheService, TTL_DURATION } from '../../common/cache/cache.service';
 import {
   COMPETITION_TYPE,
   NumericRankingDetailsV1,
-  WeeklyNumericPointsV1,
 } from '../../api/member/dto/member.dto';
-import { PlayerCategory } from '../../entity/tabt-input.interface';
 import { ConfigService } from '@nestjs/config';
 import { PlayerCategoryDTO } from '../../common/dto/player-category.dto';
 import { PrismaService } from '../../common/prisma.service';
@@ -213,7 +211,7 @@ export class NumericRankingService {
         let basePoints = results[0]?.memberPoints?.toNumber() ?? 0;
 
         // Process events in chronological order
-        for (const [key, events] of Array.from(eventMap.entries()).sort()) {
+        for (const [, events] of Array.from(eventMap.entries()).sort()) {
           const firstEvent = events[0];
           const competitionType =
             firstEvent.competition.type === CompetitionType.TOURNAMENT

@@ -26,7 +26,7 @@ import { AppCheckGuard } from '../auth/app-check.guard';
 
 @Controller('notifications')
 export class NotificationsController {
-  constructor(private readonly fcmService: FcmService) { }
+  constructor(private readonly fcmService: FcmService) {}
 
   // Mobile app endpoints - protected by App Check
   @Post('devices/register')
@@ -129,7 +129,10 @@ export class NotificationsController {
     @Param('deviceToken') deviceToken: string,
     @Body() bulkDto: BulkTopicSubscriptionDto,
   ) {
-    await this.fcmService.unsubscribeFromTopicsBulk(deviceToken, bulkDto.topics);
+    await this.fcmService.unsubscribeFromTopicsBulk(
+      deviceToken,
+      bulkDto.topics,
+    );
     return {
       message: `Unsubscribed from ${bulkDto.topics.length} topics`,
       topics: bulkDto.topics,

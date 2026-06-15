@@ -5,7 +5,6 @@ import {
   MultiCategoryMemberDashboardDTOV1,
   NextMatchEstimationDTO,
   OpponentEstimationDTO,
-  RankingWinLossDTOV1,
 } from '../dto/member-dashboard.dto';
 import { DashboardServiceInterface } from '../interfaces/dashboard-service.interface';
 import { RESPONSE_STATUS, ResponseDTO } from '../dto/common.dto';
@@ -40,7 +39,6 @@ import {
 import { PointsEstimationService } from '../../../services/members/points-estimation.service';
 import { PrismaService } from '../../../common/prisma.service';
 import { PlayerCategory as PrismaPlayerCategory } from '@prisma/client';
-import { result, toNumber } from 'lodash';
 
 @Injectable()
 export class MemberDashboardService
@@ -481,7 +479,6 @@ export class MemberDashboardService
               entry.Result = 'D';
             }
 
-
             return {
               date: entry.Date,
               result: entry.Result,
@@ -764,7 +761,7 @@ export class MemberDashboardService
         const matchIds = (member.ResultEntries ?? [])
           .map((result) => result.MatchId)
           .filter((item, pos, arr) => arr.indexOf(item) === pos);
-          
+
         if (matchIds.length === 0) return [];
 
         const clubMatches: TeamMatchesEntry[] =
@@ -834,8 +831,7 @@ export class MemberDashboardService
           return undefined;
         }
 
-        const latestPlayerRanking =
-          playerRanking.numericRankingHistory.at(-1);
+        const latestPlayerRanking = playerRanking.numericRankingHistory.at(-1);
         if (!latestPlayerRanking) {
           return undefined;
         }

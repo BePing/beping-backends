@@ -9,11 +9,6 @@ import {
   UseInterceptors,
 } from '@nestjs/common';
 import {
-  GetPlayerCategoriesInput,
-  MemberEntry,
-  PlayerCategoryEntries,
-} from '../../../entity/tabt-soap/TabTAPI_Port';
-import {
   ApiNotFoundResponse,
   ApiOkResponse,
   ApiOperation,
@@ -30,7 +25,6 @@ import {
   WeeklyNumericPointsInputV1,
   WeeklyNumericPointsV1,
 } from '../dto/member.dto';
-import { SeasonService } from '../../../services/seasons/season.service';
 import { MemberCategoryService } from '../../../services/members/member-category.service';
 import {
   NumericRankingService,

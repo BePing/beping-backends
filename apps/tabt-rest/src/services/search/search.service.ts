@@ -1,11 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { MemberService } from '../members/member.service';
 import { ClubService } from '../clubs/club.service';
-import {
-  MemberEntry,
-  ClubEntry,
-  TournamentEntry,
-} from '../../entity/tabt-soap/TabTAPI_Port';
+import { MemberEntry } from '../../entity/tabt-soap/TabTAPI_Port';
 import { ApiProperty } from '@nestjs/swagger';
 import { TournamentService } from '../tournaments/tournament.service';
 import { CacheService, TTL_DURATION } from '../../common/cache/cache.service';

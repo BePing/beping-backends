@@ -1,14 +1,9 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { MemberController } from './member.controller';
 import { MemberService } from '../../../services/members/member.service';
-import {
-  GetMemberV1,
-  WeeklyNumericPointsInputV1,
-  WeeklyNumericPointsV1,
-} from '../dto/member.dto';
+import { GetMemberV1 } from '../dto/member.dto';
 import { NotFoundException } from '@nestjs/common';
 import { SeasonService } from '../../../services/seasons/season.service';
-import { PlayerCategoryDTO } from '../../../common/dto/player-category.dto';
 import { NumericRankingService } from '../../../services/members/numeric-ranking.service';
 import { MemberCategoryService } from '../../../services/members/member-category.service';
 
@@ -20,9 +15,6 @@ jest.mock('../../../services/members/numeric-ranking.service');
 describe('MemberController', () => {
   let controller: MemberController;
   let service: MemberService;
-  let seasonService: SeasonService;
-  let memberCategoryService: MemberCategoryService;
-  let numericRankingService: NumericRankingService;
 
   beforeEach(async () => {
     jest.clearAllMocks();
@@ -38,13 +30,6 @@ describe('MemberController', () => {
 
     controller = module.get<MemberController>(MemberController);
     service = module.get<MemberService>(MemberService);
-    seasonService = module.get<SeasonService>(SeasonService);
-    memberCategoryService = module.get<MemberCategoryService>(
-      MemberCategoryService,
-    );
-    numericRankingService = module.get<NumericRankingService>(
-      NumericRankingService,
-    );
   });
 
   it('should be defined', () => {
@@ -65,7 +50,7 @@ describe('MemberController', () => {
     const spy = jest.spyOn(service, 'getMembersV1').mockResolvedValue([]);
 
     try {
-      const result = await controller.findAll(input as unknown as GetMemberV1);
+      await controller.findAll(input as unknown as GetMemberV1);
     } catch (error) {
       expect(error).toBeDefined();
       expect(error).toBeInstanceOf(NotFoundException);

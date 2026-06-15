@@ -21,7 +21,7 @@ export interface SendNotificationOptions {
 export class FcmService implements OnModuleInit {
   private readonly logger = new Logger(FcmService.name);
 
-  constructor(private readonly prisma: PrismaService) { }
+  constructor(private readonly prisma: PrismaService) {}
 
   async onModuleInit() {
     if (!admin.apps.length) {
@@ -174,7 +174,10 @@ export class FcmService implements OnModuleInit {
     }
   }
 
-  async unsubscribeFromTopic(deviceToken: string, topic: string): Promise<void> {
+  async unsubscribeFromTopic(
+    deviceToken: string,
+    topic: string,
+  ): Promise<void> {
     try {
       const subscription = await this.prisma.deviceSubscription.findUnique({
         where: { deviceToken },
@@ -333,21 +336,23 @@ export class FcmService implements OnModuleInit {
         targetDevices = options.targetDeviceTokens;
       } else if (options.targetTopic) {
         // Get active devices subscribed to this topic
-        const topicSubscriptions = await this.prisma.topicSubscription.findMany({
-          where: {
-            topic: options.targetTopic,
-            deviceSubscription: {
-              active: true,
+        const topicSubscriptions = await this.prisma.topicSubscription.findMany(
+          {
+            where: {
+              topic: options.targetTopic,
+              deviceSubscription: {
+                active: true,
+              },
             },
-          },
-          include: {
-            deviceSubscription: {
-              select: {
-                deviceToken: true,
+            include: {
+              deviceSubscription: {
+                select: {
+                  deviceToken: true,
+                },
               },
             },
           },
-        });
+        );
 
         targetDevices = topicSubscriptions.map(
           (sub) => sub.deviceSubscription.deviceToken,
@@ -550,10 +555,10 @@ export class FcmService implements OnModuleInit {
   async getNotificationStats(deviceToken?: string): Promise<any> {
     const where = deviceToken
       ? {
-        deviceSubscription: {
-          deviceToken,
-        },
-      }
+          deviceSubscription: {
+            deviceToken,
+          },
+        }
       : {};
 
     const stats = await this.prisma.notificationLog.groupBy({
