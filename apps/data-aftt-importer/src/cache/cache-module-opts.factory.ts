@@ -1,7 +1,4 @@
-import {
-  CacheModuleOptions,
-  CacheOptionsFactory,
-} from '@nestjs/cache-manager';
+import { CacheModuleOptions, CacheOptionsFactory } from '@nestjs/cache-manager';
 import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import memoryStore from 'cache-manager-memory-store';

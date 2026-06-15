@@ -67,5 +67,4 @@ export class ResourceMonitor {
       delta: Math.round((current.heapUsed - this.startMemory) / 1024 / 1024),
     };
   }
-
 }

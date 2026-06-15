@@ -1,33 +1,30 @@
 import { HttpService } from '@nestjs/axios';
 import { firstValueFrom } from 'rxjs';
 import { Logger, Inject } from '@nestjs/common';
-import {
-  Member,
-  NumericPoints,
-  PlayerCategory,
-  ImportType,
-} from '@prisma/client';
+import { PlayerCategory, ImportType } from '@prisma/client';
 import { OnQueueActive, Process, Processor } from '@nestjs/bull';
 import { PrismaService } from '../prisma.service';
 import { Job } from 'bull';
 import { CacheService } from '../cache/cache.service';
 import { createHash } from 'crypto';
 import { ClientProxy } from '@nestjs/microservices';
-
-interface LatestPointRow {
-  memberId: bigint | number;
-  memberLicence: bigint | number;
-  points: number | null;
-  ranking: bigint | number | null;
-  rankingWI: bigint | number | null;
-  rankingLetterEstimation: string | null;
-}
+import { PERFORMANCE_CONFIG } from '../constants';
+import { ImportExecutionCoordinatorService } from '../common/import-execution-coordinator.service';
+import { PostgresCopyService } from '../common/postgres-copy.service';
+import { Client } from 'pg';
 
 interface RankingEstimationChange {
   uniqueIndex: number;
   oldRankingEstimation: string;
   newRankingEstimation: string;
   playerCategory: PlayerCategory;
+}
+
+interface PointUpsertRow {
+  memberId: number;
+  memberLicence: number;
+  oldRankingEstimation: string | null;
+  newRankingEstimation: string | null;
 }
 
 @Processor('members')
@@ -38,6 +35,8 @@ export class MembersListProcessingService {
     private readonly httpService: HttpService,
     private readonly prismaService: PrismaService,
     private readonly cacheService: CacheService,
+    private readonly importExecutionCoordinatorService: ImportExecutionCoordinatorService,
+    private readonly postgresCopyService: PostgresCopyService,
     @Inject('BEPING_NOTIFIER') private readonly notifierClient: ClientProxy,
   ) {}
 
@@ -51,99 +50,137 @@ export class MembersListProcessingService {
     const startTime = Date.now();
     const { playerCategory } = job.data;
 
-    try {
-      // 1. Download file
-      const downloadStart = Date.now();
-      const lines = await this.downloadAndPrepareFile(playerCategory);
-      this.logger.log(`Downloaded ${lines.length} lines in ${Date.now() - downloadStart}ms`);
+    await this.importExecutionCoordinatorService.runExclusive(
+      `members:${playerCategory}`,
+      async () => {
+        try {
+          const downloadStart = Date.now();
+          const lines = await this.downloadAndPrepareFile(playerCategory);
+          this.logger.log(
+            `Downloaded ${lines.length} lines in ${Date.now() - downloadStart}ms`,
+          );
 
-      // 2. Check if processing needed
-      const fileDate = this.extractFileDate(lines);
-      this.logger.log(`File date: ${fileDate?.toISOString() || 'Not found'}`);
+          const fileDate = this.extractFileDate(lines);
+          this.logger.log(
+            `File date: ${fileDate?.toISOString() || 'Not found'}`,
+          );
 
-      const { shouldProcess } = await this.shouldProcessFile(fileDate, playerCategory);
-      if (!shouldProcess) {
-        this.logger.log('File date is not newer than last import, skipping');
-        await this.storeImport(lines, playerCategory, fileDate, 0, Date.now() - startTime, { linesAdded: 0, linesUpdated: 0 });
-        return;
-      }
+          const { shouldProcess } = await this.shouldProcessFile(
+            fileDate,
+            playerCategory,
+          );
+          const contentHash = this.computeContentHash(lines);
+          const linesProcessed = Math.max(0, lines.length - 1);
 
-      // 3. Parse all lines
-      const { membersToUpsert, pointsToCreate } = this.parseLines(lines, playerCategory);
-
-      // Deduplicate members by id (keep last occurrence)
-      const uniqueMemberMap = new Map<number, Member>();
-      for (const m of membersToUpsert) uniqueMemberMap.set(m.id, m);
-      const uniqueMembers = Array.from(uniqueMemberMap.values());
-
-      // Deduplicate points by member key (keep last occurrence)
-      const uniquePointsMap = new Map<string, NumericPoints>();
-      for (const p of pointsToCreate) {
-        if (p.points >= 0) {
-          uniquePointsMap.set(`${p.memberId}_${p.memberLicence}`, p);
-        }
-      }
-      const uniquePoints = Array.from(uniquePointsMap.values());
-
-      this.logger.log(`Parsed: ${uniqueMembers.length} unique members, ${uniquePoints.length} unique points`);
-
-      // 4. Bulk upsert members via INSERT ON CONFLICT (no off-peak restriction)
-      const upsertStart = Date.now();
-      const memberStats = await this.upsertMembers(uniqueMembers);
-      this.logger.log(`Members upserted: ${memberStats.affected} affected in ${Date.now() - upsertStart}ms`);
-
-      // 5. Process numeric points with bulk LATERAL join
-      const pointsStart = Date.now();
-      const { stored, skipped, changes } = await this.processPoints(uniquePoints, playerCategory);
-      this.logger.log(`Points: ${stored} stored, ${skipped} skipped, ${changes.length} ranking changes in ${Date.now() - pointsStart}ms`);
-
-      // 6. Send ranking estimation change notifications
-      if (changes.length > 0) {
-        this.logger.log(`Sending ${changes.length} ranking estimation change events`);
-        for (const change of changes) {
-          try {
-            await firstValueFrom(
-              this.notifierClient.emit('RANKING_ESTIMATION_CHANGE', change),
+          if (!shouldProcess) {
+            this.logger.log(
+              'File date is not newer than last import, skipping',
             );
-          } catch (error) {
-            this.logger.error(`Failed to emit ranking change for ${change.uniqueIndex}`, error);
+            await this.storeImport(
+              contentHash,
+              playerCategory,
+              fileDate,
+              0,
+              Date.now() - startTime,
+              { linesAdded: 0, linesUpdated: 0 },
+            );
+            return;
           }
+
+          const importDate = this.toPgDate(new Date());
+          const upsertStart = Date.now();
+          const importStats = await this.postgresCopyService.withClient(
+            async (client) => {
+              await this.createMemberStageTable(client);
+              await this.copyMemberStageRows(client, lines, playerCategory);
+
+              const memberStats = await this.mergeMembersFromStage(
+                client,
+                importDate,
+              );
+              const pointStats = await this.mergeNumericPointsFromStage(
+                client,
+                importDate,
+                playerCategory,
+              );
+
+              return { memberStats, pointStats };
+            },
+          );
+
+          this.logger.log(
+            `Members affected: ${importStats.memberStats.affected}, points stored: ${importStats.pointStats.stored}, points skipped: ${importStats.pointStats.skipped} in ${Date.now() - upsertStart}ms`,
+          );
+
+          if (importStats.pointStats.changes.length > 0) {
+            this.logger.log(
+              `Sending ${importStats.pointStats.changes.length} ranking estimation change events`,
+            );
+            for (const change of importStats.pointStats.changes) {
+              try {
+                await firstValueFrom(
+                  this.notifierClient.emit('RANKING_ESTIMATION_CHANGE', change),
+                );
+              } catch (error) {
+                this.logger.error(
+                  `Failed to emit ranking change for ${change.uniqueIndex}`,
+                  error,
+                );
+              }
+            }
+          }
+
+          if (
+            importStats.memberStats.affected > 0 ||
+            importStats.pointStats.stored > 0
+          ) {
+            await this.invalidateCaches();
+          } else {
+            this.logger.log(
+              'No member or points changes detected, skipping cache invalidation',
+            );
+          }
+
+          const totalTime = Date.now() - startTime;
+          await this.storeImport(
+            contentHash,
+            playerCategory,
+            fileDate,
+            linesProcessed,
+            totalTime,
+            {
+              linesAdded: importStats.memberStats.affected,
+              linesUpdated: 0,
+            },
+          );
+
+          this.logger.log(
+            `Import completed in ${Math.round(totalTime / 1000)}s (download: ${Date.now() - downloadStart}ms, merge: ${Date.now() - upsertStart}ms)`,
+          );
+        } catch (e) {
+          this.logger.error('Failed to finish job', e.message);
+          throw e;
         }
-      }
-
-      // 7. Invalidate caches
-      await this.invalidateCaches();
-
-      // 8. Store import record
-      const totalTime = Date.now() - startTime;
-      await this.storeImport(lines, playerCategory, fileDate, uniqueMembers.length, totalTime, {
-        linesAdded: memberStats.affected,
-        linesUpdated: 0,
-      });
-
-      this.logger.log(
-        `Import completed in ${Math.round(totalTime / 1000)}s (download: ${Date.now() - downloadStart}ms, upsert: ${Date.now() - upsertStart}ms, points: ${Date.now() - pointsStart}ms)`,
-      );
-    } catch (e) {
-      this.logger.error('Failed to finish job', e.message);
-      throw e;
-    }
+      },
+    );
   }
 
   // ============================================================================
   // DOWNLOAD
   // ============================================================================
 
-  private async downloadAndPrepareFile(playerCategory: PlayerCategory): Promise<string[]> {
-    const maxRetries = 3;
-    const retryDelay = 2000;
+  private async downloadAndPrepareFile(
+    playerCategory: PlayerCategory,
+  ): Promise<string[]> {
+    const maxRetries = PERFORMANCE_CONFIG.MAX_DOWNLOAD_RETRIES;
+    const retryDelay = PERFORMANCE_CONFIG.RETRY_DELAY_MS;
 
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
       try {
         const file = await firstValueFrom(
           this.httpService.get<string>(
             `export/liste_joueurs_${playerCategory === PlayerCategory.SENIOR_MEN ? 1 : 2}.txt`,
-            { timeout: 30000 },
+            { timeout: PERFORMANCE_CONFIG.DOWNLOAD_TIMEOUT_MS },
           ),
         );
 
@@ -161,11 +198,15 @@ export class MembersListProcessingService {
 
         return lines;
       } catch (error) {
-        this.logger.warn(`Download attempt ${attempt} failed: ${error.message}`);
+        this.logger.warn(
+          `Download attempt ${attempt} failed: ${error.message}`,
+        );
         if (attempt === maxRetries) {
-          throw new Error(`Download failed after ${maxRetries} attempts: ${error.message}`);
+          throw new Error(
+            `Download failed after ${maxRetries} attempts: ${error.message}`,
+          );
         }
-        await new Promise((resolve) => setTimeout(resolve, retryDelay * attempt));
+        await this.sleep(retryDelay * attempt);
       }
     }
 
@@ -173,253 +214,304 @@ export class MembersListProcessingService {
   }
 
   // ============================================================================
-  // PARSE
+  // COPY PIPELINE
   // ============================================================================
 
-  private parseLines(lines: string[], playerCategory: PlayerCategory) {
-    const membersToUpsert: Member[] = [];
-    const pointsToCreate: NumericPoints[] = [];
-
-    const dataLines = lines.slice(1); // Skip date header
-
-    for (const line of dataLines) {
-      try {
-        const { member, numericPoints } = this.parseLine(line, playerCategory);
-        membersToUpsert.push(member);
-        if (numericPoints.points >= 0) {
-          pointsToCreate.push(numericPoints);
-        }
-      } catch (e) {
-        this.logger.error(`Failed to parse line: ${line}`, e.message);
-      }
-    }
-
-    return { membersToUpsert, pointsToCreate };
+  private async createMemberStageTable(client: Client): Promise<void> {
+    await client.query(`
+      CREATE TEMP TABLE member_import_stage (
+        line_no integer NOT NULL,
+        member_id integer NOT NULL,
+        member_licence integer NOT NULL,
+        player_category "PlayerCategory" NOT NULL,
+        firstname text NOT NULL,
+        lastname text NOT NULL,
+        ranking text NOT NULL,
+        club text NOT NULL,
+        category text NOT NULL,
+        world_ranking integer NOT NULL,
+        nationality text NOT NULL,
+        email text,
+        points double precision NOT NULL,
+        ranking_wi integer,
+        ranking_number integer,
+        ranking_letter_estimation text
+      )
+    `);
   }
 
-  private parseLine(
-    line: string,
+  private async copyMemberStageRows(
+    client: Client,
+    lines: string[],
     playerCategory: PlayerCategory,
-  ): { member: Member; numericPoints: NumericPoints } {
-    const cols = line.split(';');
-
-    if (cols.length < 13) {
-      throw new Error(`Invalid line format: ${line}`);
-    }
-
-    const member: Member = {
-      id: parseInt(cols[0], 10),
-      licence: parseInt(cols[1], 10),
-      playerCategory,
-      firstname: cols[3],
-      lastname: cols[2],
-      ranking: cols[4],
-      club: cols[5],
-      category: cols[7],
-      worldRanking: cols[8].length ? parseInt(cols[8], 10) : 0,
-      nationality: cols[9],
-      email: '',
-      createdAt: new Date(),
-      updatedAt: new Date(),
-    };
-
-    const numericPoints: NumericPoints = {
-      memberId: parseInt(cols[0], 10),
-      memberLicence: parseInt(cols[1], 10),
-      date: new Date(),
-      points: parseFloat(cols[10]),
-      ranking: cols[12].length ? parseInt(cols[12]) : null,
-      rankingWI: cols[11].length ? parseInt(cols[11]) : null,
-      rankingLetterEstimation: cols[13] || null,
-    };
-
-    return { member, numericPoints };
+  ): Promise<void> {
+    await this.postgresCopyService.copyRows(
+      client,
+      `COPY member_import_stage (
+        line_no,
+        member_id,
+        member_licence,
+        player_category,
+        firstname,
+        lastname,
+        ranking,
+        club,
+        category,
+        world_ranking,
+        nationality,
+        email,
+        points,
+        ranking_wi,
+        ranking_number,
+        ranking_letter_estimation
+      ) FROM STDIN WITH (FORMAT csv, NULL '\\N')`,
+      this.buildMemberStageRows(lines, playerCategory),
+    );
   }
 
-  // ============================================================================
-  // BULK UPSERT MEMBERS — INSERT ON CONFLICT via unnest()
-  // ============================================================================
+  private *buildMemberStageRows(
+    lines: string[],
+    playerCategory: PlayerCategory,
+  ): Generator<string> {
+    for (let index = 1; index < lines.length; index++) {
+      const line = lines[index];
+      const cols = line.split(';');
 
-  private async upsertMembers(members: Member[]): Promise<{ affected: number }> {
-    if (members.length === 0) return { affected: 0 };
+      if (cols.length < 14) {
+        this.logger.warn(`Skipping invalid member line ${index}: ${line}`);
+        continue;
+      }
 
-    const chunkSize = 5000;
-    let totalAffected = 0;
+      yield this.postgresCopyService.buildCsvRow([
+        index,
+        parseInt(cols[0], 10),
+        parseInt(cols[1], 10),
+        playerCategory,
+        cols[3],
+        cols[2],
+        cols[4],
+        cols[5],
+        cols[7],
+        cols[8].length ? parseInt(cols[8], 10) : 0,
+        cols[9],
+        '',
+        parseFloat(cols[10]),
+        cols[11].length ? parseInt(cols[11], 10) : null,
+        cols[12].length ? parseInt(cols[12], 10) : null,
+        cols[13] || null,
+      ]);
+    }
+  }
 
-    for (let i = 0; i < members.length; i += chunkSize) {
-      const chunk = members.slice(i, i + chunkSize);
-
-      const ids = chunk.map((m) => m.id);
-      const licences = chunk.map((m) => m.licence);
-      const playerCategories = chunk.map((m) => m.playerCategory);
-      const firstnames = chunk.map((m) => m.firstname);
-      const lastnames = chunk.map((m) => m.lastname);
-      const rankings = chunk.map((m) => m.ranking);
-      const clubs = chunk.map((m) => m.club);
-      const categories = chunk.map((m) => m.category);
-      const worldRankings = chunk.map((m) => m.worldRanking);
-      const nationalities = chunk.map((m) => m.nationality);
-      const emails = chunk.map((m) => m.email || '');
-      const now = new Date();
-      const timestamps = chunk.map(() => now);
-
-      const affected = await this.prismaService.$executeRaw`
-        INSERT INTO "Member" (id, licence, "playerCategory", firstname, lastname, ranking, club, category, "worldRanking", nationality, email, "createdAt", "updatedAt")
-        SELECT * FROM unnest(
-          ${ids}::int[], ${licences}::int[], ${playerCategories}::"PlayerCategory"[],
-          ${firstnames}::text[], ${lastnames}::text[], ${rankings}::text[],
-          ${clubs}::text[], ${categories}::text[], ${worldRankings}::int[],
-          ${nationalities}::text[], ${emails}::text[], ${timestamps}::timestamp[], ${timestamps}::timestamp[]
+  private async mergeMembersFromStage(
+    client: Client,
+    importDate: string,
+  ): Promise<{ affected: number }> {
+    const result = await client.query<{ affected: string }>(
+      `
+        WITH deduped_members AS (
+          SELECT DISTINCT ON (member_id, member_licence)
+            member_id,
+            member_licence,
+            player_category,
+            firstname,
+            lastname,
+            ranking,
+            club,
+            category,
+            world_ranking,
+            nationality,
+            email
+          FROM member_import_stage
+          ORDER BY member_id, member_licence, line_no DESC
+        ),
+        upserted_members AS (
+          INSERT INTO "Member" (
+            id,
+            licence,
+            "playerCategory",
+            firstname,
+            lastname,
+            ranking,
+            club,
+            category,
+            "worldRanking",
+            nationality,
+            email,
+            "createdAt",
+            "updatedAt"
+          )
+          SELECT
+            member_id,
+            member_licence,
+            player_category,
+            firstname,
+            lastname,
+            ranking,
+            club,
+            category,
+            world_ranking,
+            nationality,
+            NULLIF(email, ''),
+            $1::date,
+            $1::date
+          FROM deduped_members
+          ON CONFLICT (id, licence) DO UPDATE SET
+            "playerCategory" = EXCLUDED."playerCategory",
+            firstname = EXCLUDED.firstname,
+            lastname = EXCLUDED.lastname,
+            ranking = EXCLUDED.ranking,
+            club = EXCLUDED.club,
+            category = EXCLUDED.category,
+            "worldRanking" = EXCLUDED."worldRanking",
+            nationality = EXCLUDED.nationality,
+            email = EXCLUDED.email,
+            "updatedAt" = NOW()
+          WHERE "Member".ranking IS DISTINCT FROM EXCLUDED.ranking
+             OR "Member".club IS DISTINCT FROM EXCLUDED.club
+             OR "Member".firstname IS DISTINCT FROM EXCLUDED.firstname
+             OR "Member".lastname IS DISTINCT FROM EXCLUDED.lastname
+             OR "Member".category IS DISTINCT FROM EXCLUDED.category
+             OR "Member"."worldRanking" IS DISTINCT FROM EXCLUDED."worldRanking"
+             OR "Member".nationality IS DISTINCT FROM EXCLUDED.nationality
+             OR "Member".email IS DISTINCT FROM EXCLUDED.email
+          RETURNING 1
         )
-        ON CONFLICT (id, licence) DO UPDATE SET
-          "playerCategory" = EXCLUDED."playerCategory",
-          firstname = EXCLUDED.firstname,
-          lastname = EXCLUDED.lastname,
-          ranking = EXCLUDED.ranking,
-          club = EXCLUDED.club,
-          category = EXCLUDED.category,
-          "worldRanking" = EXCLUDED."worldRanking",
-          nationality = EXCLUDED.nationality,
-          "updatedAt" = now()
-        WHERE "Member".ranking IS DISTINCT FROM EXCLUDED.ranking
-           OR "Member".club IS DISTINCT FROM EXCLUDED.club
-           OR "Member".firstname IS DISTINCT FROM EXCLUDED.firstname
-           OR "Member".lastname IS DISTINCT FROM EXCLUDED.lastname
-           OR "Member".category IS DISTINCT FROM EXCLUDED.category
-           OR "Member"."worldRanking" IS DISTINCT FROM EXCLUDED."worldRanking"
-           OR "Member".nationality IS DISTINCT FROM EXCLUDED.nationality
-      `;
+        SELECT COUNT(*)::text AS affected
+        FROM upserted_members
+      `,
+      [importDate],
+    );
 
-      totalAffected += affected;
-      this.logger.debug(`Upserted members chunk ${Math.floor(i / chunkSize) + 1}: ${affected} affected`);
-    }
-
-    return { affected: totalAffected };
+    return { affected: parseInt(result.rows[0]?.affected || '0', 10) };
   }
 
-  // ============================================================================
-  // BULK PROCESS NUMERIC POINTS — LATERAL join instead of N+1
-  // ============================================================================
-
-  private async processPoints(
-    points: NumericPoints[],
+  private async mergeNumericPointsFromStage(
+    client: Client,
+    importDate: string,
     playerCategory: PlayerCategory,
   ): Promise<{
     stored: number;
     skipped: number;
     changes: RankingEstimationChange[];
   }> {
-    if (points.length === 0) return { stored: 0, skipped: 0, changes: [] };
+    const totalPointsResult = await client.query<{ total: string }>(`
+      SELECT COUNT(*)::text AS total
+      FROM (
+        SELECT DISTINCT ON (member_id, member_licence) 1
+        FROM member_import_stage
+        WHERE points >= 0
+        ORDER BY member_id, member_licence, line_no DESC
+      ) AS deduped_points
+    `);
+    const totalPoints = parseInt(totalPointsResult.rows[0]?.total || '0', 10);
 
-    // Step 1: Bulk fetch latest points for all members (one query per chunk)
-    const latestMap = await this.fetchLatestPointsBulk(points);
+    const upsertResult = await client.query<PointUpsertRow>(
+      `
+        WITH staged_points AS (
+          SELECT DISTINCT ON (member_id, member_licence)
+            member_id,
+            member_licence,
+            points,
+            ranking_number,
+            ranking_wi,
+            ranking_letter_estimation
+          FROM member_import_stage
+          WHERE points >= 0
+          ORDER BY member_id, member_licence, line_no DESC
+        ),
+        candidate_points AS (
+          SELECT
+            staged_points.*,
+            latest.points AS previous_points,
+            latest.ranking AS previous_ranking,
+            latest."rankingWI" AS previous_ranking_wi,
+            latest."rankingLetterEstimation" AS previous_ranking_letter_estimation
+          FROM staged_points
+          LEFT JOIN LATERAL (
+            SELECT
+              points,
+              ranking,
+              "rankingWI",
+              "rankingLetterEstimation"
+            FROM "NumericPoints"
+            WHERE "memberId" = staged_points.member_id
+              AND "memberLicence" = staged_points.member_licence
+            ORDER BY date DESC
+            LIMIT 1
+          ) AS latest ON TRUE
+        ),
+        changed_points AS (
+          SELECT *
+          FROM candidate_points
+          WHERE previous_points IS NULL
+             OR previous_points IS DISTINCT FROM points
+             OR previous_ranking IS DISTINCT FROM ranking_number
+             OR previous_ranking_wi IS DISTINCT FROM ranking_wi
+             OR previous_ranking_letter_estimation IS DISTINCT FROM ranking_letter_estimation
+        ),
+        upserted_points AS (
+          INSERT INTO "NumericPoints" (
+            "memberId",
+            "memberLicence",
+            date,
+            points,
+            ranking,
+            "rankingWI",
+            "rankingLetterEstimation"
+          )
+          SELECT
+            member_id,
+            member_licence,
+            $1::date,
+            points,
+            ranking_number,
+            ranking_wi,
+            ranking_letter_estimation
+          FROM changed_points
+          ON CONFLICT ("memberId", "memberLicence", date) DO UPDATE SET
+            points = EXCLUDED.points,
+            ranking = EXCLUDED.ranking,
+            "rankingWI" = EXCLUDED."rankingWI",
+            "rankingLetterEstimation" = EXCLUDED."rankingLetterEstimation"
+          WHERE "NumericPoints".points IS DISTINCT FROM EXCLUDED.points
+             OR "NumericPoints".ranking IS DISTINCT FROM EXCLUDED.ranking
+             OR "NumericPoints"."rankingWI" IS DISTINCT FROM EXCLUDED."rankingWI"
+             OR "NumericPoints"."rankingLetterEstimation" IS DISTINCT FROM EXCLUDED."rankingLetterEstimation"
+          RETURNING "memberId", "memberLicence"
+        )
+        SELECT
+          upserted_points."memberId" AS "memberId",
+          upserted_points."memberLicence" AS "memberLicence",
+          changed_points.previous_ranking_letter_estimation AS "oldRankingEstimation",
+          changed_points.ranking_letter_estimation AS "newRankingEstimation"
+        FROM upserted_points
+        JOIN changed_points
+          ON changed_points.member_id = upserted_points."memberId"
+         AND changed_points.member_licence = upserted_points."memberLicence"
+      `,
+      [importDate],
+    );
 
-    // Step 2: Compare in JS, detect changes and ranking estimation changes
-    const pointsToStore: NumericPoints[] = [];
-    const changes: RankingEstimationChange[] = [];
-
-    for (const point of points) {
-      const key = `${point.memberId}_${point.memberLicence}`;
-      const latest = latestMap.get(key);
-
-      const shouldStore =
-        !latest ||
-        latest.points !== point.points ||
-        latest.ranking !== point.ranking ||
-        latest.rankingWI !== point.rankingWI ||
-        latest.rankingLetterEstimation !== point.rankingLetterEstimation;
-
-      if (shouldStore) {
-        pointsToStore.push(point);
-      }
-
-      // Track ranking estimation changes for notifications
-      if (
-        latest &&
-        point.rankingLetterEstimation &&
-        latest.rankingLetterEstimation !== point.rankingLetterEstimation
-      ) {
-        changes.push({
-          uniqueIndex: point.memberId,
-          oldRankingEstimation: latest.rankingLetterEstimation || '',
-          newRankingEstimation: point.rankingLetterEstimation,
-          playerCategory,
-        });
-      }
-    }
-
-    // Step 3: Bulk insert changed points
-    if (pointsToStore.length > 0) {
-      await this.insertPointsInChunks(pointsToStore);
-    }
+    const changes = upsertResult.rows
+      .filter(
+        (row) =>
+          row.oldRankingEstimation !== null &&
+          row.newRankingEstimation !== null &&
+          row.oldRankingEstimation !== row.newRankingEstimation,
+      )
+      .map((row) => ({
+        uniqueIndex: row.memberId,
+        oldRankingEstimation: row.oldRankingEstimation || '',
+        newRankingEstimation: row.newRankingEstimation || '',
+        playerCategory,
+      }));
 
     return {
-      stored: pointsToStore.length,
-      skipped: points.length - pointsToStore.length,
+      stored: upsertResult.rowCount,
+      skipped: Math.max(0, totalPoints - upsertResult.rowCount),
       changes,
     };
-  }
-
-  /**
-   * Fetch the latest NumericPoints for each member in bulk using a single
-   * SQL query with LATERAL join. Replaces the previous N+1 approach
-   * (individual findFirst per member + Redis cache fallback).
-   *
-   * For 40K members against 4M points, this runs in ~100ms thanks to
-   * the composite PK index on (memberId, memberLicence, date).
-   */
-  private async fetchLatestPointsBulk(
-    points: NumericPoints[],
-  ): Promise<Map<string, { points: number; ranking: number | null; rankingWI: number | null; rankingLetterEstimation: string | null }>> {
-    const map = new Map<string, { points: number; ranking: number | null; rankingWI: number | null; rankingLetterEstimation: string | null }>();
-    const chunkSize = 10000;
-
-    for (let i = 0; i < points.length; i += chunkSize) {
-      const chunk = points.slice(i, i + chunkSize);
-      const memberIds = chunk.map((p) => p.memberId);
-      const memberLicences = chunk.map((p) => p.memberLicence);
-
-      const results = await this.prismaService.$queryRaw<LatestPointRow[]>`
-        SELECT pairs.mid AS "memberId", pairs.ml AS "memberLicence",
-               np.points, np.ranking, np."rankingWI", np."rankingLetterEstimation"
-        FROM (
-          SELECT unnest(${memberIds}::int[]) AS mid,
-                 unnest(${memberLicences}::int[]) AS ml
-        ) pairs
-        LEFT JOIN LATERAL (
-          SELECT points, ranking, "rankingWI", "rankingLetterEstimation"
-          FROM "NumericPoints"
-          WHERE "memberId" = pairs.mid AND "memberLicence" = pairs.ml
-          ORDER BY date DESC
-          LIMIT 1
-        ) np ON true
-      `;
-
-      for (const r of results) {
-        if (r.points !== null) {
-          map.set(`${Number(r.memberId)}_${Number(r.memberLicence)}`, {
-            points: Number(r.points),
-            ranking: r.ranking !== null ? Number(r.ranking) : null,
-            rankingWI: r.rankingWI !== null ? Number(r.rankingWI) : null,
-            rankingLetterEstimation: r.rankingLetterEstimation,
-          });
-        }
-      }
-    }
-
-    return map;
-  }
-
-  private async insertPointsInChunks(points: NumericPoints[]): Promise<void> {
-    const chunkSize = 5000;
-    for (let i = 0; i < points.length; i += chunkSize) {
-      const chunk = points.slice(i, i + chunkSize);
-      await this.prismaService.numericPoints.createMany({
-        data: chunk,
-        skipDuplicates: true,
-      });
-      this.logger.debug(`Inserted points: ${Math.min(i + chunkSize, points.length)}/${points.length}`);
-    }
   }
 
   // ============================================================================
@@ -438,7 +530,10 @@ export class MembersListProcessingService {
       }
       return date;
     } catch (error) {
-      this.logger.warn(`Failed to parse date from first line: ${firstLine}`, error);
+      this.logger.warn(
+        `Failed to parse date from first line: ${firstLine}`,
+        error,
+      );
       return null;
     }
   }
@@ -493,10 +588,12 @@ export class MembersListProcessingService {
     ];
 
     this.logger.log(`Cleaning ${patterns.length} cache patterns`);
-    // Process in parallel batches of 5
     for (let i = 0; i < patterns.length; i += 5) {
       const batch = patterns.slice(i, i + 5);
-      await Promise.all(batch.map((p) => this.cacheService.cleanKeys(p)));
+      await Promise.all(
+        batch.map((pattern) => this.cacheService.cleanKeys(pattern)),
+      );
+      await this.coolDownBetweenBatches(i + batch.length, patterns.length);
     }
   }
 
@@ -505,23 +602,18 @@ export class MembersListProcessingService {
   // ============================================================================
 
   private async storeImport(
-    lines: string[],
+    contentHash: string,
     playerCategory: PlayerCategory,
     fileDate: Date | null,
     linesProcessed: number,
     processingTimeMs: number,
     stats: { linesAdded: number; linesUpdated: number },
   ): Promise<void> {
-    const contentLines = lines.length > 1 ? lines.slice(1) : lines;
-    const masterHash = createHash('sha256')
-      .update(contentLines.join(''))
-      .digest('hex');
-
     await this.prismaService.dataImport.create({
       data: {
         type: ImportType.MEMBER,
         playerCategory,
-        hash: masterHash,
+        hash: contentHash,
         fileDate,
         linesProcessed,
         linesAdded: stats.linesAdded,
@@ -529,5 +621,40 @@ export class MembersListProcessingService {
         processingTimeMs,
       },
     });
+  }
+
+  // ============================================================================
+  // UTILITIES
+  // ============================================================================
+
+  private computeContentHash(lines: string[]): string {
+    const contentLines = lines.length > 1 ? lines.slice(1) : lines;
+    return createHash('sha256').update(contentLines.join('')).digest('hex');
+  }
+
+  private toPgDate(value: Date): string {
+    const year = value.getFullYear();
+    const month = `${value.getMonth() + 1}`.padStart(2, '0');
+    const day = `${value.getDate()}`.padStart(2, '0');
+
+    return `${year}-${month}-${day}`;
+  }
+
+  private async coolDownBetweenBatches(
+    processed: number,
+    total: number,
+  ): Promise<void> {
+    if (
+      processed >= total ||
+      PERFORMANCE_CONFIG.IMPORT_BATCH_COOLDOWN_MS <= 0
+    ) {
+      return;
+    }
+
+    await this.sleep(PERFORMANCE_CONFIG.IMPORT_BATCH_COOLDOWN_MS);
+  }
+
+  private async sleep(ms: number): Promise<void> {
+    await new Promise((resolve) => setTimeout(resolve, ms));
   }
 }

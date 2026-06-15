@@ -8,13 +8,16 @@ export const playerCategoryFilenameMapping: { [index: string]: string } = {
 // Performance optimization constants
 export const PERFORMANCE_CONFIG = {
   // Batch sizes for different operations
-  MEMBER_BATCH_SIZE: parseInt(process.env.MEMBER_BATCH_SIZE || '1000'),
+  MEMBER_BATCH_SIZE: parseInt(process.env.MEMBER_BATCH_SIZE || '500'),
   MEMBER_POINTS_BATCH_SIZE: parseInt(
-    process.env.MEMBER_POINTS_BATCH_SIZE || '1000',
+    process.env.MEMBER_POINTS_BATCH_SIZE || '500',
   ),
-  RESULTS_BATCH_SIZE: parseInt(process.env.RESULTS_BATCH_SIZE || '1000'),
+  RESULTS_BATCH_SIZE: parseInt(process.env.RESULTS_BATCH_SIZE || '500'),
   RESULTS_TRANSACTION_BATCH_SIZE: parseInt(
     process.env.RESULTS_TRANSACTION_BATCH_SIZE || '500',
+  ),
+  IMPORT_BATCH_COOLDOWN_MS: parseInt(
+    process.env.IMPORT_BATCH_COOLDOWN_MS || '100',
   ),
 
   // Concurrency limits

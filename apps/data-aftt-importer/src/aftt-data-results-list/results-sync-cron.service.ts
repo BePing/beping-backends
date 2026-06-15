@@ -4,6 +4,7 @@ import { InjectQueue } from '@nestjs/bull';
 import { Queue, JobOptions } from 'bull';
 import { PlayerCategory } from '@prisma/client';
 import { ConfigService } from '@nestjs/config';
+import { ImportQueueStatusService } from '../common/import-queue-status.service';
 
 interface QueueStatus {
   waiting: number;
@@ -34,6 +35,7 @@ export class ResultsSyncCronService implements OnModuleInit {
   constructor(
     @InjectQueue('results') private readonly queue: Queue,
     private readonly configService: ConfigService,
+    private readonly importQueueStatusService: ImportQueueStatusService,
   ) {}
 
   async onModuleInit(): Promise<void> {
@@ -43,7 +45,9 @@ export class ResultsSyncCronService implements OnModuleInit {
     const syncOnStart = this.configService.get('SYNC_RESULTS_ON_START', false);
     if (syncOnStart === true || syncOnStart === 'true') {
       const delayMs = 10000;
-      this.logger.log(`Results sync scheduled to start in ${delayMs / 1000}s...`);
+      this.logger.log(
+        `Results sync scheduled to start in ${delayMs / 1000}s...`,
+      );
       setTimeout(() => this.syncResults(), delayMs);
     } else {
       this.logger.log('SYNC_RESULTS_ON_START is not enabled.');
@@ -77,22 +81,22 @@ export class ResultsSyncCronService implements OnModuleInit {
   // Run every hour at 45 minutes past the hour
   @Cron('0 45 * * * *')
   async syncResults(): Promise<void> {
-    const status = await this.getQueueStatus();
+    const status = await this.importQueueStatusService.getStatus();
     this.logger.log(
-      `Results sync triggered - Queue status: waiting=${status.waiting}, active=${status.active}, delayed=${status.delayed}`,
+      `Results sync triggered - Global queue status: waiting=${status.totals.waiting}, active=${status.totals.active}, delayed=${status.totals.delayed}`,
     );
 
     // Skip if there are already jobs being processed or pending
-    if (status.active > 0) {
+    if (status.totals.active > 0) {
       this.logger.warn(
-        `Skipping sync - ${status.active} job(s) already active. Will retry next cycle.`,
+        `Skipping sync - ${status.totals.active} job(s) already active. Will retry next cycle.`,
       );
       return;
     }
 
-    if (status.waiting > 0 || status.delayed > 0) {
+    if (status.totals.waiting > 0 || status.totals.delayed > 0) {
       this.logger.warn(
-        `Skipping sync - jobs already pending (waiting=${status.waiting}, delayed=${status.delayed}). Will retry next cycle.`,
+        `Skipping sync - jobs already pending (waiting=${status.totals.waiting}, delayed=${status.totals.delayed}). Will retry next cycle.`,
       );
       return;
     }
@@ -158,7 +162,9 @@ export class ResultsSyncCronService implements OnModuleInit {
   /**
    * Manually trigger sync for a specific category (useful for testing/admin)
    */
-  async triggerSyncForCategory(playerCategory: PlayerCategory): Promise<string> {
+  async triggerSyncForCategory(
+    playerCategory: PlayerCategory,
+  ): Promise<string> {
     const status = await this.getQueueStatus();
 
     if (status.active > 0 || status.waiting > 0) {

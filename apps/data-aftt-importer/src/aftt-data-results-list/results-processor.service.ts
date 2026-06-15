@@ -3,10 +3,9 @@ import { firstValueFrom } from 'rxjs';
 import { Logger } from '@nestjs/common';
 import {
   CompetitionType,
-  Member,
+  ImportType,
   PlayerCategory,
   Result,
-  ImportType,
 } from '@prisma/client';
 import { OnQueueActive, Process, Processor } from '@nestjs/bull';
 import { Job } from 'bull';
@@ -14,35 +13,35 @@ import { PrismaService } from '../prisma.service';
 import { CacheService } from '../cache/cache.service';
 import { createHash } from 'crypto';
 import { PERFORMANCE_CONFIG } from '../constants';
+import { ImportExecutionCoordinatorService } from '../common/import-execution-coordinator.service';
+import { PostgresCopyService } from '../common/postgres-copy.service';
 import {
   ParsedResultLine,
-  ValidResult,
-  CompetitionLookup,
-  BuildValidResultsOutput,
-  LoadCompetitionsStats,
-  LoadMembersStats,
   AppendCheckResult,
   LastImportInfo,
   ImportCheckResult,
   ProcessingStats,
-  BulkUpdateArrays,
 } from './results-processor.types';
+import { Client } from 'pg';
+
+interface BatchMergeStats {
+  stagedCount: number;
+  validCount: number;
+  insertedCount: number;
+  updatedCount: number;
+}
 
 @Processor('results')
 export class ResultsProcessorService {
   private readonly logger = new Logger(ResultsProcessorService.name);
-  private readonly competitionByKey = new Map<string, CompetitionLookup>();
-  private readonly memberByKey = new Map<string, Member>();
 
   constructor(
     private readonly httpService: HttpService,
     private readonly prismaService: PrismaService,
     private readonly cacheService: CacheService,
+    private readonly importExecutionCoordinatorService: ImportExecutionCoordinatorService,
+    private readonly postgresCopyService: PostgresCopyService,
   ) {}
-
-  // ============================================================================
-  // JOB LIFECYCLE
-  // ============================================================================
 
   @OnQueueActive()
   onActive(job: Job): void {
@@ -53,146 +52,129 @@ export class ResultsProcessorService {
 
   @Process()
   async process(job: Job<{ playerCategory: PlayerCategory }>): Promise<void> {
-    this.logger.log('Processing results...');
-    const processingStartTime = Date.now();
+    await this.importExecutionCoordinatorService.runExclusive(
+      `results:${job.data.playerCategory}`,
+      async () => {
+        this.logger.log('Processing results...');
+        const processingStartTime = Date.now();
 
-    // Clear caches at start to avoid stale data between runs
-    this.competitionByKey.clear();
-    this.memberByKey.clear();
+        try {
+          const lines = await this.downloadMemberLines(job.data.playerCategory);
 
-    try {
-      const lines = await this.downloadMemberLines(job.data.playerCategory);
+          const fileDate = this.extractFileDate(lines);
+          this.logger.log(
+            `Parsed file date: ${fileDate ? fileDate.toISOString() : 'unknown'}`,
+          );
 
-      const fileDate = this.extractFileDate(lines);
-      this.logger.log(`Parsed file date: ${fileDate ? fileDate.toISOString() : 'unknown'}`);
+          const { shouldProcess, lastImport } =
+            await this.getLastImportAndCheckShouldProcess(
+              fileDate,
+              job.data.playerCategory,
+            );
+          const dataLines = lines.slice(1);
+          const contentHash = this.computeContentHash(dataLines);
+          const getElapsedMs = () => Date.now() - processingStartTime;
 
-      // Fetch lastImport once and check if we should process (avoids duplicate query)
-      const { shouldProcess, lastImport } = await this.getLastImportAndCheckShouldProcess(
-        fileDate,
-        job.data.playerCategory,
-      );
-      const dataLines = lines.slice(1);
-      const contentHash = this.computeContentHash(dataLines);
-      const getElapsedMs = () => Date.now() - processingStartTime;
+          if (!shouldProcess) {
+            this.logger.log('No newer data detected, skipping.');
+            await this.storeImport(
+              contentHash,
+              job.data.playerCategory,
+              fileDate,
+              0,
+              getElapsedMs(),
+              { linesAdded: 0, linesUpdated: 0 },
+            );
+            return;
+          }
 
-      if (!shouldProcess) {
-        this.logger.log('No newer data detected, skipping.');
-        await this.storeImport(contentHash, job.data.playerCategory, fileDate, 0, getElapsedMs(), { linesAdded: 0, linesUpdated: 0 });
-        return;
-      }
+          if (lastImport?.hash === contentHash) {
+            this.logger.log(
+              'Content hash matches previous import - skipping processing entirely',
+            );
+            await this.storeImport(
+              contentHash,
+              job.data.playerCategory,
+              fileDate,
+              0,
+              getElapsedMs(),
+              { linesAdded: 0, linesUpdated: 0 },
+            );
+            return;
+          }
 
-      // Skip if content hash matches previous import
-      if (lastImport?.hash === contentHash) {
-        this.logger.log('Content hash matches previous import - skipping processing entirely');
-        await this.storeImport(contentHash, job.data.playerCategory, fileDate, 0, getElapsedMs(), { linesAdded: 0, linesUpdated: 0 });
-        return;
-      }
+          const appendInfo = await this.checkIfRecordsAppendedAtEnd(
+            dataLines,
+            job.data.playerCategory,
+            lastImport,
+          );
 
-      // Check if new records were appended at the end
-      const appendInfo = await this.checkIfRecordsAppendedAtEnd(
-        dataLines,
-        job.data.playerCategory,
-        lastImport,
-      );
+          const linesToProcess = appendInfo.isAppend
+            ? dataLines.slice(appendInfo.previousLineCount)
+            : dataLines;
 
-      // If it's a pure append, only process new lines
-      const linesToProcess = appendInfo.isAppend
-        ? dataLines.slice(appendInfo.previousLineCount)
-        : dataLines;
+          if (appendInfo.isAppend) {
+            this.logger.log(
+              `APPEND MODE: Processing only ${linesToProcess.length} new lines (skipping ${appendInfo.previousLineCount} existing)`,
+            );
+          }
 
-      if (appendInfo.isAppend) {
-        this.logger.log(`📝 APPEND MODE: Processing only ${linesToProcess.length} new lines (skipping ${appendInfo.previousLineCount} existing)`);
-      }
+          const mergeStart = Date.now();
+          const mergeStats = await this.postgresCopyService.withClient(
+            async (client) => {
+              await this.createResultsStageTable(client);
+              await this.copyResultsStageRows(
+                client,
+                linesToProcess,
+                job.data.playerCategory,
+              );
+              await this.prepareDedupedResultsStage(client);
+              await this.upsertCompetitionsFromStage(client);
+              return this.mergeResultBatches(client);
+            },
+          );
 
-      const parsedResults = linesToProcess.map((line) =>
-        this.parseLine(line, job.data.playerCategory),
-      );
-      this.logger.log(`Parsed ${parsedResults.length} results lines for ${job.data.playerCategory}`);
+          this.logger.log(
+            `Results merged: inserted=${mergeStats.linesAdded}, updated=${mergeStats.linesUpdated}, dropped=${mergeStats.dropped} in ${Date.now() - mergeStart}ms`,
+          );
 
-      // Preload all required competitions and members in bulk (no Redis roundtrips)
-      const competitionStats = await this.loadCompetitions(parsedResults);
-      this.logger.log(
-        `Competitions - total unique: ${competitionStats.total}, existing: ${competitionStats.existing}, created: ${competitionStats.created}`,
-      );
-      const memberStats = await this.loadMembers(parsedResults, job.data.playerCategory);
-      this.logger.log(
-        `Members - requested unique licences: ${memberStats.requested}, found: ${memberStats.found}, missing: ${memberStats.missing}`,
-      );
+          if (mergeStats.linesAdded > 0 || mergeStats.linesUpdated > 0) {
+            await this.invalidateCaches();
+          } else {
+            this.logger.log('No changes made - skipping cache invalidation');
+          }
 
-      // Build valid results
-      const { validResults, dropped } = this.buildValidResults(
-        parsedResults,
-        job.data.playerCategory,
-      );
-      this.logger.log(
-        `Resolved references - valid results: ${validResults.length}, dropped (missing refs): ${dropped}`,
-      );
+          const processingTimeMs = Date.now() - processingStartTime;
+          await this.storeImport(
+            contentHash,
+            job.data.playerCategory,
+            fileDate,
+            dataLines.length,
+            processingTimeMs,
+            {
+              linesAdded: mergeStats.linesAdded,
+              linesUpdated: mergeStats.linesUpdated,
+            },
+          );
 
-      // Initialize stats
-      let linesAdded = 0;
-      let linesUpdated = 0;
-
-      if (validResults.length === 0) {
-        this.logger.log('No valid results to process.');
-      } else {
-        // Partition into create vs update
-        const ids = validResults.map((r) => r.id);
-        const existingIds = await this.findExistingResultIds(
-          ids,
-          job.data.playerCategory,
-        );
-
-        const existingSet = new Set<number>(existingIds);
-        const toCreate = validResults.filter((r) => !existingSet.has(r.id));
-        const toUpdate = validResults.filter((r) => existingSet.has(r.id));
-
-        this.logger.log(
-          `Upsert plan - toCreate: ${toCreate.length}, toUpdate: ${toUpdate.length}`,
-        );
-
-        // Fast-path creates
-        await this.createResultsInChunks(toCreate);
-
-        // Bulk updates via raw SQL unnest
-        await this.updateResultsInChunks(toUpdate);
-
-        // Store counts for DataImport record
-        linesAdded = toCreate.length;
-        linesUpdated = toUpdate.length;
-      }
-
-      // Only clean caches if we actually changed something
-      if (linesAdded > 0 || linesUpdated > 0) {
-        await this.invalidateCaches();
-      } else {
-        this.logger.log('📝 No changes made - skipping cache invalidation');
-      }
-
-      // Store import
-      const processingTimeMs = Date.now() - processingStartTime;
-      await this.storeImport(
-        contentHash,
-        job.data.playerCategory,
-        fileDate,
-        dataLines.length,
-        processingTimeMs,
-        { linesAdded, linesUpdated },
-      );
-
-      this.logger.log(
-        `Results processing completed. Processed ${dataLines.length} lines in ${processingTimeMs}ms`,
-      );
-    } catch (e) {
-      this.logger.error('Failed to finish results job', e);
-      throw e;
-    }
+          this.logger.log(
+            `Results processing completed. Processed ${dataLines.length} lines in ${processingTimeMs}ms`,
+          );
+        } catch (e) {
+          this.logger.error('Failed to finish results job', e);
+          throw e;
+        }
+      },
+    );
   }
 
   // ============================================================================
   // DOWNLOAD / PARSE
   // ============================================================================
 
-  private async downloadMemberLines(playerCategory: PlayerCategory): Promise<string[]> {
+  private async downloadMemberLines(
+    playerCategory: PlayerCategory,
+  ): Promise<string[]> {
     this.logger.debug(
       `Downloading ${playerCategory} results file from data.aftt.be`,
     );
@@ -200,6 +182,7 @@ export class ResultsProcessorService {
     const file = await firstValueFrom(
       this.httpService.get<string>(
         `export/liste_result_${playerCategory == PlayerCategory.SENIOR_MEN ? 1 : 2}.txt`,
+        { timeout: PERFORMANCE_CONFIG.DOWNLOAD_TIMEOUT_MS },
       ),
     );
     const lines = file.data
@@ -211,7 +194,10 @@ export class ResultsProcessorService {
     return lines;
   }
 
-  private parseLine(line: string, playerCategory: PlayerCategory): ParsedResultLine {
+  private parseLine(
+    line: string,
+    playerCategory: PlayerCategory,
+  ): ParsedResultLine {
     const cols = line.split(';');
     return {
       result: {
@@ -236,7 +222,7 @@ export class ResultsProcessorService {
           cols[9] === 'T'
             ? CompetitionType.TOURNAMENT
             : CompetitionType.CHAMPIONSHIP,
-        coefficient: parseFloat(cols[11]),
+        coefficient: cols[11]?.length ? parseFloat(cols[11]) : 0,
       },
       memberLicence: parseInt(cols[2], 10),
       opponentLicence: parseInt(cols[3], 10),
@@ -250,7 +236,6 @@ export class ResultsProcessorService {
 
     const firstLine = lines[0].trim();
 
-    // Try to parse as ISO-8601 format
     try {
       const date = new Date(firstLine);
       if (isNaN(date.getTime())) {
@@ -312,7 +297,9 @@ export class ResultsProcessorService {
     lastImport: LastImportInfo | null,
   ): Promise<AppendCheckResult> {
     if (!lastImport?.linesProcessed) {
-      this.logger.log('📝 APPEND CHECK: No previous import found, cannot verify append behavior');
+      this.logger.log(
+        'APPEND CHECK: No previous import found, cannot verify append behavior',
+      );
       return { isAppend: false, previousLineCount: 0 };
     }
 
@@ -321,38 +308,43 @@ export class ResultsProcessorService {
 
     if (currentLineCount <= previousLineCount) {
       this.logger.log(
-        `📝 APPEND CHECK: File has same or fewer lines (${currentLineCount} vs ${previousLineCount}) - NOT an append operation`,
+        `APPEND CHECK: File has same or fewer lines (${currentLineCount} vs ${previousLineCount}) - NOT an append operation`,
       );
       return { isAppend: false, previousLineCount };
     }
 
-    // If we have more lines, check if the first N lines match the previous import
     const knownLines = dataLines.slice(0, previousLineCount);
     const knownHash = this.computeContentHash(knownLines);
 
     if (knownHash === lastImport.hash) {
       const newLinesCount = currentLineCount - previousLineCount;
       this.logger.log(
-        `📝 APPEND CHECK: File structure intact, checking ${newLinesCount} new lines against database (lines ${previousLineCount + 1}-${currentLineCount})`,
+        `APPEND CHECK: File structure intact, checking ${newLinesCount} new lines against database`,
       );
 
-      // Check if the new lines contain unknown records in DB
       const newLines = dataLines.slice(previousLineCount);
-      const isAppendConfirmed = await this.checkNewLinesAgainstDatabase(newLines, playerCategory);
+      const isAppendConfirmed = await this.checkNewLinesAgainstDatabase(
+        newLines,
+        playerCategory,
+      );
 
       if (isAppendConfirmed) {
-        this.logger.log(`✅ APPEND CHECK: CONFIRMED - All ${newLinesCount} new records are unknown to DB, confirming append behavior`);
+        this.logger.log(
+          `APPEND CHECK: confirmed append of ${newLinesCount} records`,
+        );
         return { isAppend: true, previousLineCount };
-      } else {
-        this.logger.log(`❌ APPEND CHECK: Some new lines contain known records - NOT a clean append`);
-        return { isAppend: false, previousLineCount };
       }
-    } else {
+
       this.logger.log(
-        `❌ APPEND CHECK: NOT an append - file structure changed. Processing all ${currentLineCount} lines`,
+        'APPEND CHECK: some new lines are already known - falling back to full processing',
       );
       return { isAppend: false, previousLineCount };
     }
+
+    this.logger.log(
+      'APPEND CHECK: file structure changed - processing full file',
+    );
+    return { isAppend: false, previousLineCount };
   }
 
   private async checkNewLinesAgainstDatabase(
@@ -363,14 +355,15 @@ export class ResultsProcessorService {
       return true;
     }
 
-    // Parse the new lines to get their IDs
     const newResultIds = newLines
       .map((line) => {
         try {
           const cols = line.split(';');
           return parseInt(cols[0], 10);
         } catch (e) {
-          this.logger.warn(`Failed to parse result ID from line: ${line.substring(0, 50)}...`);
+          this.logger.warn(
+            `Failed to parse result ID from line: ${line.substring(0, 50)}...`,
+          );
           return null;
         }
       })
@@ -381,241 +374,439 @@ export class ResultsProcessorService {
       return false;
     }
 
-    this.logger.log(`📝 APPEND CHECK: Checking ${newResultIds.length} new result IDs against database`);
-
-    // Check how many of these IDs already exist in the database
-    const existingIds = await this.findExistingResultIds(newResultIds, playerCategory);
-    const unknownCount = newResultIds.length - existingIds.length;
-
-    this.logger.log(
-      `📝 APPEND CHECK: Database check results - Total: ${newResultIds.length}, Unknown: ${unknownCount}, Known: ${existingIds.length}`,
+    const existingIds = await this.findExistingResultIds(
+      newResultIds,
+      playerCategory,
     );
-
-    if (existingIds.length > 0) {
-      this.logger.log(`📝 APPEND CHECK: Known IDs found: ${existingIds.slice(0, 5).join(', ')}${existingIds.length > 5 ? '...' : ''}`);
-    }
-
-    // Return true if all new records are unknown (confirming append behavior)
     return existingIds.length === 0;
   }
 
   // ============================================================================
-  // DATA LOADING
+  // COPY PIPELINE
   // ============================================================================
 
-  private getCompetitionKey(competition: { id: string; name: string; type: CompetitionType } | undefined): string | null {
-    if (!competition) {
-      return null;
-    }
-
-    // Championship:
-    // - AFTT provides a code like "PBBWH07/036 - Logis Auderghem"
-    // - We split and store `id` as the code (e.g. "PBBWH07/036") and `name` as the club name.
-    // - For de-duplication we want to key by that **code**, not by the name, to avoid
-    //   unrelated championships with the same club name sharing the same competition.
-    //
-    // Tournament:
-    // - For tournaments, we keep the full string as `id` (cols[12]) and also use that full
-    //   string as the key. This matches the requirement "in case of tournament use all the string".
-    if (competition.type === CompetitionType.CHAMPIONSHIP) {
-      return competition.id;
-    }
-
-    // Tournament (and any other type in the future): use the full `id` string.
-    return competition.id;
+  private async createResultsStageTable(client: Client): Promise<void> {
+    await client.query(`
+      CREATE TEMP TABLE results_import_stage (
+        line_no integer NOT NULL,
+        result_id integer NOT NULL,
+        result_date date NOT NULL,
+        player_category "PlayerCategory" NOT NULL,
+        member_licence integer NOT NULL,
+        opponent_licence integer NOT NULL,
+        member_ranking text NOT NULL,
+        member_points double precision NOT NULL,
+        opponent_ranking text NOT NULL,
+        opponent_points double precision NOT NULL,
+        result_value "Result" NOT NULL,
+        score text NOT NULL,
+        competition_id text NOT NULL,
+        competition_name text NOT NULL,
+        competition_type "CompetitionType" NOT NULL,
+        competition_coefficient integer NOT NULL,
+        diff_points double precision NOT NULL,
+        points_to_add integer NOT NULL,
+        loose_factor double precision NOT NULL,
+        definitive_points_to_add double precision NOT NULL
+      )
+    `);
   }
 
-  private async loadCompetitions(parsedResults: ParsedResultLine[]): Promise<LoadCompetitionsStats> {
-    const byKey = new Map<string, ParsedResultLine['competition']>();
-    for (const r of parsedResults) {
-      const key = this.getCompetitionKey(r.competition);
-      if (key) {
-        byKey.set(key, r.competition);
+  private async copyResultsStageRows(
+    client: Client,
+    linesToProcess: string[],
+    playerCategory: PlayerCategory,
+  ): Promise<void> {
+    await this.postgresCopyService.copyRows(
+      client,
+      `COPY results_import_stage (
+        line_no,
+        result_id,
+        result_date,
+        player_category,
+        member_licence,
+        opponent_licence,
+        member_ranking,
+        member_points,
+        opponent_ranking,
+        opponent_points,
+        result_value,
+        score,
+        competition_id,
+        competition_name,
+        competition_type,
+        competition_coefficient,
+        diff_points,
+        points_to_add,
+        loose_factor,
+        definitive_points_to_add
+      ) FROM STDIN WITH (FORMAT csv, NULL '\\N')`,
+      this.buildResultsStageRows(linesToProcess, playerCategory),
+    );
+  }
+
+  private *buildResultsStageRows(
+    linesToProcess: string[],
+    playerCategory: PlayerCategory,
+  ): Generator<string> {
+    for (let index = 0; index < linesToProcess.length; index++) {
+      const line = linesToProcess[index];
+
+      try {
+        const parsed = this.parseLine(line, playerCategory);
+        yield this.postgresCopyService.buildCsvRow([
+          index + 1,
+          parsed.result.id,
+          this.toPgDate(parsed.result.date),
+          parsed.result.playerCategory,
+          parsed.memberLicence,
+          parsed.opponentLicence,
+          parsed.result.memberRanking,
+          parsed.result.memberPoints,
+          parsed.result.opponentRanking,
+          parsed.result.opponentPoints,
+          parsed.result.result,
+          parsed.result.score,
+          parsed.competition.id,
+          parsed.competition.name,
+          parsed.competition.type,
+          Math.round(parsed.competition.coefficient),
+          parsed.result.diffPoints,
+          Math.round(parsed.result.pointsToAdd),
+          parsed.result.looseFactor,
+          parsed.result.definitivePointsToAdd,
+        ]);
+      } catch (error) {
+        this.logger.warn(`Skipping invalid result line ${index + 1}: ${line}`);
       }
     }
-    if (byKey.size === 0) return { total: 0, existing: 0, created: 0 };
-
-    const keys = Array.from(byKey.keys());
-    const existing = await this.prismaService.competition.findMany({
-      where: { id: { in: keys } },
-    });
-
-    const foundIds = new Set(existing.map((c) => c.id));
-    const missing = keys
-      .filter((id) => !foundIds.has(id))
-      .map((id) => byKey.get(id)!);
-
-    if (missing.length > 0) {
-      await this.prismaService.competition.createMany({
-        data: missing,
-        skipDuplicates: true,
-      });
-    }
-
-    const all = await this.prismaService.competition.findMany({
-      where: { id: { in: keys } },
-      select: { id: true, type: true },
-    });
-    for (const c of all) this.competitionByKey.set(c.id, { id: c.id, type: c.type });
-    return { total: keys.length, existing: existing.length, created: Math.max(0, keys.length - existing.length) };
   }
 
-  private async loadMembers(parsedResults: ParsedResultLine[], playerCategory: PlayerCategory): Promise<LoadMembersStats> {
-    const licences = new Set<number>();
-    for (const r of parsedResults) {
-      licences.add(r.memberLicence);
-      licences.add(r.opponentLicence);
-    }
-    if (licences.size === 0) return { requested: 0, found: 0, missing: 0 };
-
-    const members = await this.prismaService.member.findMany({
-      where: {
-        licence: { in: Array.from(licences) },
-        playerCategory,
-      },
-    });
-    for (const m of members) this.memberByKey.set(`${m.licence}-${playerCategory}`, m);
-    return { requested: licences.size, found: members.length, missing: Math.max(0, licences.size - members.length) };
+  private async prepareDedupedResultsStage(client: Client): Promise<void> {
+    await client.query(`
+      CREATE TEMP TABLE results_dedup_stage AS
+      SELECT DISTINCT ON (result_id, player_category)
+        line_no,
+        result_id,
+        result_date,
+        player_category,
+        member_licence,
+        opponent_licence,
+        member_ranking,
+        member_points,
+        opponent_ranking,
+        opponent_points,
+        result_value,
+        score,
+        competition_id,
+        competition_name,
+        competition_type,
+        competition_coefficient,
+        diff_points,
+        points_to_add,
+        loose_factor,
+        definitive_points_to_add
+      FROM results_import_stage
+      ORDER BY result_id, player_category, line_no DESC
+    `);
+    await client.query(
+      'CREATE INDEX results_dedup_stage_line_no_idx ON results_dedup_stage (line_no)',
+    );
   }
 
-  // ============================================================================
-  // RESULT BUILDING
-  // ============================================================================
+  private async upsertCompetitionsFromStage(client: Client): Promise<void> {
+    await client.query(`
+      INSERT INTO "Competition" (
+        id,
+        name,
+        type,
+        coefficient,
+        "createdAt",
+        "updatedAt"
+      )
+      SELECT DISTINCT
+        competition_id,
+        competition_name,
+        competition_type,
+        competition_coefficient,
+        NOW(),
+        NOW()
+      FROM results_dedup_stage
+      ON CONFLICT (id) DO UPDATE SET
+        name = EXCLUDED.name,
+        type = EXCLUDED.type,
+        coefficient = EXCLUDED.coefficient,
+        "updatedAt" = NOW()
+      WHERE "Competition".name IS DISTINCT FROM EXCLUDED.name
+         OR "Competition".type IS DISTINCT FROM EXCLUDED.type
+         OR "Competition".coefficient IS DISTINCT FROM EXCLUDED.coefficient
+    `);
+  }
 
-  private buildValidResults(parsedResults: ParsedResultLine[], playerCategory: PlayerCategory): BuildValidResultsOutput {
-    const validResults: ValidResult[] = [];
-    const affectedMembers = new Map<number, { id: number; licence: number }>();
+  private async mergeResultBatches(
+    client: Client,
+  ): Promise<{ linesAdded: number; linesUpdated: number; dropped: number }> {
+    const boundsResult = await client.query<{
+      total: string;
+      maxLineNo: string | null;
+    }>(`
+      SELECT
+        COUNT(*)::text AS total,
+        MAX(line_no)::text AS "maxLineNo"
+      FROM results_dedup_stage
+    `);
+
+    const totalRows = parseInt(boundsResult.rows[0]?.total || '0', 10);
+    const maxLineNo = parseInt(boundsResult.rows[0]?.maxLineNo || '0', 10);
+
+    if (totalRows === 0 || maxLineNo === 0) {
+      return { linesAdded: 0, linesUpdated: 0, dropped: 0 };
+    }
+
+    const batchSize = PERFORMANCE_CONFIG.RESULTS_BATCH_SIZE;
+    let linesAdded = 0;
+    let linesUpdated = 0;
     let dropped = 0;
 
-    for (const parsed of parsedResults) {
-      const member = this.memberByKey.get(`${parsed.memberLicence}-${playerCategory}`);
-      const opponent = this.memberByKey.get(`${parsed.opponentLicence}-${playerCategory}`);
-      const competitionKey = this.getCompetitionKey(parsed.competition);
-      const competition = competitionKey ? this.competitionByKey.get(competitionKey) : undefined;
-      if (!member || !opponent || !competition) {
-        dropped++;
-        continue;
+    for (let lineStart = 1; lineStart <= maxLineNo; lineStart += batchSize) {
+      const lineEnd = lineStart + batchSize - 1;
+      const batchStats = await this.mergeResultBatch(
+        client,
+        lineStart,
+        lineEnd,
+      );
+
+      if (batchStats.stagedCount > 0) {
+        this.logger.log(
+          `Merged results batch ${lineStart}-${lineEnd}: staged=${batchStats.stagedCount}, valid=${batchStats.validCount}, inserted=${batchStats.insertedCount}, updated=${batchStats.updatedCount}`,
+        );
       }
 
-      validResults.push({
-        ...parsed.result,
-        competitionId: competition.id,
-        memberId: member.id,
-        memberLicence: member.licence,
-        opponentId: opponent.id,
-        opponentLicence: opponent.licence,
-      });
-
-      affectedMembers.set(member.id, { id: member.id, licence: member.licence });
-      affectedMembers.set(opponent.id, { id: opponent.id, licence: opponent.licence });
+      linesAdded += batchStats.insertedCount;
+      linesUpdated += batchStats.updatedCount;
+      dropped += Math.max(0, batchStats.stagedCount - batchStats.validCount);
+      await this.coolDownBetweenBatches(
+        Math.min(lineEnd, maxLineNo),
+        maxLineNo,
+      );
     }
 
-    return { validResults, affectedMembers, dropped };
+    return { linesAdded, linesUpdated, dropped };
   }
 
-  private sanitizeResultForStorage(result: ValidResult): ValidResult {
+  private async mergeResultBatch(
+    client: Client,
+    lineStart: number,
+    lineEnd: number,
+  ): Promise<BatchMergeStats> {
+    const result = await client.query<{
+      stagedCount: string;
+      validCount: string;
+      insertedCount: string;
+      updatedCount: string;
+    }>(
+      `
+        WITH staged_rows AS (
+          SELECT *
+          FROM results_dedup_stage
+          WHERE line_no BETWEEN $1 AND $2
+        ),
+        valid_results AS (
+          SELECT
+            staged_rows.result_id AS id,
+            staged_rows.result_date AS date,
+            staged_rows.player_category AS "playerCategory",
+            member.id AS "memberId",
+            member.licence AS "memberLicence",
+            opponent.id AS "opponentId",
+            opponent.licence AS "opponentLicence",
+            LEFT(staged_rows.member_ranking, 4) AS "memberRanking",
+            LEFT(staged_rows.opponent_ranking, 4) AS "opponentRanking",
+            staged_rows.member_points::numeric(6,2) AS "memberPoints",
+            staged_rows.opponent_points::numeric(6,2) AS "opponentPoints",
+            staged_rows.result_value AS result,
+            LEFT(staged_rows.score, 3) AS score,
+            staged_rows.competition_id AS "competitionId",
+            staged_rows.diff_points::numeric(6,2) AS "diffPoints",
+            staged_rows.points_to_add::smallint AS "pointsToAdd",
+            staged_rows.loose_factor::numeric(3,2) AS "looseFactor",
+            staged_rows.definitive_points_to_add::numeric(6,2) AS "definitivePointsToAdd"
+          FROM staged_rows
+          JOIN "Member" AS member
+            ON member.licence = staged_rows.member_licence
+           AND member."playerCategory" = staged_rows.player_category
+          JOIN "Member" AS opponent
+            ON opponent.licence = staged_rows.opponent_licence
+           AND opponent."playerCategory" = staged_rows.player_category
+          JOIN "Competition" AS competition
+            ON competition.id = staged_rows.competition_id
+        ),
+        upserted_results AS (
+          INSERT INTO "IndividualResult" (
+            id,
+            date,
+            "playerCategory",
+            "memberId",
+            "memberLicence",
+            "opponentId",
+            "opponentLicence",
+            "memberRanking",
+            "opponentRanking",
+            "memberPoints",
+            "opponentPoints",
+            result,
+            score,
+            "competitionId",
+            "diffPoints",
+            "pointsToAdd",
+            "looseFactor",
+            "definitivePointsToAdd"
+          )
+          SELECT
+            id,
+            date,
+            "playerCategory",
+            "memberId",
+            "memberLicence",
+            "opponentId",
+            "opponentLicence",
+            "memberRanking",
+            "opponentRanking",
+            "memberPoints",
+            "opponentPoints",
+            result,
+            score,
+            "competitionId",
+            "diffPoints",
+            "pointsToAdd",
+            "looseFactor",
+            "definitivePointsToAdd"
+          FROM valid_results
+          ON CONFLICT (id, "playerCategory") DO UPDATE SET
+            date = EXCLUDED.date,
+            "memberRanking" = EXCLUDED."memberRanking",
+            "memberPoints" = EXCLUDED."memberPoints",
+            "opponentRanking" = EXCLUDED."opponentRanking",
+            "opponentPoints" = EXCLUDED."opponentPoints",
+            result = EXCLUDED.result,
+            score = EXCLUDED.score,
+            "competitionId" = EXCLUDED."competitionId",
+            "diffPoints" = EXCLUDED."diffPoints",
+            "pointsToAdd" = EXCLUDED."pointsToAdd",
+            "looseFactor" = EXCLUDED."looseFactor",
+            "definitivePointsToAdd" = EXCLUDED."definitivePointsToAdd",
+            "memberId" = EXCLUDED."memberId",
+            "memberLicence" = EXCLUDED."memberLicence",
+            "opponentId" = EXCLUDED."opponentId",
+            "opponentLicence" = EXCLUDED."opponentLicence"
+          WHERE "IndividualResult".date IS DISTINCT FROM EXCLUDED.date
+             OR "IndividualResult"."memberRanking" IS DISTINCT FROM EXCLUDED."memberRanking"
+             OR "IndividualResult"."memberPoints" IS DISTINCT FROM EXCLUDED."memberPoints"
+             OR "IndividualResult"."opponentRanking" IS DISTINCT FROM EXCLUDED."opponentRanking"
+             OR "IndividualResult"."opponentPoints" IS DISTINCT FROM EXCLUDED."opponentPoints"
+             OR "IndividualResult".result IS DISTINCT FROM EXCLUDED.result
+             OR "IndividualResult".score IS DISTINCT FROM EXCLUDED.score
+             OR "IndividualResult"."competitionId" IS DISTINCT FROM EXCLUDED."competitionId"
+             OR "IndividualResult"."diffPoints" IS DISTINCT FROM EXCLUDED."diffPoints"
+             OR "IndividualResult"."pointsToAdd" IS DISTINCT FROM EXCLUDED."pointsToAdd"
+             OR "IndividualResult"."looseFactor" IS DISTINCT FROM EXCLUDED."looseFactor"
+             OR "IndividualResult"."definitivePointsToAdd" IS DISTINCT FROM EXCLUDED."definitivePointsToAdd"
+             OR "IndividualResult"."memberId" IS DISTINCT FROM EXCLUDED."memberId"
+             OR "IndividualResult"."memberLicence" IS DISTINCT FROM EXCLUDED."memberLicence"
+             OR "IndividualResult"."opponentId" IS DISTINCT FROM EXCLUDED."opponentId"
+             OR "IndividualResult"."opponentLicence" IS DISTINCT FROM EXCLUDED."opponentLicence"
+          RETURNING (xmax = 0) AS inserted
+        )
+        SELECT
+          (SELECT COUNT(*)::text FROM staged_rows) AS "stagedCount",
+          (SELECT COUNT(*)::text FROM valid_results) AS "validCount",
+          COALESCE((SELECT COUNT(*)::text FROM upserted_results WHERE inserted), '0') AS "insertedCount",
+          COALESCE((SELECT COUNT(*)::text FROM upserted_results WHERE NOT inserted), '0') AS "updatedCount"
+      `,
+      [lineStart, lineEnd],
+    );
+
     return {
-      ...result,
-      score: result.score?.substring(0, 3) || result.score,
-      memberRanking: result.memberRanking?.substring(0, 4) || result.memberRanking,
-      opponentRanking: result.opponentRanking?.substring(0, 4) || result.opponentRanking,
+      stagedCount: parseInt(result.rows[0]?.stagedCount || '0', 10),
+      validCount: parseInt(result.rows[0]?.validCount || '0', 10),
+      insertedCount: parseInt(result.rows[0]?.insertedCount || '0', 10),
+      updatedCount: parseInt(result.rows[0]?.updatedCount || '0', 10),
     };
   }
 
   // ============================================================================
-  // DATABASE OPERATIONS
+  // DATABASE LOOKUPS FOR APPEND CHECK
   // ============================================================================
 
-  private async findExistingResultIds(ids: number[], playerCategory: PlayerCategory): Promise<number[]> {
+  private async findExistingResultIds(
+    ids: number[],
+    playerCategory: PlayerCategory,
+  ): Promise<number[]> {
     if (ids.length === 0) return [];
-    // Chunk to avoid extremely large IN lists
+
     const chunkSize = PERFORMANCE_CONFIG.RESULTS_BATCH_SIZE * 5;
     const results: number[] = [];
+
     for (let i = 0; i < ids.length; i += chunkSize) {
       const chunk = ids.slice(i, i + chunkSize);
       const found = await this.prismaService.individualResult.findMany({
         where: { id: { in: chunk }, playerCategory },
         select: { id: true },
       });
-      for (const f of found) results.push(f.id);
+      for (const row of found) {
+        results.push(row.id);
+      }
     }
+
     return results;
   }
 
-  private async createResultsInChunks(toCreate: ValidResult[]): Promise<void> {
-    if (toCreate.length === 0) return;
-    const chunkSize = PERFORMANCE_CONFIG.RESULTS_BATCH_SIZE;
-    let processed = 0;
-    for (let i = 0; i < toCreate.length; i += chunkSize) {
-      const chunk = toCreate
-        .slice(i, i + chunkSize)
-        .map((r) => this.sanitizeResultForStorage(r));
-      await this.prismaService.individualResult.createMany({
-        data: chunk,
-        skipDuplicates: true,
-      });
-      processed += chunk.length;
-      this.logger.debug(`Created results progress: ${processed}/${toCreate.length}`);
+  // ============================================================================
+  // CACHE OPERATIONS
+  // ============================================================================
+
+  private async cleanAllMemberRelatedCaches(): Promise<void> {
+    const patterns: string[] = [
+      'member-stats:*',
+      'member-dashboard:*',
+      'member-dashboard-all-categories:*',
+      'member:weekly-ranking:*',
+      'member:points-history:*',
+      'member:match-results:*',
+      'latest-matches:*',
+      'numeric-ranking:*',
+      'numeric-ranking-v4:*',
+      'head2head:*',
+      'member-categories:*',
+    ];
+    this.logger.log(
+      `Cleaning global member-related caches: ${patterns.length} patterns`,
+    );
+    for (let i = 0; i < patterns.length; i += 5) {
+      const batch = patterns.slice(i, i + 5);
+      await Promise.all(
+        batch.map((pattern) => this.cacheService.cleanKeys(pattern)),
+      );
+      await this.coolDownBetweenBatches(i + batch.length, patterns.length);
     }
   }
 
-  private async updateResultsInChunks(toUpdate: ValidResult[]): Promise<void> {
-    if (toUpdate.length === 0) return;
-    // Use larger chunks with raw SQL for much better performance
-    const chunkSize = PERFORMANCE_CONFIG.RESULTS_BATCH_SIZE;
-    let processed = 0;
+  private async invalidateCaches(): Promise<void> {
+    await this.cleanAllMemberRelatedCaches();
 
-    for (let i = 0; i < toUpdate.length; i += chunkSize) {
-      const chunk = toUpdate.slice(i, i + chunkSize);
-      const arrays = this.buildBulkUpdateArrays(chunk);
-
-      await this.prismaService.$executeRaw`
-        UPDATE "IndividualResult" AS t SET
-          date = v.date,
-          "memberRanking" = v."memberRanking",
-          "memberPoints" = v."memberPoints",
-          "opponentRanking" = v."opponentRanking",
-          "opponentPoints" = v."opponentPoints",
-          result = v.result::"Result",
-          score = v.score,
-          "diffPoints" = v."diffPoints",
-          "pointsToAdd" = v."pointsToAdd",
-          "looseFactor" = v."looseFactor",
-          "definitivePointsToAdd" = v."definitivePointsToAdd",
-          "competitionId" = v."competitionId",
-          "memberId" = v."memberId",
-          "memberLicence" = v."memberLicence",
-          "opponentId" = v."opponentId",
-          "opponentLicence" = v."opponentLicence"
-        FROM (
-          SELECT * FROM unnest(
-            ${arrays.ids}::int[],
-            ${arrays.playerCategories}::"PlayerCategory"[],
-            ${arrays.dates}::timestamp[],
-            ${arrays.memberRankings}::text[],
-            ${arrays.memberPointsArr}::float[],
-            ${arrays.opponentRankings}::text[],
-            ${arrays.opponentPointsArr}::float[],
-            ${arrays.results}::text[],
-            ${arrays.scores}::text[],
-            ${arrays.diffPointsArr}::float[],
-            ${arrays.pointsToAddArr}::float[],
-            ${arrays.looseFactors}::float[],
-            ${arrays.definitivePointsToAddArr}::float[],
-            ${arrays.competitionIds}::text[],
-            ${arrays.memberIds}::int[],
-            ${arrays.memberLicences}::int[],
-            ${arrays.opponentIds}::int[],
-            ${arrays.opponentLicences}::int[]
-          ) AS v(id, "playerCategory", date, "memberRanking", "memberPoints", "opponentRanking", "opponentPoints", result, score, "diffPoints", "pointsToAdd", "looseFactor", "definitivePointsToAdd", "competitionId", "memberId", "memberLicence", "opponentId", "opponentLicence")
-        ) AS v
-        WHERE t.id = v.id AND t."playerCategory" = v."playerCategory"
-      `;
-
-      processed += chunk.length;
-      this.logger.debug(`Updated results progress: ${processed}/${toUpdate.length}`);
-    }
+    await Promise.all([
+      this.cacheService.cleanKeys('numeric-ranking-v4:*'),
+      this.cacheService.cleanKeys('search:*'),
+      this.cacheService.cleanKeys('members-ranking-division:*'),
+      this.cacheService.cleanKeys('members-ranking-club:*'),
+      this.cacheService.cleanKeys('members-ranking-team:*'),
+      this.cacheService.cleanKeys('next-match-estimation:*'),
+    ]);
   }
+
+  // ============================================================================
+  // IMPORT RECORD
+  // ============================================================================
 
   private async storeImport(
     contentHash: string,
@@ -640,98 +831,36 @@ export class ResultsProcessorService {
   }
 
   // ============================================================================
-  // CACHE OPERATIONS
-  // ============================================================================
-
-  private async cleanAllMemberRelatedCaches(): Promise<void> {
-    const patterns: string[] = [
-      'member-stats:*',
-      'member-dashboard:*',
-      'member-dashboard-all-categories:*',
-      'member:weekly-ranking:*',
-      'member:points-history:*',
-      'member:match-results:*',
-      'latest-matches:*',
-      'numeric-ranking:*',
-      'numeric-ranking-v4:*',
-      'head2head:*',
-      'member-categories:*',
-    ];
-    this.logger.log(`Cleaning global member-related caches: ${patterns.length} patterns`);
-    for (let i = 0; i < patterns.length; i += 5) {
-      const batch = patterns.slice(i, i + 5);
-      await Promise.all(batch.map((p) => this.cacheService.cleanKeys(p)));
-    }
-  }
-
-  private async invalidateCaches(): Promise<void> {
-    // Clean caches impacted by results (global wildcard patterns)
-    await this.cleanAllMemberRelatedCaches();
-
-    // Also clean some global caches
-    await Promise.all([
-      this.cacheService.cleanKeys('numeric-ranking-v4:*'),
-      this.cacheService.cleanKeys('search:*'),
-      this.cacheService.cleanKeys('members-ranking-division:*'),
-      this.cacheService.cleanKeys('members-ranking-club:*'),
-      this.cacheService.cleanKeys('members-ranking-team:*'),
-      this.cacheService.cleanKeys('next-match-estimation:*'),
-    ]);
-  }
-
-  // ============================================================================
   // UTILITIES
   // ============================================================================
 
   private computeContentHash(lines: string[]): string {
-    return createHash('sha256')
-      .update(lines.join(''))
-      .digest('hex');
+    return createHash('sha256').update(lines.join('')).digest('hex');
   }
 
-  private buildBulkUpdateArrays(chunk: ValidResult[]): BulkUpdateArrays {
-    const arrays: BulkUpdateArrays = {
-      ids: [],
-      playerCategories: [],
-      dates: [],
-      memberRankings: [],
-      memberPointsArr: [],
-      opponentRankings: [],
-      opponentPointsArr: [],
-      results: [],
-      scores: [],
-      diffPointsArr: [],
-      pointsToAddArr: [],
-      looseFactors: [],
-      definitivePointsToAddArr: [],
-      competitionIds: [],
-      memberIds: [],
-      memberLicences: [],
-      opponentIds: [],
-      opponentLicences: [],
-    };
+  private toPgDate(value: Date): string {
+    const year = value.getFullYear();
+    const month = `${value.getMonth() + 1}`.padStart(2, '0');
+    const day = `${value.getDate()}`.padStart(2, '0');
 
-    for (const r of chunk) {
-      arrays.ids.push(r.id);
-      arrays.playerCategories.push(r.playerCategory);
-      arrays.dates.push(r.date);
-      arrays.memberRankings.push(r.memberRanking?.substring(0, 4) || r.memberRanking || '');
-      arrays.memberPointsArr.push(r.memberPoints);
-      arrays.opponentRankings.push(r.opponentRanking?.substring(0, 4) || r.opponentRanking || '');
-      arrays.opponentPointsArr.push(r.opponentPoints);
-      arrays.results.push(r.result);
-      arrays.scores.push(r.score?.substring(0, 3) || r.score || '');
-      arrays.diffPointsArr.push(r.diffPoints);
-      arrays.pointsToAddArr.push(r.pointsToAdd);
-      arrays.looseFactors.push(r.looseFactor);
-      arrays.definitivePointsToAddArr.push(r.definitivePointsToAdd);
-      arrays.competitionIds.push(r.competitionId);
-      arrays.memberIds.push(r.memberId);
-      arrays.memberLicences.push(r.memberLicence);
-      arrays.opponentIds.push(r.opponentId);
-      arrays.opponentLicences.push(r.opponentLicence);
+    return `${year}-${month}-${day}`;
+  }
+
+  private async coolDownBetweenBatches(
+    processed: number,
+    total: number,
+  ): Promise<void> {
+    if (
+      processed >= total ||
+      PERFORMANCE_CONFIG.IMPORT_BATCH_COOLDOWN_MS <= 0
+    ) {
+      return;
     }
 
-    return arrays;
+    await this.sleep(PERFORMANCE_CONFIG.IMPORT_BATCH_COOLDOWN_MS);
+  }
+
+  private async sleep(ms: number): Promise<void> {
+    await new Promise((resolve) => setTimeout(resolve, ms));
   }
 }
