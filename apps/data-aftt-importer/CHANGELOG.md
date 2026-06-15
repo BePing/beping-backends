@@ -1,5 +1,22 @@
 # Changelog
 
+## [1.7.3](https://github.com/BePing/beping-backends/compare/data-aftt-importer-v1.7.2...data-aftt-importer-v1.7.3) (2026-06-15)
+
+
+### Code Refactoring
+
+* extract libs/common; remove cross-app import + duplication ([5443afb](https://github.com/BePing/beping-backends/commit/5443afbc9192f88288dcf7d02389b66525aec30e))
+
+
+### Performance Improvements
+
+* **importer:** fold in bulk-SQL rewrite + extract import helpers ([4e104f7](https://github.com/BePing/beping-backends/commit/4e104f7802e83cde565c68c73ea2c968902023df))
+
+
+### Build System
+
+* normalize Dockerfiles, start scripts, and compose ([7070a4c](https://github.com/BePing/beping-backends/commit/7070a4ce49b9a4af8db27af3332bd2006c166fb0))
+
 ## [1.7.2](https://github.com/BePing/beping-backends/compare/data-aftt-importer-v1.7.1...data-aftt-importer-v1.7.2) (2026-04-06)
 
 

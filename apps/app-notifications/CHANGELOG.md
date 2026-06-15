@@ -1,5 +1,23 @@
 # Changelog
 
+## [1.4.6](https://github.com/BePing/beping-backends/compare/app-notifications-v1.4.5...app-notifications-v1.4.6) (2026-06-15)
+
+
+### Miscellaneous
+
+* per-app release versioning + pin prod image tags ([75fcc58](https://github.com/BePing/beping-backends/commit/75fcc5876440694a903881cf87ee88678f110448))
+* repo hygiene, secrets, and green test/lint baseline ([d8c4260](https://github.com/BePing/beping-backends/commit/d8c4260b0f4d2f386f65328d2ac97e893bea4831))
+
+
+### Code Refactoring
+
+* extract libs/common; remove cross-app import + duplication ([5443afb](https://github.com/BePing/beping-backends/commit/5443afbc9192f88288dcf7d02389b66525aec30e))
+
+
+### Build System
+
+* normalize Dockerfiles, start scripts, and compose ([7070a4c](https://github.com/BePing/beping-backends/commit/7070a4ce49b9a4af8db27af3332bd2006c166fb0))
+
 ## [1.4.5](https://github.com/BePing/beping-backends/compare/app-notifications-v1.4.4...app-notifications-v1.4.5) (2026-01-19)
 
 
