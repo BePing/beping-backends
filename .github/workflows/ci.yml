@@ -1,0 +1,78 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [main, release/*]
+  push:
+    branches: [main, release/*]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      code: ${{ steps.filter.outputs.code }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            code:
+              - 'apps/**'
+              - 'libs/**'
+              - 'prisma/**'
+              - 'package*.json'
+              - 'tsconfig*.json'
+              - 'nest-cli.json'
+
+  lint-and-test:
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20.19'
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci --legacy-peer-deps
+
+      - name: Generate Prisma client
+        run: npx prisma generate
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Test
+        run: npm test
+
+  build:
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        app: [tabt-rest, data-aftt-importer, app-notifications]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build ${{ matrix.app }} (no push)
+        uses: docker/build-push-action@v6
+        with:
+          push: false
+          context: .
+          file: ./apps/${{ matrix.app }}/Dockerfile
+          tags: ${{ matrix.app }}:test
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
