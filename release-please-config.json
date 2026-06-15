@@ -11,14 +11,6 @@
     "apps/app-notifications": {
       "package-name": "app-notifications",
       "component": "app-notifications"
-    },
-    ".": {
-      "changelog-path": "CHANGELOG.md",
-      "release-type": "node",
-      "bump-minor-pre-major": false,
-      "bump-patch-for-minor-pre-major": false,
-      "draft": false,
-      "prerelease": false
     }
   },
   "plugins": [
@@ -27,7 +19,6 @@
       "merge": false
     }
   ],
-  "last-release-sha": "62a83972d9f472196a6d0f7dddfc5ca484a4874b",
   "changelog-sections": [
     {
       "type": "feat",

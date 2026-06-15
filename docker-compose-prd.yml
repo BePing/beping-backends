@@ -1,7 +1,7 @@
 version: '3.8'
 services:
   data-importer:
-    image: 'ghcr.io/beping/tabt-rest/data-aftt-importer:1'
+    image: 'ghcr.io/beping/tabt-rest/data-aftt-importer:1.7.2'
     restart: unless-stopped
     depends_on:
       - cache
@@ -42,7 +42,7 @@ services:
         max-size: 10m
         max-file: '3'
   tabt-rest:
-    image: 'ghcr.io/beping/tabt-rest/tabt-rest:4'
+    image: 'ghcr.io/beping/tabt-rest/tabt-rest:1.0.0'
     restart: unless-stopped
     depends_on:
       - cache
