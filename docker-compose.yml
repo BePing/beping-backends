@@ -1,11 +1,27 @@
 services:
+  # Run-once: applies prisma migrations before the apps start.
+  migrate:
+    build:
+      context: .
+      dockerfile: Dockerfile.migrate
+    restart: "no"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/tabt_rest
+      DIRECT_URL: postgresql://postgres:postgres@postgres:5432/tabt_rest
   app-notification:
     build:
       context: .
       dockerfile: apps/app-notifications/Dockerfile
     depends_on:
-      - cache
-      - postgres
+      cache:
+        condition: service_started
+      postgres:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
     environment:
       DATABASE_URL: postgresql://postgres:postgres@postgres:5432/tabt_rest
       DIRECT_URL: postgresql://postgres:postgres@postgres:5432/tabt_rest
@@ -16,8 +32,12 @@ services:
       context: .
       dockerfile: apps/data-aftt-importer/Dockerfile
     depends_on:
-      - cache
-      - postgres
+      cache:
+        condition: service_started
+      postgres:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
     environment:
       DATABASE_URL: postgresql://postgres:postgres@postgres:5432/tabt_rest
       DIRECT_URL: postgresql://postgres:postgres@postgres:5432/tabt_rest
@@ -41,9 +61,14 @@ services:
     ports:
       - 3050:3050
     depends_on:
-      - cache
-      - postgres
-      - torproxy
+      cache:
+        condition: service_started
+      postgres:
+        condition: service_healthy
+      torproxy:
+        condition: service_started
+      migrate:
+        condition: service_completed_successfully
     environment:
       DATABASE_URL: postgresql://postgres:postgres@postgres:5432/tabt_rest
       DIRECT_URL: postgresql://postgres:postgres@postgres:5432/tabt_rest

@@ -1,12 +1,36 @@
 version: '3.8'
 services:
+  # Run-once: applies prisma migrations before the apps start.
+  migrate:
+    image: 'ghcr.io/beping/tabt-rest/migrate:latest'
+    restart: 'no'
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: '${DATABASE_URL}'
+      DIRECT_URL: '${DIRECT_URL}'
+    labels:
+      - coolify.managed=true
+      - coolify.name=migrate
+      - coolify.type=application
+    logging:
+      driver: json-file
+      options:
+        max-size: 5m
+        max-file: '2'
   data-importer:
     image: 'ghcr.io/beping/tabt-rest/data-aftt-importer:1.7.2'
     restart: unless-stopped
     depends_on:
-      - cache
-      - postgres
-      - tabt-rest
+      cache:
+        condition: service_started
+      postgres:
+        condition: service_healthy
+      tabt-rest:
+        condition: service_started
+      migrate:
+        condition: service_completed_successfully
     environment:
       NODE_ENV: production
       DATABASE_URL: '${DATABASE_URL}'
@@ -45,9 +69,14 @@ services:
     image: 'ghcr.io/beping/tabt-rest/tabt-rest:1.0.0'
     restart: unless-stopped
     depends_on:
-      - cache
-      - postgres
-      - torproxy
+      cache:
+        condition: service_started
+      postgres:
+        condition: service_healthy
+      torproxy:
+        condition: service_started
+      migrate:
+        condition: service_completed_successfully
     environment:
       NODE_ENV: production
       DATABASE_URL: '${DATABASE_URL}'

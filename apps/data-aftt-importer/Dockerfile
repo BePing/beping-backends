@@ -1,26 +1,47 @@
 # syntax=docker/dockerfile:1.4
 
 ARG NODE_VERSION=20.19.0-alpine
-FROM node:${NODE_VERSION} AS builder
 
-RUN apk add --no-cache openssl python3 make g++ libc6-compat
-
+# ──────────────────────────────────────────────
+# base — node + pnpm (via npm; pnpm 11 needs node:sqlite / Node 22+)
+# ──────────────────────────────────────────────
+FROM node:${NODE_VERSION} AS base
+ENV PNPM_HOME="/pnpm"
+ENV PATH="$PNPM_HOME:$PATH"
+RUN npm install -g pnpm@10.34.3
 WORKDIR /usr/src/app
 
-COPY package*.json ./
-RUN --mount=type=cache,target=/root/.npm \
-    npm ci --legacy-peer-deps --ignore-scripts && \
-    npm rebuild
+# ──────────────────────────────────────────────
+# deps — full install (dev+prod) with native toolchain, for building
+# ──────────────────────────────────────────────
+FROM base AS deps
+RUN apk add --no-cache python3 make g++ libc6-compat openssl
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml .npmrc ./
+RUN --mount=type=cache,id=pnpm,target=/pnpm/store \
+    pnpm install --frozen-lockfile
 
+# ──────────────────────────────────────────────
+# builder — generate Prisma client + compile this app
+# ──────────────────────────────────────────────
+FROM deps AS builder
+COPY nest-cli.json tsconfig*.json prisma.config.ts ./
+COPY libs/ ./libs/
 COPY prisma/ ./prisma/
-RUN npx prisma generate
-
-COPY nest-cli.json tsconfig*.json ./
+RUN pnpm exec prisma generate
 COPY apps/ ./apps/
-RUN npm run build:data-aftt-importer
+RUN pnpm run build:data-aftt-importer
 
-RUN npm prune --omit=dev --legacy-peer-deps
+# ──────────────────────────────────────────────
+# prod-deps — production-only node_modules (flat, hoisted)
+# ──────────────────────────────────────────────
+FROM base AS prod-deps
+RUN apk add --no-cache python3 make g++ libc6-compat openssl
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml .npmrc ./
+RUN --mount=type=cache,id=pnpm,target=/pnpm/store \
+    pnpm install --prod --frozen-lockfile
 
+# ──────────────────────────────────────────────
+# production — minimal runtime
 # ──────────────────────────────────────────────
 FROM node:${NODE_VERSION} AS production
 
@@ -30,11 +51,9 @@ RUN apk add --no-cache dumb-init openssl \
 
 WORKDIR /usr/src/app
 
-COPY --from=builder --chown=nestjs:nodejs /usr/src/app/node_modules ./node_modules
+COPY --from=prod-deps --chown=nestjs:nodejs /usr/src/app/node_modules ./node_modules
 COPY --from=builder --chown=nestjs:nodejs /usr/src/app/dist/apps/data-aftt-importer ./dist/apps/data-aftt-importer
-COPY --from=builder --chown=nestjs:nodejs /usr/src/app/prisma ./prisma
-COPY --from=builder --chown=nestjs:nodejs /usr/src/app/package.json ./
-
+COPY --chown=nestjs:nodejs package.json ./
 COPY --chown=nestjs:nodejs apps/data-aftt-importer/start.sh ./start.sh
 RUN chmod +x ./start.sh
 

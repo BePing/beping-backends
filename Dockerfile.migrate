@@ -1,0 +1,37 @@
+# syntax=docker/dockerfile:1.4
+# Run-once migration image. Used as an init step (init container / compose
+# run-once service) before the app images start. Keeps the prisma CLI out of
+# the app runtime images.
+ARG NODE_VERSION=20.19.0-alpine
+
+FROM node:${NODE_VERSION} AS base
+ENV PNPM_HOME="/pnpm"
+ENV PATH="$PNPM_HOME:$PATH"
+# pnpm 10 (not 11 — pnpm 11 needs node:sqlite / Node 22+)
+RUN npm install -g pnpm@10.34.3
+WORKDIR /usr/src/app
+
+# Full install (prisma CLI is a devDependency) with toolchain for native deps.
+FROM base AS deps
+RUN apk add --no-cache python3 make g++ libc6-compat openssl
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml .npmrc ./
+RUN --mount=type=cache,id=pnpm,target=/pnpm/store \
+    pnpm install --frozen-lockfile
+
+FROM node:${NODE_VERSION} AS migrate
+RUN apk add --no-cache openssl \
+    && addgroup -g 1001 -S nodejs \
+    && adduser -S nestjs -u 1001
+ENV PNPM_HOME="/pnpm"
+ENV PATH="$PNPM_HOME:$PATH"
+RUN npm install -g pnpm@10.34.3
+WORKDIR /usr/src/app
+
+COPY --from=deps --chown=nestjs:nodejs /usr/src/app/node_modules ./node_modules
+COPY --chown=nestjs:nodejs package.json pnpm-workspace.yaml .npmrc prisma.config.ts tsconfig.json ./
+COPY --chown=nestjs:nodejs prisma/ ./prisma/
+
+USER nestjs
+
+# DIRECT_URL/DATABASE_URL provided at runtime; prisma.config.ts reads them.
+CMD ["pnpm", "exec", "prisma", "migrate", "deploy", "--schema", "prisma/schema.prisma"]

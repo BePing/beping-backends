@@ -18,6 +18,16 @@ coverage
 **/*.spec.ts
 **/*.test.ts
 jest.config.*
+test-e2e
+**/__mock__
+**/__mocks__
+
+# Generated Prisma client (regenerated during build)
+libs/common/src/generated
+
+# Build metadata
+*.tsbuildinfo
+.husky
 
 # Docs
 *.md

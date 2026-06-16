@@ -7,7 +7,7 @@ echo "Starting data-aftt-importer..."
 MAX_RETRIES=60
 RETRY_COUNT=0
 while [ $RETRY_COUNT -lt $MAX_RETRIES ]; do
-  if node -e "const{PrismaClient}=require('@prisma/client');new PrismaClient().\$queryRaw\`SELECT 1\`.then(()=>process.exit(0)).catch(()=>process.exit(1))" >/dev/null 2>&1; then
+  if node -e "const{Client}=require('pg');const c=new Client({connectionString:process.env.DATABASE_URL});c.connect().then(()=>c.query('SELECT 1')).then(()=>c.end()).then(()=>process.exit(0)).catch(()=>process.exit(1))" >/dev/null 2>&1; then
     break
   fi
   RETRY_COUNT=$((RETRY_COUNT + 1))
@@ -18,7 +18,7 @@ while [ $RETRY_COUNT -lt $MAX_RETRIES ]; do
   sleep 2
 done
 
-./node_modules/.bin/prisma migrate deploy --schema /usr/src/app/prisma/schema.prisma
+# Migrations run in a separate init step (see Dockerfile.migrate), not here.
 
 exec node dist/apps/data-aftt-importer/main
 

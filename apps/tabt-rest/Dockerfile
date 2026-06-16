@@ -1,35 +1,48 @@
 # syntax=docker/dockerfile:1.4
 
-# ──────────────────────────────────────────────
-# Build stage — shared npm ci + prisma + compile
-# ──────────────────────────────────────────────
 ARG NODE_VERSION=20.19.0-alpine
-FROM node:${NODE_VERSION} AS builder
 
-RUN apk add --no-cache openssl python3 make g++ libc6-compat
-
+# ──────────────────────────────────────────────
+# base — node + pnpm (via corepack)
+# ──────────────────────────────────────────────
+FROM node:${NODE_VERSION} AS base
+ENV PNPM_HOME="/pnpm"
+ENV PATH="$PNPM_HOME:$PATH"
+# Install pnpm via npm. pnpm 10 (not 11) — pnpm 11 needs node:sqlite (Node 22+); we pin Node 20.
+RUN npm install -g pnpm@10.34.3
 WORKDIR /usr/src/app
 
-# 1. Install deps (layer cached unless package*.json changes)
-COPY package*.json ./
-RUN --mount=type=cache,target=/root/.npm \
-    npm ci --legacy-peer-deps --ignore-scripts && \
-    npm rebuild
-
-# 2. Generate Prisma client
-COPY prisma/ ./prisma/
-RUN npx prisma generate
-
-# 3. Build this app only
-COPY nest-cli.json tsconfig*.json ./
-COPY apps/ ./apps/
-RUN npm run build:tabt-rest
-
-# 4. Prune to production deps only
-RUN npm prune --omit=dev --legacy-peer-deps
+# ──────────────────────────────────────────────
+# deps — full install (dev+prod) with native toolchain, for building
+# ──────────────────────────────────────────────
+FROM base AS deps
+RUN apk add --no-cache python3 make g++ libc6-compat openssl
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml .npmrc ./
+RUN --mount=type=cache,id=pnpm,target=/pnpm/store \
+    pnpm install --frozen-lockfile
 
 # ──────────────────────────────────────────────
-# Production stage — minimal runtime
+# builder — generate Prisma client + compile this app
+# ──────────────────────────────────────────────
+FROM deps AS builder
+COPY nest-cli.json tsconfig*.json prisma.config.ts ./
+COPY libs/ ./libs/
+COPY prisma/ ./prisma/
+RUN pnpm exec prisma generate
+COPY apps/ ./apps/
+RUN pnpm run build:tabt-rest
+
+# ──────────────────────────────────────────────
+# prod-deps — production-only node_modules (flat, hoisted)
+# ──────────────────────────────────────────────
+FROM base AS prod-deps
+RUN apk add --no-cache python3 make g++ libc6-compat openssl
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml .npmrc ./
+RUN --mount=type=cache,id=pnpm,target=/pnpm/store \
+    pnpm install --prod --frozen-lockfile
+
+# ──────────────────────────────────────────────
+# production — minimal runtime
 # ──────────────────────────────────────────────
 FROM node:${NODE_VERSION} AS production
 
@@ -39,15 +52,9 @@ RUN apk add --no-cache dumb-init openssl wget \
 
 WORKDIR /usr/src/app
 
-# Copy only production node_modules (no devDeps)
-COPY --from=builder --chown=nestjs:nodejs /usr/src/app/node_modules ./node_modules
-
-# Copy built app + prisma schema/migrations
+COPY --from=prod-deps --chown=nestjs:nodejs /usr/src/app/node_modules ./node_modules
 COPY --from=builder --chown=nestjs:nodejs /usr/src/app/dist/apps/tabt-rest ./dist/apps/tabt-rest
-COPY --from=builder --chown=nestjs:nodejs /usr/src/app/prisma ./prisma
-COPY --from=builder --chown=nestjs:nodejs /usr/src/app/package.json ./
-
-# Startup script
+COPY --chown=nestjs:nodejs package.json ./
 COPY --chown=nestjs:nodejs apps/tabt-rest/start.sh ./start.sh
 RUN chmod +x ./start.sh
 
