@@ -12,9 +12,6 @@ export class MemberCategoryService {
   async getMembersCategories(
     input: GetPlayerCategoriesInput,
   ): Promise<PlayerCategoryEntries[]> {
-    if (input.Season) {
-    }
-
     const { PlayerCategoryEntries, PlayerCategoryCount } =
       await this.tabtClient.GetMembersCategoriesAsync(input);
     if (PlayerCategoryCount === 0) {

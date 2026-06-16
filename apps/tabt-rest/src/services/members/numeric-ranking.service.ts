@@ -4,7 +4,7 @@ import {
   NumericPoints,
   PlayerCategory as pc,
   Prisma,
-} from '@prisma/client';
+} from '@app/common';
 import { format } from 'date-fns';
 import { CacheService, TTL_DURATION } from '../../common/cache/cache.service';
 import {

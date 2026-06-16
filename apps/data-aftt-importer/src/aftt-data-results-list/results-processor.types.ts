@@ -1,4 +1,4 @@
-import { CompetitionType, PlayerCategory, Result } from '@prisma/client';
+import { CompetitionType, PlayerCategory, Result } from '@app/common';
 
 /**
  * Parsed line from AFTT file - intermediate representation before resolving references

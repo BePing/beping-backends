@@ -33,8 +33,10 @@ export class PlayerMatchStats {
   club: string;
 }
 
-interface PlayerStats
-  extends Omit<PlayerMatchStats, 'winPourcentage' | 'losePourcentage'> {
+interface PlayerStats extends Omit<
+  PlayerMatchStats,
+  'winPourcentage' | 'losePourcentage'
+> {
   uniqueIndex: number;
   firstName: string;
   lastName: string;

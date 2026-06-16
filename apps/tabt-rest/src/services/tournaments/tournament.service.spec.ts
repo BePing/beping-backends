@@ -72,8 +72,8 @@ describe('TournamentService', () => {
       const result = await provider.getTournaments(input);
 
       expect(result).toEqual(tournaments);
-      expect(spyOnTabt).toBeCalledTimes(1);
-      expect(spyOnTabt).toBeCalledWith(input);
+      expect(spyOnTabt).toHaveBeenCalledTimes(1);
+      expect(spyOnTabt).toHaveBeenCalledWith(input);
     });
     it('should call the tabt service correctly and return an empty array if no tournament found', async () => {
       const tournaments = [];
@@ -90,8 +90,8 @@ describe('TournamentService', () => {
       const result = await provider.getTournaments(input);
 
       expect(result).toEqual(tournaments);
-      expect(spyOnTabt).toBeCalledTimes(1);
-      expect(spyOnTabt).toBeCalledWith(input);
+      expect(spyOnTabt).toHaveBeenCalledTimes(1);
+      expect(spyOnTabt).toHaveBeenCalledWith(input);
     });
   });
 
@@ -117,8 +117,8 @@ describe('TournamentService', () => {
       const result = await provider.registerToTournament(input);
 
       expect(result).toBe(expected);
-      expect(spyOnTabt).toBeCalledTimes(1);
-      expect(spyOnTabt).toBeCalledWith(input);
+      expect(spyOnTabt).toHaveBeenCalledTimes(1);
+      expect(spyOnTabt).toHaveBeenCalledWith(input);
     });
   });
 });

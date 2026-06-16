@@ -39,3 +39,6 @@ lerna-debug.log*
 
 # Sentry Config File
 .env.sentry-build-plugin
+
+# Prisma generated client
+libs/common/src/generated/

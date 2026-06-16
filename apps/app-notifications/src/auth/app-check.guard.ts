@@ -5,14 +5,15 @@ import {
   UnauthorizedException,
   Logger,
 } from '@nestjs/common';
-import * as admin from 'firebase-admin';
+import { getApps } from 'firebase-admin/app';
+import { getAppCheck } from 'firebase-admin/app-check';
 
 @Injectable()
 export class AppCheckGuard implements CanActivate {
   private readonly logger = new Logger(AppCheckGuard.name);
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
-    if (!admin.apps.length) {
+    if (!getApps().length) {
       this.logger.warn(
         'Firebase not initialized. App Check verification disabled.',
       );
@@ -27,7 +28,7 @@ export class AppCheckGuard implements CanActivate {
     }
 
     try {
-      const appCheckClaims = await admin.appCheck().verifyToken(appCheckToken);
+      const appCheckClaims = await getAppCheck().verifyToken(appCheckToken);
 
       // Optionally verify specific app claims using appId
       if (

@@ -1,7 +1,7 @@
 import { HttpService } from '@nestjs/axios';
 import { firstValueFrom } from 'rxjs';
 import { Logger, Inject } from '@nestjs/common';
-import { PlayerCategory, ImportType } from '@prisma/client';
+import { PlayerCategory, ImportType } from '@app/common';
 import { OnQueueActive, Process, Processor } from '@nestjs/bull';
 import { PrismaService } from '@app/common';
 import { Job } from 'bull';

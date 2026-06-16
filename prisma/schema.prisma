@@ -1,14 +1,14 @@
 // This is your Prisma schema file,
 // learn more about it in the docs: https://pris.ly/d/prisma-schema
 generator client {
-  provider      = "prisma-client-js"
-  binaryTargets = ["native", "debian-openssl-3.0.x", "darwin-arm64"]
+  provider     = "prisma-client"
+  output       = "../libs/common/src/generated/prisma"
+  moduleFormat = "cjs"
+  runtime      = "nodejs"
 }
 
 datasource db {
   provider = "postgresql"
-  url      = env("DATABASE_URL")
-  directUrl = env("DIRECT_URL")
 }
 
 model Member {

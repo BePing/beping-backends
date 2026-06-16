@@ -1,0 +1,16 @@
+# Single-package repo (no `packages:`).
+# Flat node_modules (npm-like) so webpack externals, TS module resolution,
+# and cross-stage Docker copies behave like they did under npm.
+nodeLinker: hoisted
+
+# Deps permitted to run install scripts.
+allowBuilds:
+  '@firebase/util': true
+  '@openapitools/openapi-generator-cli': true
+  '@prisma/engines': true
+  '@scarf/scarf': true
+  '@sentry/node-cpu-profiler': true
+  msgpackr-extract: true
+  prisma: true
+  protobufjs: true
+  unrs-resolver: true

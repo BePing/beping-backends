@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { HttpService } from '@nestjs/axios';
 
-import * as FormData from 'form-data';
+import FormData from 'form-data';
 import { lastValueFrom } from 'rxjs';
 import { SocksProxyHttpClient } from '../../common/socks-proxy/socks-proxy-http-client';
 import { ConfigService } from '@nestjs/config';

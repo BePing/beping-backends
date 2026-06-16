@@ -1,5 +1,4 @@
-// eslint-disable-next-line @typescript-eslint/no-var-requires
-const UserAgent = require('user-agents');
+import UserAgent from 'user-agents';
 
 export class UserAgentsUtil {
   static get random() {

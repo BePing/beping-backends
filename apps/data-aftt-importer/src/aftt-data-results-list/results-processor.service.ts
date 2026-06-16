@@ -6,7 +6,7 @@ import {
   ImportType,
   PlayerCategory,
   Result,
-} from '@prisma/client';
+} from '@app/common';
 import { OnQueueActive, Process, Processor } from '@nestjs/bull';
 import { Job } from 'bull';
 import { PrismaService } from '@app/common';

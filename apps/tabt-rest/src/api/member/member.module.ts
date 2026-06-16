@@ -4,7 +4,7 @@ import { MemberService } from '../../services/members/member.service';
 import { MemberRankingController } from './controllers/member-ranking.controller';
 import { RankingDistributionService } from '../../services/members/ranking-distribution.service';
 import { CacheModule } from '@nestjs/cache-manager';
-import { CacheModuleOptsFactory } from 'apps/app-notifications/src/common/common.module';
+import { CacheModuleOptsFactory } from '@app/common';
 import { ConfigModule } from '@nestjs/config';
 import { CommonModule } from '../../common/common.module';
 import { ServicesModule } from '../../services/services.module';

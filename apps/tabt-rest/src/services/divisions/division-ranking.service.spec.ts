@@ -61,8 +61,8 @@ describe('DivisionRankingService', () => {
       const result = await service.getDivisionRanking(input);
 
       expect(result).toBe(rankings);
-      expect(spyOnTabt).toBeCalledTimes(1);
-      expect(spyOnTabt).toBeCalledWith(input);
+      expect(spyOnTabt).toHaveBeenCalledTimes(1);
+      expect(spyOnTabt).toHaveBeenCalledWith(input);
     });
   });
 });

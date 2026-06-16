@@ -56,8 +56,8 @@ describe('DivisionService', () => {
       const result = await service.getDivisionsV1(input);
 
       expect(result).toBeDefined();
-      expect(spyOnTabt).toBeCalledTimes(1);
-      expect(spyOnTabt).toBeCalledWith(input);
+      expect(spyOnTabt).toHaveBeenCalledTimes(1);
+      expect(spyOnTabt).toHaveBeenCalledWith(input);
     });
     it('should call the tabt service correctly and returns the exact division entries', async () => {
       const divisions = [
@@ -89,8 +89,8 @@ describe('DivisionService', () => {
       const result = await service.getDivisionByIdV1(4755);
 
       expect(result).toBeDefined();
-      expect(spyOnTabt).toBeCalledTimes(1);
-      expect(spyOnTabt).toBeCalledWith(input);
+      expect(spyOnTabt).toHaveBeenCalledTimes(1);
+      expect(spyOnTabt).toHaveBeenCalledWith(input);
     });
 
     it('should call the tabt service correctly and returns 404 if not found', async () => {
@@ -108,8 +108,8 @@ describe('DivisionService', () => {
       const result = await service.getDivisionByIdV1(123);
 
       expect(result).toBeNull();
-      expect(spyOnTabt).toBeCalledTimes(1);
-      expect(spyOnTabt).toBeCalledWith(input);
+      expect(spyOnTabt).toHaveBeenCalledTimes(1);
+      expect(spyOnTabt).toHaveBeenCalledWith(input);
     });
   });
 });

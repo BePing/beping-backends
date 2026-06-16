@@ -16,9 +16,7 @@ import {
 } from '../../../entity/tabt-soap/TabTAPI_Port';
 
 @Injectable()
-export class DivisionDashboardService
-  implements DashboardServiceInterface<DivisionDashboardDTOV1>
-{
+export class DivisionDashboardService implements DashboardServiceInterface<DivisionDashboardDTOV1> {
   constructor(
     private readonly divisionService: DivisionService,
     private readonly divisionRankingService: DivisionRankingService,

@@ -1,9 +1,14 @@
 {
   "extends": "../../tsconfig.json",
   "compilerOptions": {
+    "rootDir": "../../",
     "declaration": false,
-    "outDir": "../../dist/apps/tabt-rest"
+    "outDir": "../../dist/apps/tabt-rest",
+    // socks-proxy-agent v10 is exports-only; needs modern resolution.
+    // Scoped to the webpack build (ts-loader); webpack still emits a CJS bundle.
+    "module": "esnext",
+    "moduleResolution": "bundler"
   },
   "include": ["src/**/*"],
-  "exclude": ["node_modules", "dist", "test", "**/*spec.ts"]
+  "exclude": ["node_modules", "dist", "test", "**/*spec.ts", "**/__mock__/**", "**/__mocks__/**"]
 }

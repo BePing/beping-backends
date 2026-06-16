@@ -13,7 +13,7 @@ import { TeamMatchEventDTO } from './dto/team-match-event-d-t.o';
 import { NumericRankingEventDto } from './dto/numeric-ranking-event.dto';
 import { MatchResultEventDto } from './dto/match-result-event.dto';
 import { RankingEstimationChangeEventDto } from './dto/ranking-estimation-change-event.dto';
-import { NotificationType } from '@prisma/client';
+import { NotificationType } from '@app/common';
 import { MessagePattern } from '@nestjs/microservices';
 
 @Controller('events')

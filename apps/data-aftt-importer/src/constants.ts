@@ -1,4 +1,4 @@
-import { PlayerCategory } from '@prisma/client';
+import { PlayerCategory } from '@app/common';
 
 export const playerCategoryFilenameMapping: { [index: string]: string } = {
   [PlayerCategory.SENIOR_MEN]: 'liste_result_1.txt',

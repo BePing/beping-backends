@@ -1,7 +1,11 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
-import * as admin from 'firebase-admin';
-import { ServiceAccount } from 'firebase-admin';
+import {
+  getApps,
+  initializeApp,
+  cert,
+  ServiceAccount,
+} from 'firebase-admin/app';
 import { MessagingFirebaseService } from './messaging-firebase.service';
 
 @Module({
@@ -11,7 +15,7 @@ import { MessagingFirebaseService } from './messaging-firebase.service';
     {
       provide: 'FIREBASE_INIT',
       useFactory: (configService: ConfigService) => {
-        if (!admin.apps.length) {
+        if (!getApps().length) {
           const adminConfig: ServiceAccount = {
             projectId: configService.get<string>('FIREBASE_PROJECT_ID'),
             privateKey: configService
@@ -25,8 +29,8 @@ import { MessagingFirebaseService } from './messaging-firebase.service';
             adminConfig.privateKey &&
             adminConfig.clientEmail
           ) {
-            admin.initializeApp({
-              credential: admin.credential.cert(adminConfig),
+            initializeApp({
+              credential: cert(adminConfig),
             });
           }
         }

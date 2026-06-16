@@ -1,17 +1,17 @@
 import { HttpClient, IExOptions, IHeaders } from 'soap';
-import * as req from 'axios';
+import { Axios } from 'axios';
 import { SocksProxyAgent } from 'socks-proxy-agent';
 import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 
 @Injectable()
 export class SocksProxyHttpClient extends HttpClient {
-  private _axios: req.Axios;
+  private _axios: InstanceType<typeof Axios>;
 
   constructor(private readonly configService: ConfigService) {
     super({ returnFault: false });
 
-    this._axios = new req.Axios({ httpsAgent: this.createHttpsAgent() });
+    this._axios = new Axios({ httpsAgent: this.createHttpsAgent() });
   }
 
   createHttpsAgent(): SocksProxyAgent {
@@ -40,7 +40,7 @@ export class SocksProxyHttpClient extends HttpClient {
     }
   }
 
-  get axios(): req.Axios {
+  get axios(): InstanceType<typeof Axios> {
     return this._axios;
   }
 }

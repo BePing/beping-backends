@@ -1,7 +1,7 @@
 import { ArgumentsHost, Catch, ExceptionFilter } from '@nestjs/common';
 import { OperationalError } from 'bluebird';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { WithSentry } from '@sentry/nestjs';
+import { SentryExceptionCaptured } from '@sentry/nestjs';
 
 export class TabtException {
   @ApiPropertyOptional()
@@ -14,7 +14,7 @@ export class TabtException {
 
 @Catch(OperationalError)
 export class TabtExceptionsFilter implements ExceptionFilter {
-  @WithSentry()
+  @SentryExceptionCaptured()
   catch(exception: OperationalError, host: ArgumentsHost) {
     const ctx = host.switchToHttp();
     const response = ctx.getResponse();

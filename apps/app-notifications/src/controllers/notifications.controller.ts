@@ -21,7 +21,7 @@ import {
   UpdateDeviceLocaleDto,
 } from './dto/device-registration.dto';
 import { BulkTopicSubscriptionDto } from './dto/bulk-topic.dto';
-import { NotificationType } from '@prisma/client';
+import { NotificationType } from '@app/common';
 import { AppCheckGuard } from '../auth/app-check.guard';
 
 @Controller('notifications')

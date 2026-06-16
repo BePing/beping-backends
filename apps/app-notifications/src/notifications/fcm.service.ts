@@ -1,11 +1,16 @@
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
-import * as admin from 'firebase-admin';
+import { getApps, initializeApp, cert } from 'firebase-admin/app';
+import {
+  getMessaging,
+  MulticastMessage,
+  BatchResponse,
+} from 'firebase-admin/messaging';
 import { PrismaService } from '@app/common';
 import {
   DevicePlatform,
   NotificationStatus,
   NotificationType,
-} from '@prisma/client';
+} from '@app/common';
 
 export interface SendNotificationOptions {
   title: string;
@@ -24,19 +29,19 @@ export class FcmService implements OnModuleInit {
   constructor(private readonly prisma: PrismaService) {}
 
   async onModuleInit() {
-    if (!admin.apps.length) {
+    if (!getApps().length) {
       // Initialize Firebase Admin SDK
       const serviceAccountPath = process.env.FIREBASE_SERVICE_ACCOUNT_KEY_PATH;
       const serviceAccountKey = process.env.FIREBASE_SERVICE_ACCOUNT_KEY;
 
       if (serviceAccountPath) {
-        admin.initializeApp({
-          credential: admin.credential.cert(serviceAccountPath),
+        initializeApp({
+          credential: cert(serviceAccountPath),
         });
       } else if (serviceAccountKey) {
         const serviceAccount = JSON.parse(serviceAccountKey);
-        admin.initializeApp({
-          credential: admin.credential.cert(serviceAccount),
+        initializeApp({
+          credential: cert(serviceAccount),
         });
       } else {
         this.logger.warn(
@@ -324,7 +329,7 @@ export class FcmService implements OnModuleInit {
   }
 
   async sendNotification(options: SendNotificationOptions): Promise<void> {
-    if (!admin.apps.length) {
+    if (!getApps().length) {
       this.logger.warn('Firebase not initialized. Skipping notification.');
       return;
     }
@@ -402,7 +407,7 @@ export class FcmService implements OnModuleInit {
     deviceTokens: string[],
     options: SendNotificationOptions,
   ): Promise<void> {
-    const message: admin.messaging.MulticastMessage = {
+    const message: MulticastMessage = {
       tokens: deviceTokens,
       notification: {
         title: options.title,
@@ -434,7 +439,7 @@ export class FcmService implements OnModuleInit {
     };
 
     try {
-      const response = await admin.messaging().sendMulticast(message);
+      const response = await getMessaging().sendEachForMulticast(message);
 
       // Log results and handle failed tokens
       await this.processBatchResponse(deviceTokens, response, options);
@@ -450,7 +455,7 @@ export class FcmService implements OnModuleInit {
 
   private async processBatchResponse(
     deviceTokens: string[],
-    response: admin.messaging.BatchResponse,
+    response: BatchResponse,
     options: SendNotificationOptions,
   ): Promise<void> {
     const failedTokens: string[] = [];

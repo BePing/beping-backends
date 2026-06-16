@@ -28,7 +28,7 @@ describe('SeasonController', () => {
     const result = await controller.findAll();
 
     expect(result).toBeDefined();
-    expect(spy).toBeCalledTimes(1);
+    expect(spy).toHaveBeenCalledTimes(1);
   });
 
   it('findCurrentSeason', async () => {
@@ -37,6 +37,6 @@ describe('SeasonController', () => {
     const result = await controller.findCurrentSeason();
 
     expect(result).toBeDefined();
-    expect(spy).toBeCalledTimes(1);
+    expect(spy).toHaveBeenCalledTimes(1);
   });
 });

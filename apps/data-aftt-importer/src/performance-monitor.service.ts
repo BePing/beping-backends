@@ -1,5 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { PlayerCategory } from '@prisma/client';
+import { PlayerCategory } from '@app/common';
 
 export interface ImportMetrics {
   playerCategory: PlayerCategory;

@@ -60,8 +60,8 @@ describe('ClubService', () => {
       const result = await service.getClubs(input);
 
       expect(result).toEqual(clubs);
-      expect(spyOnTabt).toBeCalledTimes(1);
-      expect(spyOnTabt).toBeCalledWith(input);
+      expect(spyOnTabt).toHaveBeenCalledTimes(1);
+      expect(spyOnTabt).toHaveBeenCalledWith(input);
     });
   });
   describe('getClubById', () => {
@@ -97,8 +97,8 @@ describe('ClubService', () => {
       const result = await service.getClubById('L360');
 
       expect(result).toEqual(clubs[0]);
-      expect(spyOnTabt).toBeCalledTimes(1);
-      expect(spyOnTabt).toBeCalledWith(input);
+      expect(spyOnTabt).toHaveBeenCalledTimes(1);
+      expect(spyOnTabt).toHaveBeenCalledWith(input);
     });
 
     it('should call the tabt service correctly and returns null if not found', async () => {
@@ -114,8 +114,8 @@ describe('ClubService', () => {
       const result = await service.getClubById('L360');
 
       expect(result).toBeUndefined();
-      expect(spyOnTabt).toBeCalledTimes(1);
-      expect(spyOnTabt).toBeCalledWith(input);
+      expect(spyOnTabt).toHaveBeenCalledTimes(1);
+      expect(spyOnTabt).toHaveBeenCalledWith(input);
     });
   });
 });

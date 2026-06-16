@@ -18,9 +18,7 @@ import { RESPONSE_STATUS, ResponseDTO } from '../dto/common.dto';
 import { PlayerCategoryDTO } from '../../../common/dto/player-category.dto';
 
 @Injectable()
-export class ClubDashboardService
-  implements DashboardServiceInterface<ClubDashboardDTOV1>
-{
+export class ClubDashboardService implements DashboardServiceInterface<ClubDashboardDTOV1> {
   constructor(
     private readonly clubService: ClubService,
     private readonly matchesMembersRankerService: MatchesMembersRankerService,

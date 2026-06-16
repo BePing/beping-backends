@@ -1,7 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
-import * as admin from 'firebase-admin';
 import { ConfigService } from '@nestjs/config';
-import { ConditionMessage } from 'firebase-admin/lib/messaging';
+import { getMessaging, ConditionMessage } from 'firebase-admin/messaging';
 
 @Injectable()
 export class MessagingFirebaseService {
@@ -12,7 +11,7 @@ export class MessagingFirebaseService {
   async sendPushNotification(message: ConditionMessage): Promise<string> {
     try {
       const isProd = this.configService.get<string>('NODE_ENV') === 'prod';
-      const messageId = await admin.messaging().send(message, !isProd);
+      const messageId = await getMessaging().send(message, !isProd);
       this.logger.debug(
         `Push "${message.notification?.title}" sent to ${message.condition}`,
       );
@@ -28,7 +27,7 @@ export class MessagingFirebaseService {
   async sendPushNotifications(messages: ConditionMessage[]): Promise<string[]> {
     try {
       const isProd = this.configService.get<string>('NODE_ENV') === 'prod';
-      const messageIds = await admin.messaging().sendAll(messages, !isProd);
+      const messageIds = await getMessaging().sendEach(messages, !isProd);
       for (const message of messageIds.responses) {
         if (message.success) {
           this.logger.debug(

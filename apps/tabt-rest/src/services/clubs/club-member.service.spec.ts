@@ -55,8 +55,8 @@ describe('ClubMemberService', () => {
       const result = await service.getClubsMembers(input);
 
       expect(result).toBeDefined();
-      expect(spyOnTabt).toBeCalledTimes(1);
-      expect(spyOnTabt).toBeCalledWith(input);
+      expect(spyOnTabt).toHaveBeenCalledTimes(1);
+      expect(spyOnTabt).toHaveBeenCalledWith(input);
     });
   });
 });

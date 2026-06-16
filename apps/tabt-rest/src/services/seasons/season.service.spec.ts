@@ -69,8 +69,8 @@ describe('SeasonService', () => {
       const result = await provider.getSeasons();
 
       expect(result).toBe(seasons);
-      expect(spyOnTabt).toBeCalledTimes(1);
-      expect(spyOnTabt).toBeCalledWith({});
+      expect(spyOnTabt).toHaveBeenCalledTimes(1);
+      expect(spyOnTabt).toHaveBeenCalledWith({});
     });
   });
 
@@ -92,8 +92,8 @@ describe('SeasonService', () => {
       const result = await provider.getCurrentSeason();
 
       expect(result).toBe(seasons[0]);
-      expect(spyOnTabt).toBeCalledTimes(1);
-      expect(spyOnTabt).toBeCalledWith({});
+      expect(spyOnTabt).toHaveBeenCalledTimes(1);
+      expect(spyOnTabt).toHaveBeenCalledWith({});
     });
   });
 });

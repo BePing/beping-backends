@@ -48,8 +48,8 @@ describe('TestRequestService', () => {
       const result = await provider.testRequest();
 
       expect(result).toBe(testResponse);
-      expect(spyOnTabt).toBeCalledTimes(1);
-      expect(spyOnTabt).toBeCalledWith({});
+      expect(spyOnTabt).toHaveBeenCalledTimes(1);
+      expect(spyOnTabt).toHaveBeenCalledWith({});
     });
   });
 });

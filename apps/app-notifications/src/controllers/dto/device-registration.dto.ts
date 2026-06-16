@@ -5,7 +5,7 @@ import {
   IsArray,
   IsObject,
 } from 'class-validator';
-import { DevicePlatform, NotificationType } from '@prisma/client';
+import { DevicePlatform, NotificationType } from '@app/common';
 
 export class RegisterDeviceDto {
   @IsString()

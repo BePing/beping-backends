@@ -38,12 +38,10 @@ import {
 } from '../../../services/matches/matches-members-ranker.service';
 import { PointsEstimationService } from '../../../services/members/points-estimation.service';
 import { PrismaService } from '@app/common';
-import { PlayerCategory as PrismaPlayerCategory } from '@prisma/client';
+import { PlayerCategory as PrismaPlayerCategory } from '@app/common';
 
 @Injectable()
-export class MemberDashboardService
-  implements DashboardServiceInterface<MemberDashboardDTOV1>
-{
+export class MemberDashboardService implements DashboardServiceInterface<MemberDashboardDTOV1> {
   constructor(
     private readonly matchService: MatchService,
     private readonly cacheService: CacheService,

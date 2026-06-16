@@ -1,5 +1,5 @@
 import { IsNumber, IsString, IsEnum } from 'class-validator';
-import { PlayerCategory } from '@prisma/client';
+import { PlayerCategory } from '@app/common';
 
 export class RankingEstimationChangeEventDto {
   @IsNumber()

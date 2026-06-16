@@ -9,6 +9,13 @@ export class CacheModuleOptsFactory implements CacheOptionsFactory {
   constructor(private readonly configService: ConfigService) {}
 
   async createCacheOptions(): Promise<CacheModuleOptions<Record<string, any>>> {
+    const tlsUrl = this.configService.get('REDIS_TLS_URL');
+    if (tlsUrl) {
+      return {
+        store: (await redisStore({ url: tlsUrl })) as unknown as any,
+      };
+    }
+
     if (
       this.configService.get('REDIS_HOST') &&
       this.configService.get('REDIS_PORT')
@@ -18,10 +25,10 @@ export class CacheModuleOptsFactory implements CacheOptionsFactory {
           url: `redis://${this.configService.get('REDIS_HOST')}:${this.configService.get('REDIS_PORT')}`,
         })) as unknown as any,
       };
-    } else {
-      return {
-        store: memoryStore,
-      };
     }
+
+    return {
+      store: memoryStore,
+    };
   }
 }

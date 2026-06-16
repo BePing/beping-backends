@@ -2,7 +2,7 @@ import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
 import { InjectQueue } from '@nestjs/bull';
 import { Queue, JobOptions } from 'bull';
-import { PlayerCategory } from '@prisma/client';
+import { PlayerCategory } from '@app/common';
 import { ConfigService } from '@nestjs/config';
 import { ImportQueueStatusService } from '../common/import-queue-status.service';
 
