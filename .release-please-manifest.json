@@ -1,5 +1,5 @@
 {
-  "apps/tabt-rest": "1.0.0",
-  "apps/data-aftt-importer": "1.7.2",
-  "apps/app-notifications": "1.4.5"
+  "apps/tabt-rest": "2.0.0",
+  "apps/data-aftt-importer": "2.0.0",
+  "apps/app-notifications": "2.0.0"
 }

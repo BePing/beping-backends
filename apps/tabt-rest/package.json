@@ -1,6 +1,6 @@
 {
   "name": "tabt-rest",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "description": "TabT REST API service",
   "private": true
 }
