@@ -1,5 +1,29 @@
 # Changelog
 
+## [2.0.0](https://github.com/BePing/beping-backends/compare/data-aftt-importer-v1.7.2...data-aftt-importer-v2.0.0) (2026-06-17)
+
+
+### Miscellaneous
+
+* release 2.0.0 ([27aa649](https://github.com/BePing/beping-backends/commit/27aa649bb00435fa86e50392d3b6758e4d059e90))
+
+
+### Code Refactoring
+
+* extract libs/common; remove cross-app import + duplication ([5443afb](https://github.com/BePing/beping-backends/commit/5443afbc9192f88288dcf7d02389b66525aec30e))
+
+
+### Performance Improvements
+
+* **importer:** fold in bulk-SQL rewrite + extract import helpers ([4e104f7](https://github.com/BePing/beping-backends/commit/4e104f7802e83cde565c68c73ea2c968902023df))
+
+
+### Build System
+
+* **docker:** slim runtime images ~37% and split migrations into an init image ([7c310ef](https://github.com/BePing/beping-backends/commit/7c310ef5ea7c8f55e6924ee4df5ba65b84acfd61))
+* normalize Dockerfiles, start scripts, and compose ([7070a4c](https://github.com/BePing/beping-backends/commit/7070a4ce49b9a4af8db27af3332bd2006c166fb0))
+* upgrade to Prisma 7, bump deps to latest, migrate npm to pnpm ([a5144cb](https://github.com/BePing/beping-backends/commit/a5144cb17df8502af4ec517fcf2f15920dd7cc53))
+
 ## [1.7.2](https://github.com/BePing/beping-backends/compare/data-aftt-importer-v1.7.1...data-aftt-importer-v1.7.2) (2026-04-06)
 
 

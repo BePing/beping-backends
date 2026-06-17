@@ -1,5 +1,26 @@
 # Changelog
 
+## [2.0.0](https://github.com/BePing/beping-backends/compare/app-notifications-v1.4.5...app-notifications-v2.0.0) (2026-06-17)
+
+
+### Miscellaneous
+
+* per-app release versioning + pin prod image tags ([75fcc58](https://github.com/BePing/beping-backends/commit/75fcc5876440694a903881cf87ee88678f110448))
+* release 2.0.0 ([27aa649](https://github.com/BePing/beping-backends/commit/27aa649bb00435fa86e50392d3b6758e4d059e90))
+* repo hygiene, secrets, and green test/lint baseline ([d8c4260](https://github.com/BePing/beping-backends/commit/d8c4260b0f4d2f386f65328d2ac97e893bea4831))
+
+
+### Code Refactoring
+
+* extract libs/common; remove cross-app import + duplication ([5443afb](https://github.com/BePing/beping-backends/commit/5443afbc9192f88288dcf7d02389b66525aec30e))
+
+
+### Build System
+
+* **docker:** slim runtime images ~37% and split migrations into an init image ([7c310ef](https://github.com/BePing/beping-backends/commit/7c310ef5ea7c8f55e6924ee4df5ba65b84acfd61))
+* normalize Dockerfiles, start scripts, and compose ([7070a4c](https://github.com/BePing/beping-backends/commit/7070a4ce49b9a4af8db27af3332bd2006c166fb0))
+* upgrade to Prisma 7, bump deps to latest, migrate npm to pnpm ([a5144cb](https://github.com/BePing/beping-backends/commit/a5144cb17df8502af4ec517fcf2f15920dd7cc53))
+
 ## [1.4.5](https://github.com/BePing/beping-backends/compare/app-notifications-v1.4.4...app-notifications-v1.4.5) (2026-01-19)
 
 
