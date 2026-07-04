@@ -153,6 +153,9 @@ enum NotificationType {
   MATCH
   RANKING
   CUSTOM
+  CAPTAIN_AVAILABILITY_REQUEST
+  CAPTAIN_CONVOCATION
+  CAPTAIN_LINEUP_REMINDER
 }
 
 model DeviceSubscription {
@@ -245,4 +248,150 @@ model NotificationOutbox {
 
   @@index([status, availableAt])
   @@index([type, createdAt])
+}
+
+// ---------------------------------------------------------------------------
+// Captain Mode
+// New user-generated domains for the "Mode Capitaine" module. Additive only.
+// Federation force-list data is NOT duplicated here; it is derived from TabT at
+// request time and snapshotted onto Lineup.forceSnapshot at validation time.
+// ---------------------------------------------------------------------------
+
+enum AvailabilityStatus {
+  PRESENT
+  ABSENT
+  PENDING
+}
+
+enum ResponseSource {
+  PLAYER
+  CAPTAIN_OVERRIDE
+}
+
+enum LineupStatus {
+  A_FAIRE
+  BROUILLON
+  VALIDEE
+}
+
+enum SlotRole {
+  TITULAIRE
+  BANC
+  RENFORT_MONTANT
+}
+
+enum ConvocationStatus {
+  CONFIRMED
+  DECLINED
+  PENDING
+}
+
+/// A verified AFTT member authorised to manage his club's teams.
+/// AFTT credentials are never persisted; only the verified identity is stored.
+model CaptainAccount {
+  id             String   @id @default(cuid())
+  uniqueIndex    Int      @unique
+  clubIndex      String
+  firstName      String?
+  lastName       String?
+  ranking        String?
+  lastVerifiedAt DateTime @default(now())
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@index([clubIndex])
+}
+
+model AvailabilityPoll {
+  id            String                 @id @default(cuid())
+  matchUniqueId Int                    @unique
+  teamId        String
+  clubIndex     String
+  createdBy     Int
+  responses     AvailabilityResponse[]
+  createdAt     DateTime               @default(now())
+  updatedAt     DateTime               @updatedAt
+
+  @@index([clubIndex])
+  @@index([teamId])
+}
+
+model AvailabilityResponse {
+  id          String             @id @default(cuid())
+  pollId      String
+  poll        AvailabilityPoll   @relation(fields: [pollId], references: [id], onDelete: Cascade)
+  uniqueIndex Int
+  status      AvailabilityStatus @default(PENDING)
+  note        String?
+  source      ResponseSource     @default(PLAYER)
+  respondedAt DateTime?
+  createdAt   DateTime           @default(now())
+  updatedAt   DateTime           @updatedAt
+
+  @@unique([pollId, uniqueIndex])
+  @@index([uniqueIndex])
+}
+
+model Lineup {
+  id                    String       @id @default(cuid())
+  matchUniqueId         Int          @unique
+  teamId                String
+  clubIndex             String
+  status                LineupStatus @default(A_FAIRE)
+  forceSnapshot         Json?
+  validation            Json?
+  overrideJustification String?
+  validatedAt           DateTime?
+  createdBy             Int
+  slots                 LineupSlot[]
+  convocation           Convocation?
+  createdAt             DateTime     @default(now())
+  updatedAt             DateTime     @updatedAt
+
+  @@index([clubIndex])
+  @@index([teamId])
+}
+
+model LineupSlot {
+  id          String   @id @default(cuid())
+  lineupId    String
+  lineup      Lineup   @relation(fields: [lineupId], references: [id], onDelete: Cascade)
+  uniqueIndex Int
+  orderPos    Int // 1..4 titulaires, >100 banc
+  role        SlotRole @default(TITULAIRE)
+  createdAt   DateTime @default(now())
+
+  @@unique([lineupId, uniqueIndex])
+  @@index([lineupId])
+}
+
+model Convocation {
+  id            String                @id @default(cuid())
+  lineupId      String                @unique
+  lineup        Lineup                @relation(fields: [lineupId], references: [id], onDelete: Cascade)
+  matchUniqueId Int                   @unique
+  message       String
+  meetingTime   String?
+  venue         String?
+  publicToken   String                @unique
+  sentBy        Int
+  responses     ConvocationResponse[]
+  sentAt        DateTime              @default(now())
+  createdAt     DateTime              @default(now())
+  updatedAt     DateTime              @updatedAt
+}
+
+model ConvocationResponse {
+  id            String            @id @default(cuid())
+  convocationId String
+  convocation   Convocation       @relation(fields: [convocationId], references: [id], onDelete: Cascade)
+  uniqueIndex   Int
+  status        ConvocationStatus @default(PENDING)
+  source        ResponseSource    @default(PLAYER)
+  respondedAt   DateTime?
+  createdAt     DateTime          @default(now())
+  updatedAt     DateTime          @updatedAt
+
+  @@unique([convocationId, uniqueIndex])
+  @@index([uniqueIndex])
 }
