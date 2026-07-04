@@ -4,6 +4,7 @@ import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import { ServicesModule } from './services/services.module';
 import { CommonModule } from './common/common.module';
 import { ApiModule } from './api/api.module';
+import { CaptainModule } from './captain/captain.module';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { AllExceptionsFilter } from './common/filter/all-exceptions.filter';
 import { validateApiEnvironment } from './configuration';
@@ -26,6 +27,7 @@ import { validateApiEnvironment } from './configuration';
     ServicesModule,
     CommonModule,
     ApiModule,
+    CaptainModule,
   ],
   providers: [
     // Global catch-all filter: reports 5xx (including TabtException SOAP faults,

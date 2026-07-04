@@ -28,6 +28,7 @@ export function createSwaggerDocument(
     .addTag('Divisions')
     .addTag('Tournaments')
     .addTag('Search')
+    .addTag('Captain')
     .addServer('https://api-v2.beping.be', 'production')
     .addServer('http://localhost:3004', 'development')
     .build();
