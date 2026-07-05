@@ -22,6 +22,7 @@ services:
   data-importer:
     image: 'ghcr.io/beping/tabt-rest/data-aftt-importer:1.7.2'
     restart: unless-stopped
+    mem_limit: 1024m
     depends_on:
       cache:
         condition: service_started
@@ -33,6 +34,7 @@ services:
         condition: service_completed_successfully
     environment:
       NODE_ENV: production
+      NODE_OPTIONS: '--max-old-space-size=896'
       DATABASE_URL: '${DATABASE_URL}'
       DIRECT_URL: '${DIRECT_URL}'
       REDIS_HOST: cache
@@ -68,6 +70,7 @@ services:
   tabt-rest:
     image: 'ghcr.io/beping/tabt-rest/tabt-rest:1.0.0'
     restart: unless-stopped
+    mem_limit: 768m
     depends_on:
       cache:
         condition: service_started
@@ -79,6 +82,7 @@ services:
         condition: service_completed_successfully
     environment:
       NODE_ENV: production
+      NODE_OPTIONS: '--max-old-space-size=640'
       DATABASE_URL: '${DATABASE_URL}'
       DIRECT_URL: '${DIRECT_URL}'
       REDIS_HOST: cache

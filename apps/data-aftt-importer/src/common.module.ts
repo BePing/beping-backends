@@ -2,11 +2,13 @@ import { Global, Module } from '@nestjs/common';
 import { HttpModule } from '@nestjs/axios';
 import { ClientsModule, Transport } from '@nestjs/microservices';
 import { ConfigModule, ConfigService } from '@nestjs/config';
-import { BullModule } from '@nestjs/bull';
-import { PrismaService } from '@app/common';
+import { BullModule } from '@nestjs/bullmq';
 import { CacheModule } from '@nestjs/cache-manager';
-import { CacheModuleOptsFactory } from '@app/common';
-import { CacheService } from './cache/cache.service';
+import {
+  CacheModuleOptsFactory,
+  CacheService,
+  PrismaService,
+} from '@app/common';
 import { ImportExecutionCoordinatorService } from './common/import-execution-coordinator.service';
 import { ImportQueueStatusService } from './common/import-queue-status.service';
 import { PostgresCopyService } from './common/postgres-copy.service';
@@ -24,10 +26,6 @@ import { PostgresCopyService } from './common/postgres-copy.service';
       },
       {
         name: 'results',
-        limiter: {
-          max: 1,
-          duration: 100000,
-        },
         defaultJobOptions: {
           removeOnComplete: 100,
           removeOnFail: 50,

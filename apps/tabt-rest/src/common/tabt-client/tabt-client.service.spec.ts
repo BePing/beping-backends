@@ -7,7 +7,7 @@ import {
 import { TabtClientService } from './tabt-client.service';
 import { PinoLogger } from 'nestjs-pino';
 import { CredentialsService } from './credentials.service';
-import { CacheService } from '../cache/cache.service';
+import { CacheService } from '@app/common';
 import {
   GetClubsInput,
   GetClubsOutput,
@@ -32,7 +32,6 @@ import { HeaderKeys } from '../context/context.constants';
 import { TabtException } from '../filter/tabt-exception';
 
 jest.mock('../context/database-context.service');
-jest.mock('../cache/cache.service');
 jest.mock('./credentials.service');
 
 describe('TabtClientService', () => {
@@ -46,7 +45,14 @@ describe('TabtClientService', () => {
     const moduleRef = await Test.createTestingModule({
       providers: [
         TabtClientService,
-        CacheService,
+        {
+          provide: CacheService,
+          useValue: {
+            getFromCache: jest.fn(),
+            setInCache: jest.fn(),
+            getFromCacheOrGetAndCacheResult: jest.fn(),
+          },
+        },
         DatabaseContextService,
         CredentialsService,
         {

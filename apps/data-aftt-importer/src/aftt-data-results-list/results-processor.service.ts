@@ -7,10 +7,10 @@ import {
   PlayerCategory,
   Result,
 } from '@app/common';
-import { OnQueueActive, Process, Processor } from '@nestjs/bull';
-import { Job } from 'bull';
+import { OnWorkerEvent, Processor, WorkerHost } from '@nestjs/bullmq';
+import { Job } from 'bullmq';
 import { PrismaService } from '@app/common';
-import { CacheService } from '../cache/cache.service';
+import { CacheService } from '@app/common';
 import { createHash } from 'crypto';
 import { PERFORMANCE_CONFIG } from '../constants';
 import { ImportExecutionCoordinatorService } from '../common/import-execution-coordinator.service';
@@ -31,8 +31,13 @@ interface BatchMergeStats {
   updatedCount: number;
 }
 
-@Processor('results')
-export class ResultsProcessorService {
+@Processor('results', {
+  limiter: {
+    max: 1,
+    duration: 100000,
+  },
+})
+export class ResultsProcessorService extends WorkerHost {
   private readonly logger = new Logger(ResultsProcessorService.name);
 
   constructor(
@@ -41,16 +46,17 @@ export class ResultsProcessorService {
     private readonly cacheService: CacheService,
     private readonly importExecutionCoordinatorService: ImportExecutionCoordinatorService,
     private readonly postgresCopyService: PostgresCopyService,
-  ) {}
+  ) {
+    super();
+  }
 
-  @OnQueueActive()
+  @OnWorkerEvent('active')
   onActive(job: Job): void {
     this.logger.log(
       `Processing results job ${job.id} for ${job.data.playerCategory}`,
     );
   }
 
-  @Process()
   async process(job: Job<{ playerCategory: PlayerCategory }>): Promise<void> {
     await this.importExecutionCoordinatorService.runExclusive(
       `results:${job.data.playerCategory}`,

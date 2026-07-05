@@ -10,10 +10,7 @@ import { DashboardServiceInterface } from '../interfaces/dashboard-service.inter
 import { RESPONSE_STATUS, ResponseDTO } from '../dto/common.dto';
 import { PlayerCategory } from '../../../entity/tabt-input.interface';
 import { MatchService } from '../../../services/matches/match.service';
-import {
-  CacheService,
-  TTL_DURATION,
-} from '../../../common/cache/cache.service';
+import { CacheService, TTL_DURATION } from '@app/common';
 import { MemberService } from '../../../services/members/member.service';
 import {
   MemberEntry,

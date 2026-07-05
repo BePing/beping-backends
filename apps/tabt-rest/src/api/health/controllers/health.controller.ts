@@ -3,6 +3,7 @@ import {
   HealthCheck,
   HealthCheckService,
   HttpHealthIndicator,
+  PrismaHealthIndicator,
 } from '@nestjs/terminus';
 import { ApiOkResponse, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { TestRequestService } from '../../../services/test/test-request.service';
@@ -12,6 +13,7 @@ import { ContextService } from '../../../common/context/context.service';
 import { SocksProxyHttpClient } from '../../../common/socks-proxy/socks-proxy-http-client';
 import { ConfigService } from '@nestjs/config';
 import { UserAgentsUtil } from '../../../common/utils/user-agents.util';
+import { PrismaService } from '@app/common';
 
 @ApiTags('Health')
 @Controller({
@@ -22,10 +24,12 @@ export class HealthController {
   constructor(
     private health: HealthCheckService,
     private healthIndicator: HttpHealthIndicator,
+    private prismaHealthIndicator: PrismaHealthIndicator,
     private testRequest: TestRequestService,
     private contextService: ContextService,
     private readonly socksProxyService: SocksProxyHttpClient,
     private readonly configService: ConfigService,
+    private readonly prismaService: PrismaService,
   ) {}
 
   @Get()
@@ -66,6 +70,8 @@ export class HealthController {
             timeout: 5000,
           },
         ),
+      () =>
+        this.prismaHealthIndicator.pingCheck('database', this.prismaService),
     ]);
   }
 

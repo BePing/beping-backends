@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { Player, TeamMatchesEntry } from '../../entity/tabt-soap/TabTAPI_Port';
 import { MatchService } from './match.service';
-import { CacheService, TTL_DURATION } from '../../common/cache/cache.service';
+import { CacheService, TTL_DURATION } from '@app/common';
 import { ContextService } from '../../common/context/context.service';
 import { ApiProperty } from '@nestjs/swagger';
 

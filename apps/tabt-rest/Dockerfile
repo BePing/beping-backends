@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1.4
 
-ARG NODE_VERSION=20.19.0-alpine
+ARG NODE_VERSION=22.12.0-alpine
 
 # ──────────────────────────────────────────────
 # base — node + pnpm (via corepack)
@@ -8,7 +8,7 @@ ARG NODE_VERSION=20.19.0-alpine
 FROM node:${NODE_VERSION} AS base
 ENV PNPM_HOME="/pnpm"
 ENV PATH="$PNPM_HOME:$PATH"
-# Install pnpm via npm. pnpm 10 (not 11) — pnpm 11 needs node:sqlite (Node 22+); we pin Node 20.
+# Install pnpm via npm. pnpm 10 pinned to match repo packageManager.
 RUN npm install -g pnpm@10.34.3
 WORKDIR /usr/src/app
 

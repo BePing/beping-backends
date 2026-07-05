@@ -17,7 +17,7 @@ import {
   ApiTags,
   ApiExtraModels,
 } from '@nestjs/swagger';
-import { TabtException } from '../../../common/filter/tabt-exceptions.filter';
+import { TabtExceptionResponse } from '../../../common/filter/tabt-exception-response.dto';
 import { DivisionRankingService } from '../../../services/divisions/division-ranking.service';
 import { TabtHeadersDecorator } from '../../../common/decorators/tabt-headers.decorator';
 import {
@@ -61,7 +61,7 @@ export class DivisionsController {
   })
   @ApiResponse({
     status: 400,
-    type: TabtException,
+    type: TabtExceptionResponse,
   })
   @Version('1')
   @UseInterceptors(ClassSerializerInterceptor)
@@ -84,7 +84,7 @@ export class DivisionsController {
   @ApiNotFoundResponse({ description: 'The division not found' })
   @ApiResponse({
     status: 400,
-    type: TabtException,
+    type: TabtExceptionResponse,
   })
   @Version('1')
   @UseInterceptors(ClassSerializerInterceptor)
@@ -110,7 +110,7 @@ export class DivisionsController {
   })
   @ApiResponse({
     status: 400,
-    type: TabtException,
+    type: TabtExceptionResponse,
   })
   @Version('1')
   async findRankingDivisionV1(
@@ -136,7 +136,7 @@ export class DivisionsController {
   })
   @ApiResponse({
     status: 400,
-    type: TabtException,
+    type: TabtExceptionResponse,
   })
   @Version('1')
   async findMatchesDivisionV1(
@@ -161,7 +161,7 @@ export class DivisionsController {
   })
   @ApiResponse({
     status: 400,
-    type: TabtException,
+    type: TabtExceptionResponse,
   })
   @Version('1')
   async findMembersInDivisionV1(

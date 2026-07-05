@@ -5,7 +5,7 @@ import FormData from 'form-data';
 import { lastValueFrom } from 'rxjs';
 import { SocksProxyHttpClient } from '../../common/socks-proxy/socks-proxy-http-client';
 import { ConfigService } from '@nestjs/config';
-import { CacheService, TTL_DURATION } from '../../common/cache/cache.service';
+import { CacheService, TTL_DURATION } from '@app/common';
 import { UserAgentsUtil } from '../../common/utils/user-agents.util';
 
 @Injectable()

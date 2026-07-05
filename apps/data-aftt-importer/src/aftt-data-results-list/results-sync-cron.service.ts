@@ -1,7 +1,7 @@
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
-import { InjectQueue } from '@nestjs/bull';
-import { Queue, JobOptions } from 'bull';
+import { InjectQueue } from '@nestjs/bullmq';
+import { Queue, JobsOptions } from 'bullmq';
 import { PlayerCategory } from '@app/common';
 import { ConfigService } from '@nestjs/config';
 import { ImportQueueStatusService } from '../common/import-queue-status.service';
@@ -22,7 +22,7 @@ export class ResultsSyncCronService implements OnModuleInit {
   private readonly STAGGER_DELAY_MS = 5000;
 
   // Job options for better reliability
-  private readonly JOB_OPTIONS: JobOptions = {
+  private readonly JOB_OPTIONS: JobsOptions = {
     attempts: 3,
     backoff: {
       type: 'exponential',
@@ -66,12 +66,12 @@ export class ResultsSyncCronService implements OnModuleInit {
       );
 
       // Remove all waiting and delayed jobs
-      await this.queue.empty();
+      await this.queue.drain(true);
 
       // Also clean old completed/failed
       await Promise.all([
-        this.queue.clean(0, 'delayed'),
-        this.queue.clean(0, 'wait'),
+        this.queue.clean(0, 0, 'delayed'),
+        this.queue.clean(0, 0, 'wait'),
       ]);
 
       this.logger.log('Queue drained successfully');
@@ -131,13 +131,13 @@ export class ResultsSyncCronService implements OnModuleInit {
   ): Promise<void> {
     const jobId = `results-${playerCategory}-${Date.now()}`;
 
-    const options: JobOptions = {
+    const options: JobsOptions = {
       ...this.JOB_OPTIONS,
       jobId,
       delay: delayMs,
     };
 
-    await this.queue.add({ playerCategory }, options);
+    await this.queue.add('results', { playerCategory }, options);
 
     this.logger.log(
       `Added job ${jobId} for ${playerCategory}${delayMs > 0 ? ` (delayed ${delayMs}ms)` : ''}`,
@@ -204,8 +204,8 @@ export class ResultsSyncCronService implements OnModuleInit {
     const gracePeriod = 24 * 60 * 60 * 1000; // 24 hours
 
     const [completedCleaned, failedCleaned] = await Promise.all([
-      this.queue.clean(gracePeriod, 'completed'),
-      this.queue.clean(gracePeriod, 'failed'),
+      this.queue.clean(gracePeriod, 0, 'completed'),
+      this.queue.clean(gracePeriod, 0, 'failed'),
     ]);
 
     const cleaned = completedCleaned.length + failedCleaned.length;

@@ -15,7 +15,7 @@ import {
 } from '@nestjs/swagger';
 import { ClubService } from '../../../services/clubs/club.service';
 import { ClubTeamService } from '../../../services/clubs/club-team.service';
-import { TabtException } from '../../../common/filter/tabt-exceptions.filter';
+import { TabtExceptionResponse } from '../../../common/filter/tabt-exception-response.dto';
 import { TabtHeadersDecorator } from '../../../common/decorators/tabt-headers.decorator';
 import { GetMembersFromClub, ListAllClubs } from '../dto/club.dto';
 import { RequestBySeasonDto } from '../../../common/dto/request-by-season.dto';
@@ -54,7 +54,7 @@ export class ClubController {
   })
   @ApiResponse({
     status: 400,
-    type: TabtException,
+    type: TabtExceptionResponse,
   })
   @UseInterceptors(ClassSerializerInterceptor)
   async findAll(@Query() input: ListAllClubs) {
@@ -76,7 +76,7 @@ export class ClubController {
   @ApiNotFoundResponse()
   @ApiResponse({
     status: 400,
-    type: TabtException,
+    type: TabtExceptionResponse,
   })
   @UseInterceptors(ClassSerializerInterceptor)
   async findbyId(@Param('clubIndex') uniqueIndex: string) {
@@ -98,7 +98,7 @@ export class ClubController {
   })
   @ApiResponse({
     status: 400,
-    type: TabtException,
+    type: TabtExceptionResponse,
   })
   async getClubMembers(
     @Query() input: GetMembersFromClub,
@@ -128,7 +128,7 @@ export class ClubController {
   })
   @ApiResponse({
     status: 400,
-    type: TabtException,
+    type: TabtExceptionResponse,
   })
   @UseInterceptors(ClassSerializerInterceptor)
   async getClubTeams(
@@ -152,7 +152,7 @@ export class ClubController {
   })
   @ApiResponse({
     status: 400,
-    type: TabtException,
+    type: TabtExceptionResponse,
   })
   getClubTeamsMembersRanking(
     @Query() input: RequestBySeasonDto,
@@ -177,7 +177,7 @@ export class ClubController {
   })
   @ApiResponse({
     status: 400,
-    type: TabtException,
+    type: TabtExceptionResponse,
   })
   async findClubMembersRanking(
     @Param('clubIndex') id: string,

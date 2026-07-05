@@ -1,7 +1,7 @@
 import { Controller, Get, Param, ParseIntPipe } from '@nestjs/common';
 import { SeasonService } from '../../../services/seasons/season.service';
 import { ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
-import { TabtException } from '../../../common/filter/tabt-exceptions.filter';
+import { TabtExceptionResponse } from '../../../common/filter/tabt-exception-response.dto';
 import { SeasonDto } from '../dto/season.dto';
 
 @Controller({
@@ -23,7 +23,7 @@ export class SeasonController {
   })
   @ApiResponse({
     status: 400,
-    type: TabtException,
+    type: TabtExceptionResponse,
   })
   findAll() {
     return this.seasonService
@@ -42,7 +42,7 @@ export class SeasonController {
   })
   @ApiResponse({
     status: 400,
-    type: TabtException,
+    type: TabtExceptionResponse,
   })
   findCurrentSeason() {
     return this.seasonService.getCurrentSeason().then(SeasonDto.fromTabT);
@@ -59,7 +59,7 @@ export class SeasonController {
   })
   @ApiResponse({
     status: 400,
-    type: TabtException,
+    type: TabtExceptionResponse,
   })
   findById(@Param('seasonId', ParseIntPipe) seasonId: number) {
     return this.seasonService.getSeasonById(seasonId).then(SeasonDto.fromTabT);

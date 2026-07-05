@@ -1,10 +1,14 @@
 import { Module } from '@nestjs/common';
-import { CacheService } from './cache/cache.service';
 import { FirebaseModule } from './firebase/firebase.module';
 import { EventBusService } from './event-bus/event-bus.service';
 import { CacheModule } from '@nestjs/cache-manager';
 import { ConfigModule } from '@nestjs/config';
-import { CacheModuleOptsFactory, PrismaService } from '@app/common';
+import {
+  CacheModuleOptsFactory,
+  CacheService,
+  PostHogService,
+  PrismaService,
+} from '@app/common';
 import { OpenAIService } from './openai.service';
 
 @Module({
@@ -16,13 +20,20 @@ import { OpenAIService } from './openai.service';
     }),
     FirebaseModule,
   ],
-  providers: [CacheService, EventBusService, PrismaService, OpenAIService],
+  providers: [
+    CacheService,
+    EventBusService,
+    PrismaService,
+    OpenAIService,
+    PostHogService,
+  ],
   exports: [
     CacheService,
     FirebaseModule,
     EventBusService,
     PrismaService,
     OpenAIService,
+    PostHogService,
   ],
 })
 export class CommonModule {}

@@ -13,7 +13,13 @@ async function bootstrap() {
   app.set('query parser', 'extended');
 
   // Enable validation globally
-  app.useGlobalPipes(new ValidationPipe());
+  app.useGlobalPipes(
+    new ValidationPipe({
+      whitelist: true,
+      transform: true,
+      transformOptions: { enableImplicitConversion: true },
+    }),
+  );
 
   // Connect microservice for internal communication
   app.connectMicroservice<MicroserviceOptions>({

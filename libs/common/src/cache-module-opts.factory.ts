@@ -1,34 +1,25 @@
 import { CacheModuleOptions, CacheOptionsFactory } from '@nestjs/cache-manager';
 import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import memoryStore from 'cache-manager-memory-store';
-import { redisStore } from 'cache-manager-redis-store';
+import { createKeyv } from '@keyv/redis';
 
 @Injectable()
 export class CacheModuleOptsFactory implements CacheOptionsFactory {
   constructor(private readonly configService: ConfigService) {}
 
-  async createCacheOptions(): Promise<CacheModuleOptions<Record<string, any>>> {
-    const tlsUrl = this.configService.get('REDIS_TLS_URL');
+  createCacheOptions(): CacheModuleOptions<Record<string, any>> {
+    const tlsUrl = this.configService.get<string>('REDIS_TLS_URL');
     if (tlsUrl) {
-      return {
-        store: (await redisStore({ url: tlsUrl })) as unknown as any,
-      };
+      return { stores: [createKeyv(tlsUrl)] };
     }
 
-    if (
-      this.configService.get('REDIS_HOST') &&
-      this.configService.get('REDIS_PORT')
-    ) {
-      return {
-        store: (await redisStore({
-          url: `redis://${this.configService.get('REDIS_HOST')}:${this.configService.get('REDIS_PORT')}`,
-        })) as unknown as any,
-      };
+    const host = this.configService.get<string>('REDIS_HOST');
+    const port = this.configService.get<string>('REDIS_PORT');
+    if (host && port) {
+      return { stores: [createKeyv(`redis://${host}:${port}`)] };
     }
 
-    return {
-      store: memoryStore,
-    };
+    // No Redis configured: cache-manager v7 falls back to an in-memory Keyv store.
+    return {};
   }
 }

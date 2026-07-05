@@ -9,7 +9,7 @@ This api is a bridge to the TabT SOAP API. It contacts TabT and cache results in
 
 ## Prerequisites
 
-- Node 10 or higher (https://nodejs.org/)
+- Node 22 LTS (https://nodejs.org/)
 
 ## Installation
 

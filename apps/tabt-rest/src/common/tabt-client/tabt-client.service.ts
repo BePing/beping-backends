@@ -29,7 +29,7 @@ import {
 } from '../../entity/tabt-soap/TabTAPI_Port';
 import { TabtClientSwitchingService } from './tabt-client-switching.service';
 import { CredentialsService } from './credentials.service';
-import { CacheService, TTL_DURATION } from '../cache/cache.service';
+import { CacheService, TTL_DURATION } from '@app/common';
 import { DatabaseContextService } from '../context/database-context.service';
 import { TabtException } from '../filter/tabt-exception';
 import { createHash } from 'crypto';

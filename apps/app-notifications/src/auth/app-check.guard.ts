@@ -14,8 +14,14 @@ export class AppCheckGuard implements CanActivate {
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
     if (!getApps().length) {
+      if (process.env.NODE_ENV === 'production') {
+        this.logger.error(
+          'Firebase Admin is not initialized in production. Denying request (App Check fail-closed).',
+        );
+        throw new UnauthorizedException('App Check verification unavailable');
+      }
       this.logger.warn(
-        'Firebase not initialized. App Check verification disabled.',
+        'Firebase not initialized. App Check verification disabled (non-production).',
       );
       return true; // Allow in development/testing without Firebase
     }

@@ -6,7 +6,7 @@ import { ConfigService } from '@nestjs/config';
 
 import { MatchService } from '../matches/match.service';
 import { TeamMatchesEntry } from '../../entity/tabt-soap/TabTAPI_Port';
-import { CacheService, TTL_DURATION } from '../../common/cache/cache.service';
+import { CacheService, TTL_DURATION } from '@app/common';
 import { SocksProxyHttpClient } from '../../common/socks-proxy/socks-proxy-http-client';
 import { UserAgentsUtil } from '../../common/utils/user-agents.util';
 
