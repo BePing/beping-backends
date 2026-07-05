@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { APP_FILTER } from '@nestjs/core';
 import { ScheduleModule } from '@nestjs/schedule';
 import { ConfigModule } from '@nestjs/config';
 import { LoggerModule } from 'nestjs-pino';
@@ -10,6 +11,7 @@ import { NotificationsModule } from './notifications/notifications.module';
 import { PrismaService } from '@app/common';
 import { NotificationsController } from './controllers/notifications.controller';
 import { EventsController } from './controllers/events.controller';
+import { AllExceptionsFilter } from './common/filter/all-exceptions.filter';
 
 @Module({
   imports: [
@@ -26,6 +28,12 @@ import { EventsController } from './controllers/events.controller';
     NotificationsModule,
   ],
   controllers: [HealthController, NotificationsController, EventsController],
-  providers: [PrismaService],
+  providers: [
+    PrismaService,
+    {
+      provide: APP_FILTER,
+      useClass: AllExceptionsFilter,
+    },
+  ],
 })
 export class AppModule {}

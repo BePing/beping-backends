@@ -1,9 +1,9 @@
 # syntax=docker/dockerfile:1.4
 
-ARG NODE_VERSION=20.19.0-alpine
+ARG NODE_VERSION=22.12.0-alpine
 
 # ──────────────────────────────────────────────
-# base — node + pnpm (via npm; pnpm 11 needs node:sqlite / Node 22+)
+# base — node + pnpm (via npm; pnpm 10 pinned to match repo packageManager)
 # ──────────────────────────────────────────────
 FROM node:${NODE_VERSION} AS base
 ENV PNPM_HOME="/pnpm"

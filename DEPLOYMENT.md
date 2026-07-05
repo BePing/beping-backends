@@ -97,7 +97,7 @@ docker run --rm \
 ## Local development
 
 ```sh
-pnpm install                      # pnpm 10 (see packageManager); Node 20.19.x
+pnpm install                      # pnpm 10 (see packageManager); Node 22.12.x
 pnpm exec prisma generate         # generate the Prisma client
 pnpm run start:dev:tabt-rest      # or :app-notifications / :data-aftt-importer
 ```
@@ -117,8 +117,8 @@ docker build -f Dockerfile.migrate       -t migrate:local .
 
 ## Notes
 
-- **Node 20.19.x** is pinned (`engines`). pnpm is pinned to **10.x** because
-  pnpm 11 requires Node 22+ (`node:sqlite`).
+- **Node 22.12.x** (LTS) is pinned (`engines`). pnpm is pinned to **10.x** to
+  match the repo `packageManager`.
 - The Prisma client is generated into `libs/common/src/generated` (gitignored)
   and re-exported via `@app/common`; it is bundled into each app's `dist`.
 - Runtime DB readiness is checked with `pg` in each app's `start.sh`; schema

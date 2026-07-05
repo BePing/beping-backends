@@ -2,10 +2,10 @@ import { HttpService } from '@nestjs/axios';
 import { firstValueFrom } from 'rxjs';
 import { Logger, Inject } from '@nestjs/common';
 import { PlayerCategory, ImportType } from '@app/common';
-import { OnQueueActive, Process, Processor } from '@nestjs/bull';
+import { OnWorkerEvent, Processor, WorkerHost } from '@nestjs/bullmq';
 import { PrismaService } from '@app/common';
-import { Job } from 'bull';
-import { CacheService } from '../cache/cache.service';
+import { Job } from 'bullmq';
+import { CacheService } from '@app/common';
 import { createHash } from 'crypto';
 import { ClientProxy } from '@nestjs/microservices';
 import { PERFORMANCE_CONFIG } from '../constants';
@@ -28,7 +28,7 @@ interface PointUpsertRow {
 }
 
 @Processor('members')
-export class MembersListProcessingService {
+export class MembersListProcessingService extends WorkerHost {
   private readonly logger = new Logger(MembersListProcessingService.name);
 
   constructor(
@@ -38,14 +38,15 @@ export class MembersListProcessingService {
     private readonly importExecutionCoordinatorService: ImportExecutionCoordinatorService,
     private readonly postgresCopyService: PostgresCopyService,
     @Inject('BEPING_NOTIFIER') private readonly notifierClient: ClientProxy,
-  ) {}
+  ) {
+    super();
+  }
 
-  @OnQueueActive()
+  @OnWorkerEvent('active')
   onActive(job: Job) {
     this.logger.log(`Processing job ${job.id} for ${job.data.playerCategory}`);
   }
 
-  @Process()
   async process(job: Job<{ playerCategory: PlayerCategory }>): Promise<void> {
     const startTime = Date.now();
     const { playerCategory } = job.data;

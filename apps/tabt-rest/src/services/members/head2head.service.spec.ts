@@ -5,7 +5,7 @@ import { of } from 'rxjs';
 
 import { Head2headService } from './head2head.service';
 import { MatchService } from '../matches/match.service';
-import { CacheService } from '../../common/cache/cache.service';
+import { CacheService } from '@app/common';
 import { SocksProxyHttpClient } from '../../common/socks-proxy/socks-proxy-http-client';
 
 describe('Head2headService', () => {

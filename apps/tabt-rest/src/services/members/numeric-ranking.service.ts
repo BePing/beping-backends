@@ -6,7 +6,7 @@ import {
   Prisma,
 } from '@app/common';
 import { format } from 'date-fns';
-import { CacheService, TTL_DURATION } from '../../common/cache/cache.service';
+import { CacheService, TTL_DURATION } from '@app/common';
 import {
   COMPETITION_TYPE,
   NumericRankingDetailsV1,

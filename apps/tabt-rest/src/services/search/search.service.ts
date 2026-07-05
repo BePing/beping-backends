@@ -4,7 +4,7 @@ import { ClubService } from '../clubs/club.service';
 import { MemberEntry } from '../../entity/tabt-soap/TabTAPI_Port';
 import { ApiProperty } from '@nestjs/swagger';
 import { TournamentService } from '../tournaments/tournament.service';
-import { CacheService, TTL_DURATION } from '../../common/cache/cache.service';
+import { CacheService, TTL_DURATION } from '@app/common';
 import { createHash } from 'crypto';
 import { MemberEntryDTOV1 } from '../../api/member/dto/member.dto';
 import { ClubDto } from '../../api/club/dto/club-model.dto';

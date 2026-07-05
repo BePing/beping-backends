@@ -1,7 +1,7 @@
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
-import { InjectQueue } from '@nestjs/bull';
-import { JobOptions, Queue } from 'bull';
+import { InjectQueue } from '@nestjs/bullmq';
+import { JobsOptions, Queue } from 'bullmq';
 import { PlayerCategory } from '@app/common';
 import { ConfigService } from '@nestjs/config';
 import { ImportQueueStatusService } from '../common/import-queue-status.service';
@@ -11,7 +11,7 @@ export class MembersListSyncCron implements OnModuleInit {
   private readonly logger = new Logger(MembersListSyncCron.name);
   private readonly STARTUP_DELAY_MS = 30000;
   private readonly STAGGER_DELAY_MS = 15000;
-  private readonly JOB_OPTIONS: JobOptions = {
+  private readonly JOB_OPTIONS: JobsOptions = {
     attempts: 3,
     backoff: {
       type: 'exponential',
@@ -76,6 +76,7 @@ export class MembersListSyncCron implements OnModuleInit {
     const jobId = `members-${playerCategory}-${Date.now()}`;
 
     await this.queue.add(
+      'members',
       { playerCategory },
       {
         ...this.JOB_OPTIONS,
@@ -103,10 +104,10 @@ export class MembersListSyncCron implements OnModuleInit {
       `Draining stale member jobs on startup: waiting=${waiting}, delayed=${delayed}`,
     );
 
-    await this.queue.empty();
+    await this.queue.drain(true);
     await Promise.all([
-      this.queue.clean(0, 'delayed'),
-      this.queue.clean(0, 'wait'),
+      this.queue.clean(0, 0, 'delayed'),
+      this.queue.clean(0, 0, 'wait'),
     ]);
 
     this.logger.log('Members queue drained successfully');

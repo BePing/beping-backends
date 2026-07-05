@@ -4,11 +4,13 @@ import {
   HealthCheckResult,
   HealthCheckService,
   HttpHealthIndicator,
+  PrismaHealthIndicator,
 } from '@nestjs/terminus';
 import { TestRequestService } from '../../../services/test/test-request.service';
 import { ContextService } from '../../../common/context/context.service';
 import { ConfigService } from '@nestjs/config';
 import { SocksProxyHttpClient } from '../../../common/socks-proxy/socks-proxy-http-client';
+import { PrismaService } from '@app/common';
 
 describe('HealthController', () => {
   let controller: HealthController;
@@ -32,6 +34,16 @@ describe('HealthController', () => {
           useValue: {
             pingCheck: jest.fn(),
           },
+        },
+        {
+          provide: PrismaHealthIndicator,
+          useValue: {
+            pingCheck: jest.fn(),
+          },
+        },
+        {
+          provide: PrismaService,
+          useValue: {},
         },
         {
           provide: TestRequestService,

@@ -59,7 +59,13 @@ async function bootstrap() {
   app.use(helmet());
   app.use(responseTime());
 
-  app.useGlobalPipes(new ValidationPipe());
+  app.useGlobalPipes(
+    new ValidationPipe({
+      whitelist: true,
+      transform: true,
+      transformOptions: { enableImplicitConversion: true },
+    }),
+  );
 
   await app.listen(configService.get('PORT') || 3004);
 }

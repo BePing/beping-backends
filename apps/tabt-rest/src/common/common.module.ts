@@ -1,5 +1,5 @@
 import { Module, Provider } from '@nestjs/common';
-import { CacheService } from './cache/cache.service';
+import { CacheService } from '@app/common';
 import { ContextService } from './context/context.service';
 import { CredentialsService } from './tabt-client/credentials.service';
 import { DatabaseContextService } from './context/database-context.service';
@@ -17,6 +17,7 @@ import { CacheModuleOptsFactory } from '@app/common';
 import { HttpModule } from '@nestjs/axios';
 import { CacheModule } from '@nestjs/cache-manager';
 import { PrismaService } from '@app/common';
+import { PostHogService } from '@app/common';
 import { MemberService } from '../services/members/member.service';
 import { ClientsModule, Transport } from '@nestjs/microservices';
 
@@ -112,6 +113,7 @@ const asyncProviders: Provider[] = [
     SocksProxyHttpClient,
     MemberService,
     PrismaService,
+    PostHogService,
   ],
   exports: [
     ...asyncProviders,
@@ -123,6 +125,7 @@ const asyncProviders: Provider[] = [
     ConfigModule,
     MemberService,
     PrismaService,
+    PostHogService,
     ClientsModule,
   ],
 })

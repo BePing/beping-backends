@@ -12,7 +12,7 @@ import {
   Version,
 } from '@nestjs/common';
 import { ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
-import { TabtException } from '../../../common/filter/tabt-exceptions.filter';
+import { TabtExceptionResponse } from '../../../common/filter/tabt-exception-response.dto';
 import { TournamentService } from '../../../services/tournaments/tournament.service';
 import {
   GetTournamentDetails,
@@ -44,7 +44,7 @@ export class TournamentController {
   })
   @ApiResponse({
     status: 400,
-    type: TabtException,
+    type: TabtExceptionResponse,
   })
   @Version('1')
   @UseInterceptors(ClassSerializerInterceptor)
@@ -64,7 +64,7 @@ export class TournamentController {
   })
   @ApiResponse({
     status: 400,
-    type: TabtException,
+    type: TabtExceptionResponse,
   })
   @UseInterceptors(ClassSerializerInterceptor)
   @Version('1')
@@ -94,7 +94,7 @@ export class TournamentController {
   })
   @ApiResponse({
     status: 400,
-    type: TabtException,
+    type: TabtExceptionResponse,
   })
   @Version('1')
   async getSeriesV1(@Param('tournamentId', ParseIntPipe) id: number) {
@@ -114,7 +114,7 @@ export class TournamentController {
   })
   @ApiResponse({
     status: 400,
-    type: TabtException,
+    type: TabtExceptionResponse,
   })
   @Version('1')
   async registerV1(
