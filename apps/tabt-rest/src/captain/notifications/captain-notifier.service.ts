@@ -64,17 +64,32 @@ export class CaptainNotifierService {
           auth: { username: user, password },
         }),
       );
+      this.logger.debug(
+        `Sent ${notification.type} to user ${notification.targetUniqueIndex} (match ${notification.matchUniqueId})`,
+      );
       return true;
     } catch (e) {
       this.logger.error(
-        `Failed to send ${notification.type} notification: ${e?.message ?? 'unknown'}`,
+        `Failed to send ${notification.type} notification to user ${notification.targetUniqueIndex}: ${e?.message ?? 'unknown'}`,
       );
       return false;
     }
   }
 
   async sendMany(notifications: CaptainNotification[]): Promise<number> {
+    if (notifications.length === 0) {
+      this.logger.warn('sendMany called with no recipients — nothing to send');
+      return 0;
+    }
+    const type = notifications[0].type;
+    this.logger.log(
+      `Dispatching ${notifications.length} ${type} notification(s) to app-notifications`,
+    );
     const results = await Promise.all(notifications.map((n) => this.send(n)));
-    return results.filter(Boolean).length;
+    const sent = results.filter(Boolean).length;
+    this.logger.log(
+      `Dispatched ${type}: ${sent}/${notifications.length} accepted by app-notifications`,
+    );
+    return sent;
   }
 }

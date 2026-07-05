@@ -54,12 +54,53 @@ export class ConvocationPublicController {
   }
 }
 
-function escapeHtml(value: string): string {
-  return value
+function escapeHtml(value: unknown): string {
+  const str = value instanceof Date ? value.toISOString() : String(value ?? '');
+  return str
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;');
+}
+
+/** Human-readable French date, e.g. "samedi 25 avril 2026". */
+function formatFrDate(value: unknown): string {
+  if (!value) {
+    return '';
+  }
+  const date = value instanceof Date ? value : new Date(String(value));
+  if (isNaN(date.getTime())) {
+    return String(value);
+  }
+  return new Intl.DateTimeFormat('fr-BE', {
+    weekday: 'long',
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric',
+    timeZone: 'UTC',
+  }).format(date);
+}
+
+/** Human-readable French time, e.g. "19h15", from an ISO datetime or "HH:mm[:ss]". */
+function formatFrTime(value: unknown): string {
+  if (!value) {
+    return '';
+  }
+  const str = value instanceof Date ? value.toISOString() : String(value);
+  const match = str.match(/T(\d{2}):(\d{2})/) ?? str.match(/^(\d{2}):(\d{2})/);
+  return match ? `${match[1]}h${match[2]}` : str;
+}
+
+/** Readable French date + time for the meeting point, tolerant of any input. */
+function formatFrDateTime(value: unknown): string {
+  if (!value) {
+    return '';
+  }
+  const date = value instanceof Date ? value : new Date(String(value));
+  if (isNaN(date.getTime())) {
+    return String(value);
+  }
+  return `${formatFrDate(date)} à ${formatFrTime(value)}`;
 }
 
 /**
@@ -79,7 +120,7 @@ function renderConvocationPage(
     )
     .join('');
   const meeting = dto.meetingTime
-    ? `<p><strong>Rendez-vous :</strong> ${escapeHtml(dto.meetingTime)}</p>`
+    ? `<p><strong>Rendez-vous :</strong> ${escapeHtml(formatFrDateTime(dto.meetingTime))}</p>`
     : '';
   const venue = dto.venue
     ? `<p><strong>Lieu :</strong> ${escapeHtml(dto.venue)}</p>`
@@ -110,7 +151,7 @@ function renderConvocationPage(
 <body>
   <div class="card">
     <h1>Convocation</h1>
-    <p class="opponent">Contre ${escapeHtml(dto.opponent)} — ${escapeHtml(dto.date)} ${escapeHtml(dto.time)}</p>
+    <p class="opponent">Contre ${escapeHtml(dto.opponent)} — ${escapeHtml(formatFrDate(dto.date))} à ${escapeHtml(formatFrTime(dto.time))}</p>
     <div class="message">${escapeHtml(dto.message)}</div>
     ${meeting}
     ${venue}
