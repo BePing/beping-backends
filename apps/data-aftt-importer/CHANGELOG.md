@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.1.0](https://github.com/BePing/beping-backends/compare/data-aftt-importer-v2.0.0...data-aftt-importer-v2.1.0) (2026-07-05)
+
+
+### Features
+
+* project hardening + stack modernization ([b0631e7](https://github.com/BePing/beping-backends/commit/b0631e725634f3530a95500f9bb3ce4b57635381))
+
 ## [2.0.0](https://github.com/BePing/beping-backends/compare/data-aftt-importer-v1.7.2...data-aftt-importer-v2.0.0) (2026-06-17)
 
 
