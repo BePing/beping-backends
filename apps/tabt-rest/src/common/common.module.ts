@@ -23,6 +23,12 @@ import {
 import { MemberService } from '../services/members/member.service';
 import { ClientsModule, Transport } from '@nestjs/microservices';
 
+// The TabT host determines the language of textual labels (division/category
+// names): api.aftt.be answers in French, api.vttl.be in Dutch. Each federation
+// client must target its own host, so we fall back to it when the env is unset.
+const DEFAULT_AFTT_WSDL = 'https://api.aftt.be/?wsdl';
+const DEFAULT_VTTL_WSDL = 'https://api.vttl.be/?wsdl';
+
 const asyncProviders: Provider[] = [
   {
     provide: 'tabt-aftt',
@@ -31,7 +37,7 @@ const asyncProviders: Provider[] = [
       socksProxy: SocksProxyHttpClient,
     ) => {
       return createSoapClient(
-        configService.get('AFTT_WSDL'),
+        configService.get('AFTT_WSDL') ?? DEFAULT_AFTT_WSDL,
         configService.get('USE_SOCKS_PROXY') === 'true'
           ? socksProxy
           : undefined,
@@ -46,7 +52,7 @@ const asyncProviders: Provider[] = [
       socksProxy: SocksProxyHttpClient,
     ) => {
       return createSoapClient(
-        configService.get('VTLL_WSDL'),
+        configService.get('VTLL_WSDL') ?? DEFAULT_VTTL_WSDL,
         configService.get('USE_SOCKS_PROXY') === 'true'
           ? socksProxy
           : undefined,
