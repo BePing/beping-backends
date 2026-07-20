@@ -67,6 +67,7 @@ async function bootstrap() {
     }),
   );
 
+  app.enableShutdownHooks();
   await app.listen(configService.get('PORT') || 3004);
 }
 

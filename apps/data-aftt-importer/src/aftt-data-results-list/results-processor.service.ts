@@ -1,12 +1,7 @@
 import { HttpService } from '@nestjs/axios';
 import { firstValueFrom } from 'rxjs';
 import { Logger } from '@nestjs/common';
-import {
-  CompetitionType,
-  ImportType,
-  PlayerCategory,
-  Result,
-} from '@app/common';
+import { ImportType, PlayerCategory } from '@app/common';
 import { OnWorkerEvent, Processor, WorkerHost } from '@nestjs/bullmq';
 import { Job } from 'bullmq';
 import { PrismaService } from '@app/common';
@@ -16,13 +11,14 @@ import { PERFORMANCE_CONFIG } from '../constants';
 import { ImportExecutionCoordinatorService } from '../common/import-execution-coordinator.service';
 import { PostgresCopyService } from '../common/postgres-copy.service';
 import {
-  ParsedResultLine,
   AppendCheckResult,
   LastImportInfo,
   ImportCheckResult,
   ProcessingStats,
 } from './results-processor.types';
 import { Client } from 'pg';
+import { ImportThrottleService } from '../common/import-throttle.service';
+import { parseResultLine } from './result-line.parser';
 
 interface BatchMergeStats {
   stagedCount: number;
@@ -46,6 +42,7 @@ export class ResultsProcessorService extends WorkerHost {
     private readonly cacheService: CacheService,
     private readonly importExecutionCoordinatorService: ImportExecutionCoordinatorService,
     private readonly postgresCopyService: PostgresCopyService,
+    private readonly importThrottleService: ImportThrottleService,
   ) {
     super();
   }
@@ -126,18 +123,9 @@ export class ResultsProcessorService extends WorkerHost {
           }
 
           const mergeStart = Date.now();
-          const mergeStats = await this.postgresCopyService.withClient(
-            async (client) => {
-              await this.createResultsStageTable(client);
-              await this.copyResultsStageRows(
-                client,
-                linesToProcess,
-                job.data.playerCategory,
-              );
-              await this.prepareDedupedResultsStage(client);
-              await this.upsertCompetitionsFromStage(client);
-              return this.mergeResultBatches(client);
-            },
+          const mergeStats = await this.mergeResultsInChunks(
+            linesToProcess,
+            job.data.playerCategory,
           );
 
           this.logger.log(
@@ -198,41 +186,6 @@ export class ResultsProcessorService extends WorkerHost {
       `File downloaded, start processing ${lines.length} lines...`,
     );
     return lines;
-  }
-
-  private parseLine(
-    line: string,
-    playerCategory: PlayerCategory,
-  ): ParsedResultLine {
-    const cols = line.split(';');
-    return {
-      result: {
-        id: parseInt(cols[0], 10),
-        date: new Date(cols[1]),
-        memberRanking: cols[10],
-        memberPoints: cols[13]?.length ? parseFloat(cols[13]) : 0,
-        opponentRanking: cols[8],
-        opponentPoints: cols[14]?.length ? parseFloat(cols[14]) : 0,
-        result: cols[4] === 'V' ? Result.VICTORY : Result.DEFEAT,
-        score: cols[5],
-        diffPoints: cols[15]?.length ? parseFloat(cols[15]) : 0,
-        pointsToAdd: cols[16]?.length ? parseFloat(cols[16]) : 0,
-        looseFactor: cols[17]?.length ? parseFloat(cols[17]) : 0,
-        definitivePointsToAdd: cols[18]?.length ? parseFloat(cols[18]) : 0,
-        playerCategory: playerCategory,
-      },
-      competition: {
-        id: cols[9] === 'T' ? cols[12] : cols[12].split(' - ')[0],
-        name: cols[9] === 'T' ? cols[12] : cols[12].split(' - ')[1],
-        type:
-          cols[9] === 'T'
-            ? CompetitionType.TOURNAMENT
-            : CompetitionType.CHAMPIONSHIP,
-        coefficient: cols[11]?.length ? parseFloat(cols[11]) : 0,
-      },
-      memberLicence: parseInt(cols[2], 10),
-      opponentLicence: parseInt(cols[3], 10),
-    };
   }
 
   private extractFileDate(lines: string[]): Date | null {
@@ -391,6 +344,43 @@ export class ResultsProcessorService extends WorkerHost {
   // COPY PIPELINE
   // ============================================================================
 
+  private async mergeResultsInChunks(
+    linesToProcess: string[],
+    playerCategory: PlayerCategory,
+  ): Promise<{ linesAdded: number; linesUpdated: number; dropped: number }> {
+    const chunkSize = Math.max(1, PERFORMANCE_CONFIG.RESULTS_STAGE_CHUNK_SIZE);
+    const totals = { linesAdded: 0, linesUpdated: 0, dropped: 0 };
+
+    for (let start = 0; start < linesToProcess.length; start += chunkSize) {
+      const chunk = linesToProcess.slice(start, start + chunkSize);
+      const chunkNumber = Math.floor(start / chunkSize) + 1;
+      const chunkCount = Math.ceil(linesToProcess.length / chunkSize);
+
+      await this.importThrottleService.waitForCapacity(
+        `results stage ${chunkNumber}/${chunkCount}`,
+      );
+
+      const stats = await this.postgresCopyService.withClient(
+        async (client) => {
+          await this.createResultsStageTable(client);
+          await this.copyResultsStageRows(client, chunk, playerCategory);
+          await this.prepareDedupedResultsStage(client);
+          await this.upsertCompetitionsFromStage(client);
+          return this.mergeResultBatches(client);
+        },
+      );
+
+      totals.linesAdded += stats.linesAdded;
+      totals.linesUpdated += stats.linesUpdated;
+      totals.dropped += stats.dropped;
+      this.logger.log(
+        `Completed results stage ${chunkNumber}/${chunkCount} (${chunk.length} rows)`,
+      );
+    }
+
+    return totals;
+  }
+
   private async createResultsStageTable(client: Client): Promise<void> {
     await client.query(`
       CREATE TEMP TABLE results_import_stage (
@@ -459,7 +449,7 @@ export class ResultsProcessorService extends WorkerHost {
       const line = linesToProcess[index];
 
       try {
-        const parsed = this.parseLine(line, playerCategory);
+        const parsed = parseResultLine(line, playerCategory);
         yield this.postgresCopyService.buildCsvRow([
           index + 1,
           parsed.result.id,
@@ -518,6 +508,13 @@ export class ResultsProcessorService extends WorkerHost {
     await client.query(
       'CREATE INDEX results_dedup_stage_line_no_idx ON results_dedup_stage (line_no)',
     );
+    await client.query(`
+      CREATE INDEX results_dedup_stage_members_idx
+        ON results_dedup_stage (member_licence, player_category);
+      CREATE INDEX results_dedup_stage_opponents_idx
+        ON results_dedup_stage (opponent_licence, player_category);
+      ANALYZE results_dedup_stage;
+    `);
   }
 
   private async upsertCompetitionsFromStage(client: Client): Promise<void> {
@@ -771,7 +768,7 @@ export class ResultsProcessorService extends WorkerHost {
   // CACHE OPERATIONS
   // ============================================================================
 
-  private async cleanAllMemberRelatedCaches(): Promise<void> {
+  private async invalidateCaches(): Promise<void> {
     const patterns: string[] = [
       'member-stats:*',
       'member-dashboard:*',
@@ -784,30 +781,14 @@ export class ResultsProcessorService extends WorkerHost {
       'numeric-ranking-v4:*',
       'head2head:*',
       'member-categories:*',
+      'search:*',
+      'members-ranking-division:*',
+      'members-ranking-club:*',
+      'members-ranking-team:*',
+      'next-match-estimation:*',
     ];
-    this.logger.log(
-      `Cleaning global member-related caches: ${patterns.length} patterns`,
-    );
-    for (let i = 0; i < patterns.length; i += 5) {
-      const batch = patterns.slice(i, i + 5);
-      await Promise.all(
-        batch.map((pattern) => this.cacheService.cleanKeys(pattern)),
-      );
-      await this.coolDownBetweenBatches(i + batch.length, patterns.length);
-    }
-  }
-
-  private async invalidateCaches(): Promise<void> {
-    await this.cleanAllMemberRelatedCaches();
-
-    await Promise.all([
-      this.cacheService.cleanKeys('numeric-ranking-v4:*'),
-      this.cacheService.cleanKeys('search:*'),
-      this.cacheService.cleanKeys('members-ranking-division:*'),
-      this.cacheService.cleanKeys('members-ranking-club:*'),
-      this.cacheService.cleanKeys('members-ranking-team:*'),
-      this.cacheService.cleanKeys('next-match-estimation:*'),
-    ]);
+    this.logger.log(`Cleaning ${patterns.length} cache patterns in one scan`);
+    await this.cacheService.cleanKeys(patterns);
   }
 
   // ============================================================================
@@ -856,17 +837,12 @@ export class ResultsProcessorService extends WorkerHost {
     processed: number,
     total: number,
   ): Promise<void> {
-    if (
-      processed >= total ||
-      PERFORMANCE_CONFIG.IMPORT_BATCH_COOLDOWN_MS <= 0
-    ) {
+    if (processed >= total) {
       return;
     }
 
-    await this.sleep(PERFORMANCE_CONFIG.IMPORT_BATCH_COOLDOWN_MS);
-  }
-
-  private async sleep(ms: number): Promise<void> {
-    await new Promise((resolve) => setTimeout(resolve, ms));
+    await this.importThrottleService.waitForCapacity(
+      `results batch ${processed}/${total}`,
+    );
   }
 }

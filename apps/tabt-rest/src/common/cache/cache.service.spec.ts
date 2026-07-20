@@ -124,6 +124,26 @@ describe('CacheService', () => {
       expect(del).not.toHaveBeenCalled();
     });
 
+    it('should scan once for several patterns', async () => {
+      let iterations = 0;
+      const del = jest.fn();
+      const keyv = {
+        async *iterator() {
+          iterations += 1;
+          yield ['numeric-ranking-v4:a', 'value'];
+          yield ['search:a', 'value'];
+          yield ['unrelated:a', 'value'];
+        },
+        delete: del,
+      };
+      const service = new CacheService({ stores: [keyv] } as any);
+
+      await service.cleanKeys(['numeric-ranking-v4:*', 'search:*']);
+
+      expect(iterations).toBe(1);
+      expect(del).toHaveBeenCalledWith(['numeric-ranking-v4:a', 'search:a']);
+    });
+
     it('should warn and no-op when the store does not support iteration', async () => {
       const service = new CacheService({ stores: [{}] } as any);
 
@@ -174,6 +194,32 @@ describe('CacheService', () => {
       // default ttl is 600 seconds -> 600_000 milliseconds.
       expect(setSpy).toHaveBeenCalledWith('aaa', value, 600_000);
       expect(getter).toHaveBeenCalledTimes(1);
+    });
+
+    it('should coalesce concurrent cache misses for the same key', async () => {
+      const getter = jest.fn().mockResolvedValue('value');
+      jest.spyOn(cache, 'get').mockResolvedValue(null);
+
+      const results = await Promise.all([
+        provider.getFromCacheOrGetAndCacheResult('same-key', getter),
+        provider.getFromCacheOrGetAndCacheResult('same-key', getter),
+        provider.getFromCacheOrGetAndCacheResult('same-key', getter),
+      ]);
+
+      expect(results).toEqual(['value', 'value', 'value']);
+      expect(getter).toHaveBeenCalledTimes(1);
+      expect(cache.set).toHaveBeenCalledTimes(1);
+    });
+
+    it('should treat false as a cached value', async () => {
+      const getter = jest.fn();
+      jest.spyOn(cache, 'get').mockResolvedValue(false);
+
+      await expect(
+        provider.getFromCacheOrGetAndCacheResult('boolean-key', getter),
+      ).resolves.toBe(false);
+
+      expect(getter).not.toHaveBeenCalled();
     });
   });
 });

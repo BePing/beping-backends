@@ -21,10 +21,34 @@ export class PostgresCopyService implements OnModuleDestroy {
     await client.connect();
 
     try {
+      const statementTimeoutMs = this.readPositiveInteger(
+        'IMPORT_STATEMENT_TIMEOUT_MS',
+        300_000,
+      );
+      const lockTimeoutMs = this.readPositiveInteger(
+        'IMPORT_LOCK_TIMEOUT_MS',
+        2_000,
+      );
+      await client.query(
+        `SELECT
+          set_config('application_name', 'beping-importer', false),
+          set_config('statement_timeout', $1, false),
+          set_config('lock_timeout', $2, false)`,
+        [`${statementTimeoutMs}ms`, `${lockTimeoutMs}ms`],
+      );
+
       return await callback(client);
     } finally {
       await client.end();
     }
+  }
+
+  private readPositiveInteger(name: string, fallback: number): number {
+    const parsed = Number.parseInt(
+      this.configService.get<string>(name) || '',
+      10,
+    );
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
   }
 
   async copyRows(

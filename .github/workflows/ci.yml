@@ -31,6 +31,10 @@ jobs:
               - '.npmrc'
               - 'tsconfig*.json'
               - 'nest-cli.json'
+              - 'Dockerfile*'
+              - 'docker-compose*.yml'
+              - 'scripts/**'
+              - '.github/workflows/**'
 
   lint-and-test:
     needs: changes

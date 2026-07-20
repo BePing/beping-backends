@@ -1,0 +1,90 @@
+name: Containers
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'apps/**'
+      - 'libs/**'
+      - 'prisma/**'
+      - 'Dockerfile.migrate'
+      - 'package.json'
+      - 'pnpm-lock.yaml'
+      - 'pnpm-workspace.yaml'
+      - '.npmrc'
+      - '.github/workflows/containers.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: containers-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  REGISTRY_HOST: ${{ vars.HETZNER_REGISTRY_HOST }}
+
+jobs:
+  publish:
+    name: Publish ${{ matrix.title }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - title: BePing API
+            image_name: beping-api
+            dockerfile: apps/tabt-rest/Dockerfile
+          - title: BePing notifications
+            image_name: beping-notifications
+            dockerfile: apps/app-notifications/Dockerfile
+          - title: BePing importer
+            image_name: beping-importer
+            dockerfile: apps/data-aftt-importer/Dockerfile
+          - title: BePing migrations
+            image_name: beping-migrate
+            dockerfile: Dockerfile.migrate
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
+
+      - name: Validate registry configuration
+        env:
+          REGISTRY_USERNAME: ${{ secrets.HETZNER_REGISTRY_USERNAME }}
+          REGISTRY_PASSWORD: ${{ secrets.HETZNER_REGISTRY_PASSWORD }}
+        run: |
+          test -n "${REGISTRY_HOST}"
+          test -n "${REGISTRY_USERNAME}"
+          test -n "${REGISTRY_PASSWORD}"
+
+      - name: Log in to Escape Key registry
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
+        with:
+          registry: ${{ env.REGISTRY_HOST }}
+          username: ${{ secrets.HETZNER_REGISTRY_USERNAME }}
+          password: ${{ secrets.HETZNER_REGISTRY_PASSWORD }}
+
+      - name: Build and push immutable image
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
+        env:
+          IMAGE: ${{ env.REGISTRY_HOST }}/escape-key/${{ matrix.image_name }}
+        with:
+          context: .
+          file: ${{ matrix.dockerfile }}
+          platforms: linux/amd64
+          push: true
+          tags: |
+            ${{ env.IMAGE }}:${{ github.sha }}
+            ${{ env.IMAGE }}:main
+          labels: |
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.title=${{ matrix.title }}
+          cache-from: type=gha,scope=${{ matrix.image_name }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.image_name }}

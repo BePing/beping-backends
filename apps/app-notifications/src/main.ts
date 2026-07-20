@@ -3,6 +3,7 @@ import { NestExpressApplication } from '@nestjs/platform-express';
 import { AppModule } from './app.module';
 import { MicroserviceOptions, Transport } from '@nestjs/microservices';
 import { ValidationPipe } from '@nestjs/common';
+import { getRedisConnectionOptions } from '@app/common';
 
 async function bootstrap() {
   // Create HTTP application for external API access
@@ -24,15 +25,13 @@ async function bootstrap() {
   // Connect microservice for internal communication
   app.connectMicroservice<MicroserviceOptions>({
     transport: Transport.REDIS,
-    options: {
-      host: process.env.REDIS_HOST,
-      port: parseInt(process.env.REDIS_PORT),
-    },
+    options: getRedisConnectionOptions((key) => process.env[key]),
   });
 
+  app.enableShutdownHooks();
   await app.startAllMicroservices();
 
-  const port = process.env.PORT || 3002;
+  const port = process.env.PORT || 3000;
   await app.listen(port);
 
   console.log(`Notifications service running on port ${port}`);

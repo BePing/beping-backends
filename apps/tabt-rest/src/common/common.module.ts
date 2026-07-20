@@ -16,8 +16,11 @@ import { createSoapClient } from './tabt-client/soap-client.factory';
 import { CacheModuleOptsFactory } from '@app/common';
 import { HttpModule } from '@nestjs/axios';
 import { CacheModule } from '@nestjs/cache-manager';
-import { PrismaService } from '@app/common';
-import { PostHogService } from '@app/common';
+import {
+  getRedisConnectionOptions,
+  PostHogService,
+  PrismaService,
+} from '@app/common';
 import { MemberService } from '../services/members/member.service';
 import { ClientsModule, Transport } from '@nestjs/microservices';
 
@@ -68,10 +71,9 @@ const asyncProviders: Provider[] = [
           useFactory: (configService: ConfigService) => {
             return {
               transport: Transport.REDIS,
-              options: {
-                host: configService.get('REDIS_HOST'),
-                port: parseInt(configService.get('REDIS_PORT')),
-              },
+              options: getRedisConnectionOptions((key) =>
+                configService.get<string>(key),
+              ),
             };
           },
           inject: [ConfigService],

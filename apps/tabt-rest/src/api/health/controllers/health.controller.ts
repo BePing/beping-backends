@@ -32,6 +32,22 @@ export class HealthController {
     private readonly prismaService: PrismaService,
   ) {}
 
+  @Get('live')
+  @ApiOperation({ operationId: 'checkLiveness' })
+  liveness() {
+    return { status: 'ok' as const };
+  }
+
+  @Get('ready')
+  @ApiOperation({ operationId: 'checkReadiness' })
+  @HealthCheck()
+  readiness() {
+    return this.health.check([
+      () =>
+        this.prismaHealthIndicator.pingCheck('database', this.prismaService),
+    ]);
+  }
+
   @Get()
   @ApiOperation({
     operationId: 'checkHealth',

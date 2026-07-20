@@ -8,7 +8,6 @@ import { HealthController } from './controllers/health.controller';
 import { CommonModule } from './common/common.module';
 import { AuthModule } from './auth/auth.module';
 import { NotificationsModule } from './notifications/notifications.module';
-import { PrismaService } from '@app/common';
 import { NotificationsController } from './controllers/notifications.controller';
 import { EventsController } from './controllers/events.controller';
 import { AllExceptionsFilter } from './common/filter/all-exceptions.filter';
@@ -29,7 +28,6 @@ import { AllExceptionsFilter } from './common/filter/all-exceptions.filter';
   ],
   controllers: [HealthController, NotificationsController, EventsController],
   providers: [
-    PrismaService,
     {
       provide: APP_FILTER,
       useClass: AllExceptionsFilter,

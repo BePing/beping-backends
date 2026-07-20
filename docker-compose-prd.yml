@@ -1,205 +1,240 @@
-version: '3.8'
 services:
-  # Run-once: applies prisma migrations before the apps start.
+  # Transitional full-stack deployment. The zero-downtime Coolify layout
+  # deploys the three applications independently; see deploy/coolify/README.md.
   migrate:
-    image: 'ghcr.io/beping/tabt-rest/migrate:latest'
+    image: '${CONTAINER_REGISTRY:-registry.escapekey.app}/escape-key/beping-migrate:${DEPLOY_SHA:?DEPLOY_SHA must be an immutable git SHA}'
     restart: 'no'
     depends_on:
       postgres:
         condition: service_healthy
     environment:
-      DATABASE_URL: '${DATABASE_URL}'
-      DIRECT_URL: '${DIRECT_URL}'
-    labels:
-      - coolify.managed=true
-      - coolify.name=migrate
-      - coolify.type=application
+      DATABASE_URL: '${DATABASE_URL:?DATABASE_URL is required}'
+      DIRECT_URL: '${DIRECT_URL:?DIRECT_URL is required}'
     logging:
       driver: json-file
       options:
         max-size: 5m
         max-file: '2'
-  data-importer:
-    image: 'ghcr.io/beping/tabt-rest/data-aftt-importer:1.7.2'
+
+  tabt-rest:
+    image: '${CONTAINER_REGISTRY:-registry.escapekey.app}/escape-key/beping-api:${DEPLOY_SHA}'
     restart: unless-stopped
-    mem_limit: 1024m
+    stop_grace_period: 30s
+    mem_limit: 768m
+    mem_reservation: 384m
+    cpus: 1.0
+    cpu_shares: 1024
+    oom_score_adj: -250
     depends_on:
       cache:
-        condition: service_started
+        condition: service_healthy
       postgres:
         condition: service_healthy
-      tabt-rest:
-        condition: service_started
+      migrate:
+        condition: service_completed_successfully
+    expose:
+      - '3050'
+    environment:
+      NODE_ENV: production
+      NODE_OPTIONS: '--max-old-space-size=640'
+      PORT: 3050
+      DB_POOL_MAX: '${API_DB_POOL_MAX:-5}'
+      DB_CONNECT_TIMEOUT_MS: '${DB_CONNECT_TIMEOUT_MS:-5000}'
+      DB_IDLE_TIMEOUT_MS: '${DB_IDLE_TIMEOUT_MS:-30000}'
+      DATABASE_URL: '${DATABASE_URL}'
+      DIRECT_URL: '${DIRECT_URL}'
+      REDIS_HOST: cache
+      REDIS_PORT: 6379
+      REDIS_PASSWORD: '${REDIS_PASSWORD:?REDIS_PASSWORD is required}'
+      AFTT_DATA_USERNAME: '${AFTT_DATA_USERNAME:?AFTT_DATA_USERNAME is required}'
+      AFTT_DATA_PASSWORD: '${AFTT_DATA_PASSWORD:?AFTT_DATA_PASSWORD is required}'
+      AFTT_WSDL: '${AFTT_WSDL:-https://api.aftt.be/?wsdl}'
+      VTLL_WSDL: '${VTLL_WSDL:-https://api.vttl.be/?wsdl}'
+      USE_SOCKS_PROXY: '${USE_SOCKS_PROXY:-false}'
+      SOCKS_PROXY_HOST: torproxy
+      SOCKS_PROXY_PORT: 9050
+      API_PREFIX: '${API_PREFIX:-api}'
+      CURRENT_SEASON: '${CURRENT_SEASON:-24}'
+      STATIC_PREFIX: '${STATIC_PREFIX:-static}'
+      HOST: '${HOST:?HOST is required}'
+      BEPING_NOTIFICATION_URL: '${BEPING_NOTIFICATION_URL:?BEPING_NOTIFICATION_URL is required}'
+      BEPING_NOTIFICATION_CONSUMER_KEY: '${BEPING_NOTIFICATION_CONSUMER_KEY:?BEPING_NOTIFICATION_CONSUMER_KEY is required}'
+      BEPING_NOTIFICATION_CONSUMER_SECRET: '${BEPING_NOTIFICATION_CONSUMER_SECRET:?BEPING_NOTIFICATION_CONSUMER_SECRET is required}'
+    healthcheck:
+      test:
+        - CMD
+        - wget
+        - '--spider'
+        - 'http://127.0.0.1:3050/v1/health/live'
+      interval: 15s
+      timeout: 3s
+      retries: 3
+      start_period: 20s
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: '3'
+
+  app-notifications:
+    image: '${CONTAINER_REGISTRY:-registry.escapekey.app}/escape-key/beping-notifications:${DEPLOY_SHA}'
+    restart: unless-stopped
+    stop_grace_period: 30s
+    mem_limit: 384m
+    mem_reservation: 192m
+    cpus: 0.35
+    cpu_shares: 512
+    depends_on:
+      cache:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    expose:
+      - '3000'
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      DB_POOL_MAX: '${NOTIFICATIONS_DB_POOL_MAX:-2}'
+      DB_CONNECT_TIMEOUT_MS: '${DB_CONNECT_TIMEOUT_MS:-5000}'
+      DB_IDLE_TIMEOUT_MS: '${DB_IDLE_TIMEOUT_MS:-30000}'
+      DATABASE_URL: '${DATABASE_URL}'
+      DIRECT_URL: '${DIRECT_URL}'
+      REDIS_HOST: cache
+      REDIS_PORT: 6379
+      REDIS_PASSWORD: '${REDIS_PASSWORD}'
+      FIREBASE_SERVICE_ACCOUNT_KEY: '${FIREBASE_SERVICE_ACCOUNT_KEY:?FIREBASE_SERVICE_ACCOUNT_KEY is required}'
+      FIREBASE_APP_ID: '${FIREBASE_APP_ID:-}'
+      OPENAI_API_KEY: '${OPENAI_API_KEY:-}'
+      GEMINI_API_KEY: '${GEMINI_API_KEY:-}'
+    healthcheck:
+      test:
+        - CMD
+        - wget
+        - '--spider'
+        - 'http://127.0.0.1:3000/health/live'
+      interval: 15s
+      timeout: 3s
+      retries: 3
+      start_period: 20s
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: '3'
+
+  data-importer:
+    image: '${CONTAINER_REGISTRY:-registry.escapekey.app}/escape-key/beping-importer:${DEPLOY_SHA}'
+    restart: unless-stopped
+    stop_grace_period: 60s
+    mem_limit: 384m
+    mem_reservation: 192m
+    cpus: 0.35
+    cpu_shares: 128
+    oom_score_adj: 500
+    depends_on:
+      cache:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
       migrate:
         condition: service_completed_successfully
     environment:
       NODE_ENV: production
-      NODE_OPTIONS: '--max-old-space-size=896'
+      NODE_OPTIONS: '--max-old-space-size=256'
+      DB_POOL_MAX: '${IMPORTER_DB_POOL_MAX:-1}'
+      DB_CONNECT_TIMEOUT_MS: '${DB_CONNECT_TIMEOUT_MS:-5000}'
+      DB_IDLE_TIMEOUT_MS: '${DB_IDLE_TIMEOUT_MS:-30000}'
       DATABASE_URL: '${DATABASE_URL}'
       DIRECT_URL: '${DIRECT_URL}'
       REDIS_HOST: cache
       REDIS_PORT: 6379
       REDIS_PASSWORD: '${REDIS_PASSWORD}'
       SYNC_MEMBERS_ON_START: '${SYNC_MEMBERS_ON_START:-false}'
+      SYNC_RESULTS_ON_START: '${SYNC_RESULTS_ON_START:-false}'
       AFTT_DATA_BASE_URL: '${AFTT_DATA_BASE_URL:-https://data.aftt.be}'
       AFTT_DATA_USERNAME: '${AFTT_DATA_USERNAME}'
       AFTT_DATA_PASSWORD: '${AFTT_DATA_PASSWORD}'
-      MEMBER_BATCH_SIZE: '${MEMBER_BATCH_SIZE:-500}'
-      MEMBER_POINTS_BATCH_SIZE: '${MEMBER_POINTS_BATCH_SIZE:-500}'
-      RESULTS_BATCH_SIZE: '${RESULTS_BATCH_SIZE:-500}'
-      IMPORT_BATCH_COOLDOWN_MS: '${IMPORT_BATCH_COOLDOWN_MS:-100}'
-    labels:
-      - coolify.managed=true
-      - coolify.name=data-importer
-      - coolify.type=application
+      RESULTS_BATCH_SIZE: '${RESULTS_BATCH_SIZE:-100}'
+      RESULTS_STAGE_CHUNK_SIZE: '${RESULTS_STAGE_CHUNK_SIZE:-2000}'
+      IMPORT_BATCH_COOLDOWN_MS: '${IMPORT_BATCH_COOLDOWN_MS:-750}'
+      IMPORT_API_READINESS_URL: '${IMPORT_API_READINESS_URL:-https://api-v2.beping.be/v1/health/ready}'
+      IMPORT_API_HEALTH_TIMEOUT_MS: '${IMPORT_API_HEALTH_TIMEOUT_MS:-2000}'
+      IMPORT_API_MAX_LATENCY_MS: '${IMPORT_API_MAX_LATENCY_MS:-600}'
+      IMPORT_PRESSURE_PAUSE_MS: '${IMPORT_PRESSURE_PAUSE_MS:-5000}'
+      IMPORT_PRESSURE_MAX_ATTEMPTS: '${IMPORT_PRESSURE_MAX_ATTEMPTS:-120}'
+      IMPORT_STATEMENT_TIMEOUT_MS: '${IMPORT_STATEMENT_TIMEOUT_MS:-300000}'
+      IMPORT_LOCK_TIMEOUT_MS: '${IMPORT_LOCK_TIMEOUT_MS:-2000}'
     healthcheck:
-      test:
-        - CMD
-        - pgrep
-        - '-f'
-        - node
+      test: ['CMD', 'pgrep', '-f', 'node']
       interval: 30s
-      timeout: 10s
+      timeout: 5s
       retries: 3
-      start_period: 40s
+      start_period: 30s
     logging:
       driver: json-file
       options:
         max-size: 10m
         max-file: '3'
-  tabt-rest:
-    image: 'ghcr.io/beping/tabt-rest/tabt-rest:1.0.0'
-    restart: unless-stopped
-    mem_limit: 768m
-    depends_on:
-      cache:
-        condition: service_started
-      postgres:
-        condition: service_healthy
-      torproxy:
-        condition: service_started
-      migrate:
-        condition: service_completed_successfully
-    environment:
-      NODE_ENV: production
-      NODE_OPTIONS: '--max-old-space-size=640'
-      DATABASE_URL: '${DATABASE_URL}'
-      DIRECT_URL: '${DIRECT_URL}'
-      REDIS_HOST: cache
-      REDIS_PORT: 6379
-      REDIS_PASSWORD: '${REDIS_PASSWORD}'
-      AFTT_DATA_USERNAME: '${AFTT_DATA_USERNAME}'
-      AFTT_DATA_PASSWORD: '${AFTT_DATA_PASSWORD}'
-      AFTT_WSDL: '${AFTT_WSDL:-https://api.aftt.be/?wsdl}'
-      VTLL_WSDL: '${VTLL_WSDL:-https://api.aftt.be/?wsdl}'
-      USE_SOCKS_PROXY: '${USE_SOCKS_PROXY:-false}'
-      PORT: 3051
-      SOCKS_PROXY_HOST: torproxy
-      SOCKS_PROXY_PORT: 9050
-      API_PREFIX: '${API_PREFIX:-api}'
-      CURRENT_SEASON: '${CURRENT_SEASON:-24}'
-      STATIC_PREFIX: '${STATIC_PREFIX:-static}'
-      HOST: '${HOST}'
-      BEPING_NOTIFICATION_URL: '${BEPING_NOTIFICATION_URL}'
-      BEPING_NOTIFICATION_CONSUMER_KEY: '${BEPING_NOTIFICATION_CONSUMER_KEY}'
-      BEPING_NOTIFICATION_CONSUMER_SECRET: '${BEPING_NOTIFICATION_CONSUMER_SECRET}'
-    labels:
-      - coolify.managed=true
-      - coolify.name=tabt-rest
-      - coolify.type=application
-      - coolify.expose=true
-      - coolify.port=3051
-    ports:
-      - '3051:3051'
-    healthcheck:
-      test:
-        - CMD
-        - wget
-        - '--spider'
-        - 'http://localhost:3051/health'
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 60s
-    logging:
-      driver: json-file
-      options:
-        max-size: 10m
-        max-file: '3'
+
   torproxy:
-    image: 'dockage/tor-privoxy:latest'
+    image: 'dockage/tor-privoxy@sha256:7688b62223e1107adcda1418c2f9f95f9173abec7118431d776a0793135844f0'
     restart: unless-stopped
-    labels:
-      - coolify.managed=true
-      - coolify.name=tor-proxy
-      - coolify.type=service
+    mem_limit: 256m
+    cpus: 0.25
     healthcheck:
-      test:
-        - CMD
-        - curl
-        - '-f'
-        - 'http://localhost:8118'
+      test: ['CMD', 'curl', '-f', 'http://127.0.0.1:8118']
       interval: 30s
       timeout: 10s
       retries: 3
       start_period: 30s
-    logging:
-      driver: json-file
-      options:
-        max-size: 5m
-        max-file: '2'
+
   cache:
-    image: 'redis:7-alpine'
+    image: 'redis:7.4.2-alpine@sha256:02419de7eddf55aa5bcf49efb74e88fa8d931b4d77c07eff8a6b2144472b6952'
     restart: unless-stopped
-    command: 'redis-server --appendonly yes'
-    labels:
-      - coolify.managed=true
-      - coolify.name=redis-cache
-      - coolify.type=database
+    mem_limit: 256m
+    cpus: 0.25
+    command:
+      - redis-server
+      - --appendonly
+      - 'yes'
+      - --requirepass
+      - '${REDIS_PASSWORD}'
     volumes:
-      - 'cache-data:/data'
+      - cache-data:/data
     healthcheck:
-      test:
-        - CMD
-        - redis-cli
-        - ping
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 30s
-    logging:
-      driver: json-file
-      options:
-        max-size: 5m
-        max-file: '2'
-  postgres:
-    image: 'postgres:16-alpine'
-    restart: unless-stopped
+      test: ['CMD-SHELL', 'redis-cli -a "$${REDIS_PASSWORD}" ping | grep PONG']
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
     environment:
-      POSTGRES_DB: '${POSTGRES_DB}'
-      POSTGRES_USER: '${POSTGRES_USER}'
-      POSTGRES_PASSWORD: '${POSTGRES_PASSWORD}'
-    labels:
-      - coolify.managed=true
-      - coolify.name=postgres-db
-      - coolify.type=database
+      REDIS_PASSWORD: '${REDIS_PASSWORD}'
+
+  postgres:
+    image: 'postgres:16.9-alpine@sha256:7c688148e5e156d0e86df7ba8ae5a05a2386aaec1e2ad8e6d11bdf10504b1fb7'
+    restart: unless-stopped
+    shm_size: 256m
+    mem_limit: 1024m
+    mem_reservation: 512m
+    cpus: 1.0
+    cpu_shares: 768
+    environment:
+      POSTGRES_DB: '${POSTGRES_DB:?POSTGRES_DB is required}'
+      POSTGRES_USER: '${POSTGRES_USER:?POSTGRES_USER is required}'
+      POSTGRES_PASSWORD: '${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}'
     volumes:
-      - 'postgres-data:/var/lib/postgresql/data'
+      - postgres-data:/var/lib/postgresql/data
     healthcheck:
       test:
         - CMD-SHELL
-        - 'pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}'
-      interval: 30s
-      timeout: 10s
+        - 'pg_isready -U "$${POSTGRES_USER}" -d "$${POSTGRES_DB}"'
+      interval: 15s
+      timeout: 5s
       retries: 5
       start_period: 30s
-    logging:
-      driver: json-file
-      options:
-        max-size: 10m
-        max-file: '3'
+
 volumes:
   cache-data:
-    driver: local
   postgres-data:
-    driver: local

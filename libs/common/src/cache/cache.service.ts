@@ -18,6 +18,7 @@ export enum TTL_DURATION {
 @Injectable()
 export class CacheService {
   private readonly logger = new Logger(CacheService.name);
+  private readonly inFlight = new Map<string, Promise<unknown>>();
 
   constructor(@Inject(CACHE_MANAGER) private cacheManager: Cache) {}
 
@@ -49,18 +50,33 @@ export class CacheService {
   ): Promise<T> {
     const cached = await this.getFromCache<T>(key);
 
-    if (cached) {
+    if (cached !== undefined && cached !== null) {
       this.logger.debug('Data found in cache');
       return cached;
     }
 
+    const existing = this.inFlight.get(key) as Promise<T> | undefined;
+    if (existing) {
+      return existing;
+    }
+
     this.logger.debug('Data not found in cache');
-    const result = await getter();
-    await this.setInCache(key, result, ttl);
-    return result;
+    const pending = getter().then(async (result) => {
+      await this.setInCache(key, result, ttl);
+      return result;
+    });
+    this.inFlight.set(key, pending);
+
+    try {
+      return await pending;
+    } finally {
+      if (this.inFlight.get(key) === pending) {
+        this.inFlight.delete(key);
+      }
+    }
   }
 
-  async cleanKeys(pattern: string): Promise<void> {
+  async cleanKeys(pattern: string | string[]): Promise<void> {
     // In cache-manager v7 the underlying Keyv store(s) are reached through a
     // type assertion; the store is the first entry of `stores` (older layouts
     // exposed a single `store`).
@@ -75,10 +91,11 @@ export class CacheService {
     try {
       // Keyv iterates logical (un-prefixed) keys, so the glob patterns match the
       // same keys as before. Collect the matches then delete them in one batch.
-      const regex = CacheService.globToRegExp(pattern);
+      const patterns = Array.isArray(pattern) ? pattern : [pattern];
+      const regexes = patterns.map(CacheService.globToRegExp);
       const keys: string[] = [];
       for await (const [key] of keyv.iterator()) {
-        if (regex.test(key)) {
+        if (regexes.some((regex) => regex.test(key))) {
           keys.push(key);
         }
       }
@@ -87,13 +104,13 @@ export class CacheService {
         return;
       }
       this.logger.debug(
-        `Cleaning cache for pattern ${pattern}. Found ${keys.length} keys.`,
+        `Cleaning cache for ${patterns.length} pattern(s). Found ${keys.length} keys.`,
       );
 
       // Keyv.delete re-applies the store's key prefix for each logical key.
       await keyv.delete(keys);
     } catch (error) {
-      this.logger.warn(`Error cleaning keys with pattern ${pattern}:`, error);
+      this.logger.warn('Error cleaning cache keys by pattern:', error);
     }
   }
 

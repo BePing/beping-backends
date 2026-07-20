@@ -25,7 +25,7 @@ REDIS_HOST=localhost
 REDIS_PORT=6379
 
 # Server Configuration
-PORT=3002
+PORT=3000
 
 # Optional: Logging
 LOG_LEVEL=debug
@@ -143,4 +143,4 @@ For production:
 
 ### Authentication Issues
 - **Basic auth fails**: Verify `APIConsumer` table has correct credentials
-- **Unauthorized on send endpoints**: Check Basic Auth header format and credentials 
+- **Unauthorized on send endpoints**: Check Basic Auth header format and credentials

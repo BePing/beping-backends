@@ -11,12 +11,23 @@ export class SocksProxyHttpClient extends HttpClient {
   constructor(private readonly configService: ConfigService) {
     super({ returnFault: false });
 
-    this._axios = new Axios({ httpsAgent: this.createHttpsAgent() });
+    this._axios = new Axios(
+      this.configService.get('USE_SOCKS_PROXY') === 'true'
+        ? { httpsAgent: this.createHttpsAgent() }
+        : undefined,
+    );
   }
 
   createHttpsAgent(): SocksProxyAgent {
-    const proxyHost = this.configService.get('SOCKS_PROXY_HOST');
-    const proxyPort = this.configService.get('SOCKS_PROXY_PORT');
+    const proxyHost = this.configService.get<string>('SOCKS_PROXY_HOST');
+    const proxyPort = this.configService.get<string>('SOCKS_PROXY_PORT');
+
+    if (!proxyHost || !proxyPort) {
+      throw new Error(
+        'SOCKS_PROXY_HOST and SOCKS_PROXY_PORT are required when USE_SOCKS_PROXY=true',
+      );
+    }
+
     const proxyOptions = `socks5://${proxyHost}:${proxyPort}`;
     return new SocksProxyAgent(proxyOptions);
   }

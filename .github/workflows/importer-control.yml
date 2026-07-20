@@ -1,0 +1,60 @@
+name: Control production importer
+
+on:
+  workflow_dispatch:
+    inputs:
+      operation:
+        description: Pause or resume only the BePing importer
+        required: true
+        type: choice
+        options:
+          - pause
+          - resume
+
+permissions:
+  contents: read
+
+concurrency:
+  group: beping-production-importer-control
+  cancel-in-progress: false
+
+env:
+  COOLIFY_URL: ${{ vars.COOLIFY_URL }}
+  IMPORTER_UUID: ${{ vars.COOLIFY_BEPING_IMPORTER_UUID }}
+
+jobs:
+  control:
+    name: ${{ inputs.operation }} BePing importer
+    runs-on: [self-hosted, linux, x64, escape-key-ci]
+    environment: Production
+    timeout-minutes: 10
+
+    steps:
+      - name: Validate control configuration
+        env:
+          COOLIFY_TOKEN: ${{ secrets.COOLIFY_TOKEN }}
+        run: |
+          test -n "${COOLIFY_URL}"
+          test -n "${COOLIFY_TOKEN}"
+          test -n "${IMPORTER_UUID}"
+          [[ "${{ inputs.operation }}" =~ ^(pause|resume)$ ]]
+
+      - name: Pause importer
+        if: inputs.operation == 'pause'
+        env:
+          COOLIFY_TOKEN: ${{ secrets.COOLIFY_TOKEN }}
+        run: |
+          curl --fail-with-body --silent --show-error \
+            -X POST \
+            -H "Authorization: Bearer ${COOLIFY_TOKEN}" \
+            "${COOLIFY_URL%/}/api/v1/applications/${IMPORTER_UUID}/stop"
+
+      - name: Resume importer
+        if: inputs.operation == 'resume'
+        env:
+          COOLIFY_TOKEN: ${{ secrets.COOLIFY_TOKEN }}
+        run: |
+          curl --fail-with-body --silent --show-error \
+            -X POST \
+            -H "Authorization: Bearer ${COOLIFY_TOKEN}" \
+            "${COOLIFY_URL%/}/api/v1/applications/${IMPORTER_UUID}/start"
