@@ -43,8 +43,11 @@ export class MembersListSyncCron implements OnModuleInit {
     }
   }
 
-  // Run every hour at 15 minutes past the hour to avoid colliding with results.
-  @Cron('0 15 * * * *')
+  // Run once per night. The timezone and schedule stay configurable so an
+  // infrastructure change does not require rebuilding the importer.
+  @Cron(process.env.MEMBERS_IMPORT_CRON || '0 15 1 * * *', {
+    timeZone: process.env.IMPORT_TIME_ZONE || 'Europe/Brussels',
+  })
   async syncMembers() {
     const status = await this.importQueueStatusService.getStatus();
     this.logger.log(

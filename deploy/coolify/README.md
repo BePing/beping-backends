@@ -56,6 +56,9 @@ The importer deliberately trades duration for API availability:
   `RESULTS_STAGE_CHUNK_SIZE=2000`;
 - set `IMPORT_BATCH_COOLDOWN_MS=750`;
 - set `IMPORT_API_READINESS_URL=https://api-v2.beping.be/v1/health/ready`;
+- set `IMPORT_TIME_ZONE=Europe/Brussels`, `MEMBERS_IMPORT_CRON=0 15 1 * * *`
+  and `RESULTS_IMPORT_CRON=0 0 2 * * *` so imports run once per night instead
+  of once per hour;
 - use a 600 ms readiness latency ceiling and a five-second pressure pause;
 - give it a positive OOM score so it is stopped before the API under memory
   pressure.
