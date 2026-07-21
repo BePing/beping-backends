@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.2.1](https://github.com/BePing/beping-backends/compare/tabt-rest-v2.2.0...tabt-rest-v2.2.1) (2026-07-21)
+
+
+### Bug Fixes
+
+* trigger patch releases for all services ([a5d6ebb](https://github.com/BePing/beping-backends/commit/a5d6ebb5e27a7399ffe12f2a3e65c566e3cff7ce))
+
 ## [2.2.0](https://github.com/BePing/beping-backends/compare/tabt-rest-v2.1.0...tabt-rest-v2.2.0) (2026-07-21)
 
 
