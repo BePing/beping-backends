@@ -144,6 +144,42 @@ describe('CacheService', () => {
       expect(del).toHaveBeenCalledWith(['numeric-ranking-v4:a', 'search:a']);
     });
 
+    it('should scan and unlink Redis keys without loading cached values', async () => {
+      const scan = jest.fn().mockResolvedValue({
+        cursor: '0',
+        keys: [
+          'keyv::numeric-ranking-v4:a',
+          'keyv::search:a',
+          'keyv::unrelated:a',
+        ],
+      });
+      const unlink = jest.fn().mockResolvedValue(2);
+      const iterator = jest.fn();
+      const redisStore = {
+        getMasterNodes: jest.fn().mockResolvedValue([{ scan, unlink }]),
+        createKeyPrefix: (key: string, namespace: string) =>
+          `${namespace}::${key}`,
+        getKeyWithoutPrefix: (key: string, namespace: string) =>
+          key.replace(`${namespace}::`, ''),
+      };
+      const service = new CacheService({
+        stores: [{ namespace: 'keyv', store: redisStore, iterator }],
+      } as any);
+
+      await service.cleanKeys(['numeric-ranking-v4:*', 'search:*']);
+
+      expect(scan).toHaveBeenCalledWith('0', {
+        MATCH: 'keyv::*',
+        COUNT: 500,
+        TYPE: 'string',
+      });
+      expect(unlink).toHaveBeenCalledWith([
+        'keyv::numeric-ranking-v4:a',
+        'keyv::search:a',
+      ]);
+      expect(iterator).not.toHaveBeenCalled();
+    });
+
     it('should warn and no-op when the store does not support iteration', async () => {
       const service = new CacheService({ stores: [{}] } as any);
 

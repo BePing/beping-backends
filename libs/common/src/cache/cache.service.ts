@@ -89,10 +89,59 @@ export class CacheService {
     }
 
     try {
-      // Keyv iterates logical (un-prefixed) keys, so the glob patterns match the
-      // same keys as before. Collect the matches then delete them in one batch.
       const patterns = Array.isArray(pattern) ? pattern : [pattern];
       const regexes = patterns.map(CacheService.globToRegExp);
+
+      // @keyv/redis exposes its Redis clients through the Keyv adapter. Scan
+      // raw key names and UNLINK matches without fetching/deserializing values;
+      // cached ranking payloads can be large and made Keyv.iterator() take
+      // minutes even for a modest number of keys.
+      const redisStore = keyv.store;
+      if (
+        redisStore &&
+        typeof redisStore.getMasterNodes === 'function' &&
+        typeof redisStore.createKeyPrefix === 'function'
+      ) {
+        const clients = await redisStore.getMasterNodes();
+        const namespace = keyv.namespace;
+        const redisPattern = redisStore.createKeyPrefix('*', namespace);
+        let deleted = 0;
+
+        for (const client of clients) {
+          let cursor = '0';
+          do {
+            const result = await client.scan(cursor, {
+              MATCH: redisPattern,
+              COUNT: 500,
+              TYPE: 'string',
+            });
+            cursor = String(result.cursor);
+            const matches = result.keys.filter((rawKey: string) => {
+              const logicalKey =
+                typeof redisStore.getKeyWithoutPrefix === 'function'
+                  ? redisStore.getKeyWithoutPrefix(rawKey, namespace)
+                  : rawKey;
+              return regexes.some((regex) => regex.test(logicalKey));
+            });
+
+            if (matches.length > 0) {
+              if (typeof client.unlink === 'function') {
+                await client.unlink(matches);
+              } else {
+                await client.del(matches);
+              }
+              deleted += matches.length;
+            }
+          } while (cursor !== '0');
+        }
+
+        this.logger.debug(
+          `Cleaning cache for ${patterns.length} pattern(s). Unlinked ${deleted} keys.`,
+        );
+        return;
+      }
+
+      // Generic Keyv fallback for in-memory or non-Redis stores.
       const keys: string[] = [];
       for await (const [key] of keyv.iterator()) {
         if (regexes.some((regex) => regex.test(key))) {
