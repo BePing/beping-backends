@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.2.0](https://github.com/BePing/beping-backends/compare/app-notifications-v2.1.0...app-notifications-v2.2.0) (2026-07-21)
+
+
+### Features
+
+* expose internal Prometheus metrics ([#1284](https://github.com/BePing/beping-backends/issues/1284)) ([3f63508](https://github.com/BePing/beping-backends/commit/3f63508178904f751e75fbc7e085b5ed1b7ea9e1))
+
 ## [2.1.0](https://github.com/BePing/beping-backends/compare/app-notifications-v2.0.0...app-notifications-v2.1.0) (2026-07-05)
 
 
