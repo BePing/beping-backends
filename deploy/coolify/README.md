@@ -54,7 +54,7 @@ The importer deliberately trades duration for API availability:
 - set its CPU shares below the API and cap it at `0.35` CPU;
 - use a 768 MB container limit and a 640 MB Node heap; the 1.1-million-row
   results download exceeded the original 384 MB estimate before batching;
-- use `DB_POOL_MAX=1`, `RESULTS_BATCH_SIZE=100` and
+- use `DB_POOL_MAX=1`, `RESULTS_BATCH_SIZE=500` and
   `RESULTS_STAGE_CHUNK_SIZE=2000`;
 - set `IMPORT_BATCH_COOLDOWN_MS=750`;
 - set `IMPORT_API_READINESS_URL=https://api-v2.beping.be/v1/health/ready`;
@@ -64,6 +64,13 @@ The importer deliberately trades duration for API availability:
 - use a 600 ms readiness latency ceiling and a five-second pressure pause;
 - give it a positive OOM score so it is stopped before the API under memory
   pressure.
+
+The production recovery import on 2026-07-21 showed that batches of 100 spent
+about 15 of every 17 seconds in the 750 ms cooldown. Batches of 500 preserve
+the single database connection and API readiness gate while reducing the
+fixed cooldown overhead from 20 checks to four per 2,000-row stage. Keep the
+smaller value available as the first rollback if API latency exceeds its
+budget during the next observed cycle.
 
 If readiness fails repeatedly, the importer aborts the current BullMQ attempt.
 Its upserts are idempotent, so the retry can safely resume by reprocessing the
