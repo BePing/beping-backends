@@ -80,8 +80,8 @@ services:
     image: '${CONTAINER_REGISTRY:-registry.escapekey.app}/escape-key/beping-notifications:${DEPLOY_SHA}'
     restart: unless-stopped
     stop_grace_period: 30s
-    mem_limit: 768m
-    mem_reservation: 384m
+    mem_limit: 384m
+    mem_reservation: 192m
     cpus: 0.35
     cpu_shares: 512
     depends_on:
@@ -128,8 +128,8 @@ services:
     image: '${CONTAINER_REGISTRY:-registry.escapekey.app}/escape-key/beping-importer:${DEPLOY_SHA}'
     restart: unless-stopped
     stop_grace_period: 60s
-    mem_limit: 384m
-    mem_reservation: 192m
+    mem_limit: 768m
+    mem_reservation: 384m
     cpus: 0.35
     cpu_shares: 128
     oom_score_adj: 500
