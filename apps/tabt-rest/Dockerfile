@@ -60,7 +60,7 @@ RUN chmod +x ./start.sh
 
 USER nestjs
 
-EXPOSE 3050
+EXPOSE 3050 9464
 
 HEALTHCHECK --interval=15s --timeout=3s --start-period=20s --retries=3 \
     CMD wget --no-verbose --tries=1 --spider "http://127.0.0.1:${PORT:-3050}/v1/health/live" || exit 1

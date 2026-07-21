@@ -59,8 +59,9 @@ RUN chmod +x ./start.sh
 
 USER nestjs
 
-# No EXPOSE: this app is a Redis microservice (Transport.REDIS) with no HTTP
-# server, so liveness is checked by process presence rather than an HTTP probe.
+# The business transport remains Redis-only. Port 9464 is the internal
+# Prometheus endpoint and is not routed publicly by Coolify.
+EXPOSE 9464
 HEALTHCHECK --interval=60s --timeout=10s --start-period=10s --retries=3 \
     CMD pgrep node > /dev/null || exit 1
 

@@ -21,6 +21,11 @@ perform rolling updates for Compose applications. The root
 `docker-compose-prd.yml` is a transitional recovery/rehearsal stack, not the
 target production control plane.
 
+The API, notifications service and importer each expose Prometheus metrics on
+internal port `9464`. This port is reachable only from the host observability
+agent through the private `coolify` Docker network; it must not receive a
+public domain or a host port mapping.
+
 ## Image lifecycle
 
 `.github/workflows/containers.yml` builds all four images from every relevant
@@ -89,6 +94,14 @@ graceful stop window from Coolify.
 
 Do not configure host port mappings such as `3050:3050`; they prevent the old
 and new containers from coexisting during a rolling update.
+
+## Internal metrics
+
+All three runtime applications listen on `METRICS_HOST` and `METRICS_PORT`,
+which default to `0.0.0.0:9464`. The API and notifications service expose HTTP
+request counters and duration histograms in addition to Node.js process
+metrics; the importer exposes Node.js process metrics. See `OBSERVABILITY.md`
+for the Alloy discovery and verification queries.
 
 ## Database and Redis
 

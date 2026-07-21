@@ -9,12 +9,15 @@ import { ValidationPipe, VersioningType } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { PackageService } from './common/package/package.service';
 import { Logger } from 'nestjs-pino';
+import { ServiceMetrics } from '@app/common';
 
 async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule, {
     cors: true,
     bufferLogs: true,
   });
+  const metrics = new ServiceMetrics('beping-api');
+  metrics.instrumentHttp(app);
   // Configure Express v5 query parser to support nested objects and arrays
   app.set('query parser', 'extended');
   app.useLogger(app.get(Logger));
@@ -69,6 +72,7 @@ async function bootstrap() {
 
   app.enableShutdownHooks();
   await app.listen(configService.get('PORT') || 3004);
+  await metrics.listen();
 }
 
 bootstrap();
