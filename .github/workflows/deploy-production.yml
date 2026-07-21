@@ -1,10 +1,16 @@
 name: Deploy production
 
 on:
+  workflow_call:
+    inputs:
+      image_sha:
+        description: Immutable 40-character git SHA published by the release workflow
+        required: true
+        type: string
   workflow_dispatch:
     inputs:
       image_sha:
-        description: Immutable 40-character git SHA published by Containers
+        description: Immutable 40-character git SHA published by Containers or Release Please
         required: true
         type: string
 

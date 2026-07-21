@@ -62,20 +62,13 @@ jobs:
             tag_name: ${{ needs.release-please.outputs.app-notifications--tag_name }}
             image_name: ${{ vars.HETZNER_REGISTRY_HOST }}/escape-key/beping-notifications
     steps:
-      - name: Skip if not released
-        if: matrix.release_created != 'true'
-        run: echo "No release for ${{ matrix.app }}, skipping." && exit 0
-
       - name: Checkout Repository
-        if: matrix.release_created == 'true'
         uses: actions/checkout@v4
 
       - name: Set up Docker Buildx
-        if: matrix.release_created == 'true'
         uses: docker/setup-buildx-action@v3
 
       - name: Login to Escape Key registry
-        if: matrix.release_created == 'true'
         uses: docker/login-action@v3
         with:
           registry: ${{ env.REGISTRY_HOST }}
@@ -90,28 +83,28 @@ jobs:
           echo "version=$VERSION" >> $GITHUB_OUTPUT
 
       - name: Docker meta
-        if: matrix.release_created == 'true'
         id: meta
         uses: docker/metadata-action@v5
         with:
           images: ${{ matrix.image_name }}
           tags: |
-            type=semver,pattern={{version}},value=${{ steps.version.outputs.version }}
-            type=semver,pattern={{major}}.{{minor}},value=${{ steps.version.outputs.version }}
-            type=semver,pattern={{major}},value=${{ steps.version.outputs.version }}
-            type=raw,value=latest,enable={{is_default_branch}}
+            type=raw,value=${{ github.sha }}
+            type=semver,pattern={{version}},value=${{ steps.version.outputs.version }},enable=${{ matrix.release_created == 'true' }}
+            type=semver,pattern={{major}}.{{minor}},value=${{ steps.version.outputs.version }},enable=${{ matrix.release_created == 'true' }}
+            type=semver,pattern={{major}},value=${{ steps.version.outputs.version }},enable=${{ matrix.release_created == 'true' }}
+            type=raw,value=latest,enable=${{ matrix.release_created == 'true' }}
 
       - name: Build and push Docker image
-        if: matrix.release_created == 'true'
         uses: docker/build-push-action@v6
         with:
           push: true
           context: .
           file: ./apps/${{ matrix.app }}/Dockerfile
+          platforms: linux/amd64,linux/arm64
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          cache-from: type=gha,scope=${{ matrix.app }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.app }}
 
   # Shared run-once migration image (init step). Rebuilt on any release so the
   # schema engine + prisma/ migrations stay in sync with the deployed apps.
@@ -139,7 +132,26 @@ jobs:
           push: true
           context: .
           file: ./Dockerfile.migrate
+          platforms: linux/amd64,linux/arm64
           tags: |
             ${{ env.REGISTRY_HOST }}/escape-key/beping-migrate:${{ github.sha }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          cache-from: type=gha,scope=beping-migrate
+          cache-to: type=gha,mode=max,scope=beping-migrate
+
+  deploy-production:
+    needs:
+      - release-please
+      - build-and-push
+      - build-and-push-migrate
+    if: >-
+      ${{
+        always() &&
+        github.ref == 'refs/heads/main' &&
+        needs.release-please.outputs.releases_created == 'true' &&
+        needs.build-and-push.result == 'success' &&
+        needs.build-and-push-migrate.result == 'success'
+      }}
+    uses: ./.github/workflows/deploy-production.yml
+    with:
+      image_sha: ${{ github.sha }}
+    secrets: inherit
