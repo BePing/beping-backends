@@ -1,0 +1,114 @@
+name: Deploy production
+
+on:
+  workflow_dispatch:
+    inputs:
+      image_sha:
+        description: Immutable 40-character git SHA published by Containers
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: beping-production
+  cancel-in-progress: false
+
+env:
+  REGISTRY_HOST: ${{ vars.HETZNER_REGISTRY_HOST }}
+  IMAGE_SHA: ${{ inputs.image_sha }}
+  COOLIFY_URL: ${{ vars.COOLIFY_URL }}
+  BEPING_DOCKER_HOST: ${{ vars.BEPING_DOCKER_HOST }}
+
+jobs:
+  deploy:
+    name: Migrate and promote BePing
+    runs-on: [self-hosted, linux, x64, escape-key-ci]
+    environment: Production
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout deployment tooling
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Validate deployment configuration
+        env:
+          COOLIFY_TOKEN: ${{ secrets.COOLIFY_TOKEN }}
+          DATABASE_URL: ${{ secrets.BEPING_DATABASE_URL }}
+          DIRECT_URL: ${{ secrets.BEPING_DIRECT_URL }}
+          REGISTRY_USERNAME: ${{ secrets.HETZNER_REGISTRY_USERNAME }}
+          REGISTRY_PASSWORD: ${{ secrets.HETZNER_REGISTRY_PASSWORD }}
+          API_UUID: ${{ vars.COOLIFY_BEPING_API_UUID }}
+          NOTIFICATIONS_UUID: ${{ vars.COOLIFY_BEPING_NOTIFICATIONS_UUID }}
+          IMPORTER_UUID: ${{ vars.COOLIFY_BEPING_IMPORTER_UUID }}
+        run: |
+          [[ "${IMAGE_SHA}" =~ ^[0-9a-f]{40}$ ]]
+          test -n "${REGISTRY_HOST}"
+          test -n "${REGISTRY_USERNAME}"
+          test -n "${REGISTRY_PASSWORD}"
+          test -n "${COOLIFY_URL}"
+          test -n "${COOLIFY_TOKEN}"
+          test -n "${BEPING_DOCKER_HOST}"
+          test -n "${DATABASE_URL}"
+          test -n "${DIRECT_URL}"
+          test -n "${API_UUID}"
+          test -n "${NOTIFICATIONS_UUID}"
+          test -n "${IMPORTER_UUID}"
+
+      - name: Log in to Escape Key registry
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
+        with:
+          registry: ${{ env.REGISTRY_HOST }}
+          username: ${{ secrets.HETZNER_REGISTRY_USERNAME }}
+          password: ${{ secrets.HETZNER_REGISTRY_PASSWORD }}
+
+      - name: Verify immutable images
+        run: |
+          for image in beping-api beping-notifications beping-importer beping-migrate; do
+            docker manifest inspect \
+              "${REGISTRY_HOST}/escape-key/${image}:${IMAGE_SHA}" >/dev/null
+          done
+
+      - name: Apply backward-compatible database migrations
+        env:
+          DATABASE_URL: ${{ secrets.BEPING_DATABASE_URL }}
+          DIRECT_URL: ${{ secrets.BEPING_DIRECT_URL }}
+        run: |
+          # The database is private to the BePing Coolify network. The Escape
+          # Key runner reaches that Docker daemon over Tailscale SSH, so the
+          # migration never requires a public PostgreSQL port.
+          docker --host "${BEPING_DOCKER_HOST}" run --rm --pull always \
+            --network coolify \
+            -e DATABASE_URL \
+            -e DIRECT_URL \
+            "${REGISTRY_HOST}/escape-key/beping-migrate:${IMAGE_SHA}"
+
+      - name: Deploy API with rolling update
+        env:
+          COOLIFY_TOKEN: ${{ secrets.COOLIFY_TOKEN }}
+        run: |
+          bash scripts/coolify-deploy-image.sh \
+            "${{ vars.COOLIFY_BEPING_API_UUID }}" \
+            "${REGISTRY_HOST}/escape-key/beping-api" \
+            "${IMAGE_SHA}" \
+            "https://api-v2.beping.be/v1/health/ready"
+
+      - name: Deploy notifications with rolling update
+        env:
+          COOLIFY_TOKEN: ${{ secrets.COOLIFY_TOKEN }}
+        run: |
+          bash scripts/coolify-deploy-image.sh \
+            "${{ vars.COOLIFY_BEPING_NOTIFICATIONS_UUID }}" \
+            "${REGISTRY_HOST}/escape-key/beping-notifications" \
+            "${IMAGE_SHA}" \
+            "https://notifications.beping.be/health/ready"
+
+      - name: Deploy importer
+        env:
+          COOLIFY_TOKEN: ${{ secrets.COOLIFY_TOKEN }}
+        run: |
+          bash scripts/coolify-deploy-image.sh \
+            "${{ vars.COOLIFY_BEPING_IMPORTER_UUID }}" \
+            "${REGISTRY_HOST}/escape-key/beping-importer" \
+            "${IMAGE_SHA}"

@@ -94,6 +94,7 @@ export class MembersListProcessingService extends WorkerHost {
             async (client) => {
               await this.createMemberStageTable(client);
               await this.copyMemberStageRows(client, lines, playerCategory);
+              await this.prepareMemberStageTable(client);
 
               const memberStats = await this.mergeMembersFromStage(
                 client,
@@ -302,6 +303,14 @@ export class MembersListProcessingService extends WorkerHost {
         cols[13] || null,
       ]);
     }
+  }
+
+  private async prepareMemberStageTable(client: Client): Promise<void> {
+    await client.query(`
+      CREATE INDEX member_import_stage_identity_idx
+        ON member_import_stage (member_id, member_licence, line_no DESC);
+      ANALYZE member_import_stage;
+    `);
   }
 
   private async mergeMembersFromStage(
@@ -588,14 +597,8 @@ export class MembersListProcessingService extends WorkerHost {
       'members-ranking-team:*',
     ];
 
-    this.logger.log(`Cleaning ${patterns.length} cache patterns`);
-    for (let i = 0; i < patterns.length; i += 5) {
-      const batch = patterns.slice(i, i + 5);
-      await Promise.all(
-        batch.map((pattern) => this.cacheService.cleanKeys(pattern)),
-      );
-      await this.coolDownBetweenBatches(i + batch.length, patterns.length);
-    }
+    this.logger.log(`Cleaning ${patterns.length} cache patterns in one scan`);
+    await this.cacheService.cleanKeys(patterns);
   }
 
   // ============================================================================

@@ -78,8 +78,10 @@ export class ResultsSyncCronService implements OnModuleInit {
     }
   }
 
-  // Run every hour at 45 minutes past the hour
-  @Cron('0 45 * * * *')
+  // Run once per night, after the member import window.
+  @Cron(process.env.RESULTS_IMPORT_CRON || '0 0 2 * * *', {
+    timeZone: process.env.IMPORT_TIME_ZONE || 'Europe/Brussels',
+  })
   async syncResults(): Promise<void> {
     const status = await this.importQueueStatusService.getStatus();
     this.logger.log(

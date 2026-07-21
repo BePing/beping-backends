@@ -124,6 +124,62 @@ describe('CacheService', () => {
       expect(del).not.toHaveBeenCalled();
     });
 
+    it('should scan once for several patterns', async () => {
+      let iterations = 0;
+      const del = jest.fn();
+      const keyv = {
+        async *iterator() {
+          iterations += 1;
+          yield ['numeric-ranking-v4:a', 'value'];
+          yield ['search:a', 'value'];
+          yield ['unrelated:a', 'value'];
+        },
+        delete: del,
+      };
+      const service = new CacheService({ stores: [keyv] } as any);
+
+      await service.cleanKeys(['numeric-ranking-v4:*', 'search:*']);
+
+      expect(iterations).toBe(1);
+      expect(del).toHaveBeenCalledWith(['numeric-ranking-v4:a', 'search:a']);
+    });
+
+    it('should scan and unlink Redis keys without loading cached values', async () => {
+      const scan = jest.fn().mockResolvedValue({
+        cursor: '0',
+        keys: [
+          'keyv::numeric-ranking-v4:a',
+          'keyv::search:a',
+          'keyv::unrelated:a',
+        ],
+      });
+      const unlink = jest.fn().mockResolvedValue(2);
+      const iterator = jest.fn();
+      const redisStore = {
+        getMasterNodes: jest.fn().mockResolvedValue([{ scan, unlink }]),
+        createKeyPrefix: (key: string, namespace: string) =>
+          `${namespace}::${key}`,
+        getKeyWithoutPrefix: (key: string, namespace: string) =>
+          key.replace(`${namespace}::`, ''),
+      };
+      const service = new CacheService({
+        stores: [{ namespace: 'keyv', store: redisStore, iterator }],
+      } as any);
+
+      await service.cleanKeys(['numeric-ranking-v4:*', 'search:*']);
+
+      expect(scan).toHaveBeenCalledWith('0', {
+        MATCH: 'keyv::*',
+        COUNT: 500,
+        TYPE: 'string',
+      });
+      expect(unlink).toHaveBeenCalledWith([
+        'keyv::numeric-ranking-v4:a',
+        'keyv::search:a',
+      ]);
+      expect(iterator).not.toHaveBeenCalled();
+    });
+
     it('should warn and no-op when the store does not support iteration', async () => {
       const service = new CacheService({ stores: [{}] } as any);
 
@@ -174,6 +230,32 @@ describe('CacheService', () => {
       // default ttl is 600 seconds -> 600_000 milliseconds.
       expect(setSpy).toHaveBeenCalledWith('aaa', value, 600_000);
       expect(getter).toHaveBeenCalledTimes(1);
+    });
+
+    it('should coalesce concurrent cache misses for the same key', async () => {
+      const getter = jest.fn().mockResolvedValue('value');
+      jest.spyOn(cache, 'get').mockResolvedValue(null);
+
+      const results = await Promise.all([
+        provider.getFromCacheOrGetAndCacheResult('same-key', getter),
+        provider.getFromCacheOrGetAndCacheResult('same-key', getter),
+        provider.getFromCacheOrGetAndCacheResult('same-key', getter),
+      ]);
+
+      expect(results).toEqual(['value', 'value', 'value']);
+      expect(getter).toHaveBeenCalledTimes(1);
+      expect(cache.set).toHaveBeenCalledTimes(1);
+    });
+
+    it('should treat false as a cached value', async () => {
+      const getter = jest.fn();
+      jest.spyOn(cache, 'get').mockResolvedValue(false);
+
+      await expect(
+        provider.getFromCacheOrGetAndCacheResult('boolean-key', getter),
+      ).resolves.toBe(false);
+
+      expect(getter).not.toHaveBeenCalled();
     });
   });
 });

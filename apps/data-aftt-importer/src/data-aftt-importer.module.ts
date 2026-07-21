@@ -4,6 +4,7 @@ import { BullModule } from '@nestjs/bullmq';
 import { MembersListSyncModule } from './aftt-data-members-list/members-list-sync.module';
 import { ResultsSyncModule } from './aftt-data-results-list/results-sync.module';
 import { CommonModule } from './common.module';
+import { getRedisConnectionOptions } from '@app/common';
 
 @Module({
   imports: [
@@ -13,10 +14,9 @@ import { CommonModule } from './common.module';
     BullModule.forRootAsync({
       useFactory: (configService: ConfigService) => {
         return {
-          connection: {
-            host: configService.get('REDIS_HOST'),
-            port: configService.get('REDIS_PORT'),
-          },
+          connection: getRedisConnectionOptions((key) =>
+            configService.get<string>(key),
+          ),
         };
       },
       inject: [ConfigService],

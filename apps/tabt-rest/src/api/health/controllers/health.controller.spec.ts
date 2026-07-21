@@ -16,6 +16,7 @@ describe('HealthController', () => {
   let controller: HealthController;
   let healthCheckService: HealthCheckService;
   let httpHealthIndicator: HttpHealthIndicator;
+  let prismaHealthIndicator: PrismaHealthIndicator;
   let testService: TestRequestService;
   let contextService: ContextService;
 
@@ -77,12 +78,33 @@ describe('HealthController', () => {
     controller = module.get<HealthController>(HealthController);
     healthCheckService = module.get<HealthCheckService>(HealthCheckService);
     httpHealthIndicator = module.get<HttpHealthIndicator>(HttpHealthIndicator);
+    prismaHealthIndicator = module.get<PrismaHealthIndicator>(
+      PrismaHealthIndicator,
+    );
     testService = module.get<TestRequestService>(TestRequestService);
     contextService = module.get<ContextService>(ContextService);
   });
 
   it('should be defined', () => {
     expect(controller).toBeDefined();
+  });
+
+  it('should expose a dependency-free liveness response', () => {
+    expect(controller.liveness()).toEqual({ status: 'ok' });
+    expect(healthCheckService.check).not.toHaveBeenCalled();
+  });
+
+  it('should use only PostgreSQL for readiness', () => {
+    const prismaSpy = jest.spyOn(prismaHealthIndicator, 'pingCheck');
+    jest.spyOn(healthCheckService, 'check').mockImplementation((checks) => {
+      checks.forEach((check) => check());
+      return {} as Promise<HealthCheckResult>;
+    });
+
+    controller.readiness();
+
+    expect(prismaSpy).toHaveBeenCalledTimes(1);
+    expect(httpHealthIndicator.pingCheck).not.toHaveBeenCalled();
   });
 
   it('should ping both wsdl', () => {

@@ -12,23 +12,23 @@ datasource db {
 }
 
 model Member {
-  id                Int               @unique
-  licence           Int
-  playerCategory    PlayerCategory
-  firstname         String
-  lastname          String
-  email            String?
-  ranking           String
-  club             String
-  category          String
-  worldRanking      Int
-  nationality       String
-  
+  id             Int
+  licence        Int
+  playerCategory PlayerCategory
+  firstname      String
+  lastname       String
+  email          String?
+  ranking        String
+  club           String
+  category       String
+  worldRanking   Int
+  nationality    String
+
   pointsHistory     NumericPoints[]
   results           IndividualResult[] @relation("member")
   resultsAsOpponent IndividualResult[] @relation("memberopponent")
-  createdAt        DateTime          @default(now())
-  updatedAt        DateTime          @updatedAt
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
 
   @@id([id, licence])
   @@index([licence, playerCategory], name: "idx_member_licence_category")
@@ -59,45 +59,48 @@ model NumericPoints {
 
   @@id([memberId, memberLicence, date])
   @@index([date])
+  @@index([memberLicence, date], name: "idx_numeric_points_licence_date")
 }
 
 model Competition {
-  id              String               @id
-  name            String
-  type            CompetitionType
-  coefficient     Int
-  results         IndividualResult[] 
-  createdAt       DateTime          @default(now())
-  updatedAt       DateTime          @updatedAt
+  id          String             @id
+  name        String
+  type        CompetitionType
+  coefficient Int
+  results     IndividualResult[]
+  createdAt   DateTime           @default(now())
+  updatedAt   DateTime           @updatedAt
 }
 
 model IndividualResult {
   id                    Int
-  date                  DateTime        @default(now()) @db.Date
+  date                  DateTime       @default(now()) @db.Date
   playerCategory        PlayerCategory
-  memberId             Int
-  memberLicence        Int
-  opponentId           Int
-  opponentLicence      Int
-  opponentRanking      String          @db.VarChar(4)
-  memberRanking        String          @db.VarChar(4)
-  memberPoints         Decimal?        @db.Decimal(6,2)
-  opponentPoints       Decimal?        @db.Decimal(6,2)
-  result               Result
-  score                String          @db.VarChar(3)
-  competitionId        String
-  competition          Competition     @relation(fields: [competitionId], references: [id])
-  diffPoints           Decimal         @db.Decimal(6,2)
-  pointsToAdd          Int            @db.SmallInt
-  looseFactor          Decimal         @db.Decimal(3,2)
-  definitivePointsToAdd Decimal        @db.Decimal(6,2)
-  member                Member          @relation("member", fields: [memberId, memberLicence], references: [id, licence])
-  memberOpponent        Member          @relation("memberopponent", fields: [opponentId, opponentLicence], references: [id, licence])
-  createdAt            DateTime         @default(now())
+  memberId              Int
+  memberLicence         Int
+  opponentId            Int
+  opponentLicence       Int
+  opponentRanking       String         @db.VarChar(4)
+  memberRanking         String         @db.VarChar(4)
+  memberPoints          Decimal?       @db.Decimal(6, 2)
+  opponentPoints        Decimal?       @db.Decimal(6, 2)
+  result                Result
+  score                 String         @db.VarChar(3)
+  competitionId         String
+  competition           Competition    @relation(fields: [competitionId], references: [id])
+  diffPoints            Decimal        @db.Decimal(6, 2)
+  pointsToAdd           Int            @db.SmallInt
+  looseFactor           Decimal        @db.Decimal(3, 2)
+  definitivePointsToAdd Decimal        @db.Decimal(6, 2)
+  member                Member         @relation("member", fields: [memberId, memberLicence], references: [id, licence])
+  memberOpponent        Member         @relation("memberopponent", fields: [opponentId, opponentLicence], references: [id, licence])
+  createdAt             DateTime       @default(now())
 
   @@id([id, playerCategory])
   @@index([date])
   @@index([competitionId])
+  @@index([memberId, memberLicence], name: "idx_individual_result_member_identity")
+  @@index([memberLicence, playerCategory, date], name: "idx_individual_result_licence_category_date")
 }
 
 enum CompetitionType {
@@ -131,16 +134,16 @@ enum ImportType {
 }
 
 model DataImport {
-  id             Int            @id @default(autoincrement())
-  type           ImportType
-  playerCategory PlayerCategory
-  importedAt     DateTime       @default(now())
-  hash           String         // Store hashes of each line to detect changes
-  fileDate       DateTime?      // Date from the first line of the file (ISO-8601 format)
-  linesProcessed Int?           // Number of lines processed (excluding header)
-  linesAdded     Int?           // Number of new records added
-  linesUpdated   Int?           // Number of existing records updated
-  processingTimeMs Int?         // Processing time in milliseconds
+  id               Int            @id @default(autoincrement())
+  type             ImportType
+  playerCategory   PlayerCategory
+  importedAt       DateTime       @default(now())
+  hash             String // Store hashes of each line to detect changes
+  fileDate         DateTime? // Date from the first line of the file (ISO-8601 format)
+  linesProcessed   Int? // Number of lines processed (excluding header)
+  linesAdded       Int? // Number of new records added
+  linesUpdated     Int? // Number of existing records updated
+  processingTimeMs Int? // Processing time in milliseconds
 
   @@index([type, playerCategory, importedAt])
   @@index([type, playerCategory, fileDate])
@@ -153,19 +156,19 @@ enum NotificationType {
 }
 
 model DeviceSubscription {
-  id                String           @id @default(cuid())
-  userId            String?          // Optional user ID for authenticated users
-  deviceToken       String           @unique
-  platform          DevicePlatform
-  appVersion        String?
-  locale            String           @default("en")
-  active            Boolean          @default(true)
-  notificationTypes NotificationType[]
-  metadata          Json?            // Additional device/user metadata
-  createdAt         DateTime         @default(now())
-  updatedAt         DateTime         @updatedAt
-  lastUsed          DateTime         @default(now())
-  notificationLogs  NotificationLog[]
+  id                 String              @id @default(cuid())
+  userId             String? // Optional user ID for authenticated users
+  deviceToken        String              @unique
+  platform           DevicePlatform
+  appVersion         String?
+  locale             String              @default("en")
+  active             Boolean             @default(true)
+  notificationTypes  NotificationType[]
+  metadata           Json? // Additional device/user metadata
+  createdAt          DateTime            @default(now())
+  updatedAt          DateTime            @updatedAt
+  lastUsed           DateTime            @default(now())
+  notificationLogs   NotificationLog[]
   topicSubscriptions TopicSubscription[]
 
   @@index([userId])
@@ -185,17 +188,17 @@ model TopicSubscription {
 }
 
 model NotificationLog {
-  id                    String               @id @default(cuid())
-  deviceSubscriptionId  String?
-  notificationType      NotificationType
-  title                 String
-  body                  String
-  data                  Json?                // Additional payload data
-  fcmMessageId          String?              // FCM response message ID
-  status                NotificationStatus
-  errorMessage          String?
-  sentAt                DateTime             @default(now())
-  deviceSubscription    DeviceSubscription?  @relation(fields: [deviceSubscriptionId], references: [id], onDelete: SetNull)
+  id                   String              @id @default(cuid())
+  deviceSubscriptionId String?
+  notificationType     NotificationType
+  title                String
+  body                 String
+  data                 Json? // Additional payload data
+  fcmMessageId         String? // FCM response message ID
+  status               NotificationStatus
+  errorMessage         String?
+  sentAt               DateTime            @default(now())
+  deviceSubscription   DeviceSubscription? @relation(fields: [deviceSubscriptionId], references: [id], onDelete: SetNull)
 
   @@index([notificationType])
   @@index([status])

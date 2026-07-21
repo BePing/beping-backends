@@ -7,11 +7,13 @@ import { CacheModule } from '@nestjs/cache-manager';
 import {
   CacheModuleOptsFactory,
   CacheService,
+  getRedisConnectionOptions,
   PrismaService,
 } from '@app/common';
 import { ImportExecutionCoordinatorService } from './common/import-execution-coordinator.service';
 import { ImportQueueStatusService } from './common/import-queue-status.service';
 import { PostgresCopyService } from './common/postgres-copy.service';
+import { ImportThrottleService } from './common/import-throttle.service';
 
 @Global()
 @Module({
@@ -52,10 +54,9 @@ import { PostgresCopyService } from './common/postgres-copy.service';
           useFactory: (configService: ConfigService) => {
             return {
               transport: Transport.REDIS,
-              options: {
-                host: configService.get('REDIS_HOST'),
-                port: parseInt(configService.get('REDIS_PORT')),
-              },
+              options: getRedisConnectionOptions((key) =>
+                configService.get<string>(key),
+              ),
             };
           },
           inject: [ConfigService],
@@ -74,6 +75,7 @@ import { PostgresCopyService } from './common/postgres-copy.service';
     ImportExecutionCoordinatorService,
     ImportQueueStatusService,
     PostgresCopyService,
+    ImportThrottleService,
   ],
   exports: [
     BullModule,
@@ -84,6 +86,7 @@ import { PostgresCopyService } from './common/postgres-copy.service';
     ImportExecutionCoordinatorService,
     ImportQueueStatusService,
     PostgresCopyService,
+    ImportThrottleService,
   ],
 })
 export class CommonModule {}

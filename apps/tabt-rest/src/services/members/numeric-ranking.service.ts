@@ -164,9 +164,7 @@ export class NumericRankingService {
         const results = await this.prismaService.individualResult.findMany({
           where: {
             memberLicence: licence,
-            member: {
-              playerCategory: gender,
-            },
+            playerCategory: gender,
           },
           select: {
             date: true,
