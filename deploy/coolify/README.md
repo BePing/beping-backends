@@ -34,7 +34,7 @@ All application image tags must be full 40-character git SHAs.
 | Port          | 3050                    | 3000                              | none                         |
 | Domain        | `api-v2.beping.be`      | `notifications.beping.be`         | none                         |
 | Health path   | `/v1/health/live`       | `/health/live`                    | Docker process healthcheck   |
-| Memory limit  | 768 MB                  | 384 MB                            | 384 MB                       |
+| Memory limit  | 768 MB                  | 384 MB                            | 768 MB                       |
 | CPU limit     | 1.0                     | 0.35                              | 0.35                         |
 | Graceful stop | 30 seconds              | 30 seconds                        | 60 seconds                   |
 
@@ -52,6 +52,8 @@ after the schema and public applications are healthy.
 The importer deliberately trades duration for API availability:
 
 - set its CPU shares below the API and cap it at `0.35` CPU;
+- use a 768 MB container limit and a 640 MB Node heap; the 1.1-million-row
+  results download exceeded the original 384 MB estimate before batching;
 - use `DB_POOL_MAX=1`, `RESULTS_BATCH_SIZE=100` and
   `RESULTS_STAGE_CHUNK_SIZE=2000`;
 - set `IMPORT_BATCH_COOLDOWN_MS=750`;

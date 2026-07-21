@@ -527,7 +527,7 @@ export class ResultsProcessorService extends WorkerHost {
         "createdAt",
         "updatedAt"
       )
-      SELECT DISTINCT
+      SELECT DISTINCT ON (competition_id)
         competition_id,
         competition_name,
         competition_type,
@@ -535,6 +535,7 @@ export class ResultsProcessorService extends WorkerHost {
         NOW(),
         NOW()
       FROM results_dedup_stage
+      ORDER BY competition_id, line_no DESC
       ON CONFLICT (id) DO UPDATE SET
         name = EXCLUDED.name,
         type = EXCLUDED.type,
@@ -635,12 +636,22 @@ export class ResultsProcessorService extends WorkerHost {
             staged_rows.loose_factor::numeric(3,2) AS "looseFactor",
             staged_rows.definitive_points_to_add::numeric(6,2) AS "definitivePointsToAdd"
           FROM staged_rows
-          JOIN "Member" AS member
-            ON member.licence = staged_rows.member_licence
-           AND member."playerCategory" = staged_rows.player_category
-          JOIN "Member" AS opponent
-            ON opponent.licence = staged_rows.opponent_licence
-           AND opponent."playerCategory" = staged_rows.player_category
+          JOIN LATERAL (
+            SELECT candidate.id, candidate.licence
+            FROM "Member" AS candidate
+            WHERE candidate.licence = staged_rows.member_licence
+              AND candidate."playerCategory" = staged_rows.player_category
+            ORDER BY candidate."updatedAt" DESC, candidate.id DESC
+            LIMIT 1
+          ) AS member ON TRUE
+          JOIN LATERAL (
+            SELECT candidate.id, candidate.licence
+            FROM "Member" AS candidate
+            WHERE candidate.licence = staged_rows.opponent_licence
+              AND candidate."playerCategory" = staged_rows.player_category
+            ORDER BY candidate."updatedAt" DESC, candidate.id DESC
+            LIMIT 1
+          ) AS opponent ON TRUE
           JOIN "Competition" AS competition
             ON competition.id = staged_rows.competition_id
         ),

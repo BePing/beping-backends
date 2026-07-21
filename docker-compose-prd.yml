@@ -80,8 +80,8 @@ services:
     image: '${CONTAINER_REGISTRY:-registry.escapekey.app}/escape-key/beping-notifications:${DEPLOY_SHA}'
     restart: unless-stopped
     stop_grace_period: 30s
-    mem_limit: 384m
-    mem_reservation: 192m
+    mem_limit: 768m
+    mem_reservation: 384m
     cpus: 0.35
     cpu_shares: 512
     depends_on:
@@ -142,7 +142,7 @@ services:
         condition: service_completed_successfully
     environment:
       NODE_ENV: production
-      NODE_OPTIONS: '--max-old-space-size=256'
+      NODE_OPTIONS: '--max-old-space-size=640'
       DB_POOL_MAX: '${IMPORTER_DB_POOL_MAX:-1}'
       DB_CONNECT_TIMEOUT_MS: '${DB_CONNECT_TIMEOUT_MS:-5000}'
       DB_IDLE_TIMEOUT_MS: '${DB_IDLE_TIMEOUT_MS:-30000}'
@@ -169,6 +169,7 @@ services:
       IMPORT_PRESSURE_MAX_ATTEMPTS: '${IMPORT_PRESSURE_MAX_ATTEMPTS:-120}'
       IMPORT_STATEMENT_TIMEOUT_MS: '${IMPORT_STATEMENT_TIMEOUT_MS:-300000}'
       IMPORT_LOCK_TIMEOUT_MS: '${IMPORT_LOCK_TIMEOUT_MS:-2000}'
+      MAX_MEMORY_USAGE_MB: '${MAX_MEMORY_USAGE_MB:-640}'
     healthcheck:
       test: ['CMD', 'pgrep', '-f', 'node']
       interval: 30s
