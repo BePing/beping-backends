@@ -17,9 +17,9 @@ Kuma.
 | Redis         | Coolify database/service resource                        |                        No | Persistent; shared by cache, BullMQ and Nest transports |
 
 Do not deploy the public applications as a Docker Compose stack. Coolify cannot
-perform rolling updates for Compose applications. The root
-`docker-compose-prd.yml` is a transitional recovery/rehearsal stack, not the
-target production control plane.
+perform rolling updates for Compose applications. The obsolete production
+Compose stack was removed after the native resources and individual
+applications completed their restore and rollback validation.
 
 ## Image lifecycle
 
@@ -122,7 +122,7 @@ independent PostgreSQL staging chunks instead of one large temporary workload.
 Between result batches, the worker checks API readiness and pauses whenever the
 API is unavailable or slower than its latency budget. Start with:
 
-- at most 0.35 CPU and 384 MB memory, with CPU shares below the API;
+- at most 0.35 CPU and 768 MB memory, with CPU shares below the API;
 - `RESULTS_BATCH_SIZE=500` and `RESULTS_STAGE_CHUNK_SIZE=2000`;
 - `IMPORT_BATCH_COOLDOWN_MS=750` and `DB_POOL_MAX=1`;
 - `IMPORT_API_MAX_LATENCY_MS=600` and `IMPORT_PRESSURE_PAUSE_MS=5000`;
@@ -139,10 +139,10 @@ readiness and PostgreSQL pressure are normal, use the same workflow with
 `resume`; do not restart PostgreSQL as the first response.
 
 The 2026-07-21 production recovery import used batches of 100 and spent about
-15 of every 17 seconds per 2,000-row stage in configured cooldowns. The next
-cycle therefore starts with batches of 500, still using one database connection
-and the readiness guard. Revert to 100 first if API latency exceeds the 600 ms
-budget.
+15 of every 17 seconds per 2,000-row stage in configured cooldowns. The first
+500-row production cycle then processed 48,372 results in 96 seconds with no
+dropped rows, restart, OOM or API outage. Keep one database connection and the
+readiness guard; revert to 100 first if API latency exceeds the 600 ms budget.
 
 Tune batches from observed API p95 and PostgreSQL I/O, not only from total import
 duration. If imports still cause sustained I/O saturation after query/index and

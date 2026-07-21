@@ -76,19 +76,15 @@ If readiness fails repeatedly, the importer aborts the current BullMQ attempt.
 Its upserts are idempotent, so the retry can safely resume by reprocessing the
 same source file.
 
-## Initial cutover
+## Completed cutover
 
-1. Leave the existing stack serving production.
-2. Create the new resources with temporary domains.
-3. Restore a production backup into an isolated database and run the target
-   migration image.
-4. Validate API, notifications and one controlled importer cycle.
-5. Point the production domains to the individual Coolify applications.
-6. Observe at least one importer cycle before removing the old application
-   containers.
-7. Keep the old database volume until the restore and rollback window closes.
-
-Do not delete or reuse the old volumes as part of the cutover operation.
+The native PostgreSQL and authenticated Redis resources, plus the three
+individual applications, are the only BePing production topology. The previous
+Compose service, its containers, network and volumes were deleted on
+2026-07-21 after fresh PostgreSQL and Redis backups passed isolated restore
+checks. Do not recreate that stack as a rollback mechanism; restore the native
+resources from their verified backups and redeploy an immutable application SHA
+instead.
 
 ## Deployment runner connectivity
 
