@@ -100,3 +100,11 @@ environment secrets.
 The migration container runs on the BePing Docker daemon through Tailscale SSH
 and joins the private `coolify` network. PostgreSQL must not be published merely
 to make migrations reachable from the central runner.
+
+Before a production migration, the workflow requires a non-empty local
+PostgreSQL dump less than 26 hours old in
+`/data/coolify/backups/postgresql/beping`. It then pauses the importer, runs
+`prisma migrate deploy` through `DIRECT_URL`, verifies `prisma migrate status`,
+and only then promotes the applications. If a later step fails, the workflow
+restarts the previous importer image; it never attempts an automatic database
+rollback, so production migrations must remain backward-compatible.

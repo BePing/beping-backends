@@ -26,6 +26,8 @@ env:
   IMAGE_SHA: ${{ inputs.image_sha }}
   COOLIFY_URL: ${{ vars.COOLIFY_URL }}
   BEPING_DOCKER_HOST: ${{ vars.BEPING_DOCKER_HOST }}
+  BEPING_BACKUP_DIRECTORY: /data/coolify/backups/postgresql/beping
+  BEPING_BACKUP_MAX_AGE_MINUTES: 1560
 
 jobs:
   deploy:
@@ -76,6 +78,56 @@ jobs:
               "${REGISTRY_HOST}/escape-key/${image}:${IMAGE_SHA}" >/dev/null
           done
 
+      - name: Verify recent PostgreSQL backup
+        run: |
+          docker_ssh_target="${BEPING_DOCKER_HOST#ssh://}"
+          [[ "${BEPING_DOCKER_HOST}" == "ssh://${docker_ssh_target}" ]]
+          [[ "${docker_ssh_target}" =~ ^root@[a-zA-Z0-9.-]+$ ]]
+
+          # Refuse a stateful deployment unless the BePing host has a local,
+          # non-empty PostgreSQL dump from the last 26 hours. Off-site backup
+          # and periodic restore validation remain configured in Coolify.
+          ssh \
+            -o BatchMode=yes \
+            -o ConnectTimeout=10 \
+            "${docker_ssh_target}" \
+            "find '${BEPING_BACKUP_DIRECTORY}' -maxdepth 1 -type f -name '*.dump' -size +1048576c -mmin -${BEPING_BACKUP_MAX_AGE_MINUTES} -print -quit" \
+            | grep -q .
+
+      - name: Pause importer before migration
+        id: pause_importer
+        env:
+          COOLIFY_TOKEN: ${{ secrets.COOLIFY_TOKEN }}
+          IMPORTER_UUID: ${{ vars.COOLIFY_BEPING_IMPORTER_UUID }}
+        run: |
+          if ! docker --host "${BEPING_DOCKER_HOST}" ps \
+            --filter "name=${IMPORTER_UUID}" \
+            --format '{{.ID}}' | grep -q .; then
+            echo "Importer is already stopped."
+            echo "was_running=false" >>"${GITHUB_OUTPUT}"
+            exit 0
+          fi
+
+          echo "was_running=true" >>"${GITHUB_OUTPUT}"
+          curl --fail-with-body --silent --show-error \
+            -X POST \
+            -H "Authorization: Bearer ${COOLIFY_TOKEN}" \
+            "${COOLIFY_URL%/}/api/v1/applications/${IMPORTER_UUID}/stop" \
+            >/dev/null
+
+          for _ in $(seq 1 30); do
+            if ! docker --host "${BEPING_DOCKER_HOST}" ps \
+              --filter "name=${IMPORTER_UUID}" \
+              --format '{{.ID}}' | grep -q .; then
+              echo "Importer stopped before migration."
+              exit 0
+            fi
+            sleep 2
+          done
+
+          echo "Timed out waiting for the importer to stop." >&2
+          exit 1
+
       - name: Apply backward-compatible database migrations
         env:
           DATABASE_URL: ${{ secrets.BEPING_DATABASE_URL }}
@@ -89,6 +141,16 @@ jobs:
             -e DATABASE_URL \
             -e DIRECT_URL \
             "${REGISTRY_HOST}/escape-key/beping-migrate:${IMAGE_SHA}"
+
+          # migrate deploy applies pending migrations but does not detect every
+          # history mismatch. A separate status check fails on pending, failed
+          # or divergent migrations before any application is promoted.
+          docker --host "${BEPING_DOCKER_HOST}" run --rm --pull always \
+            --network coolify \
+            -e DATABASE_URL \
+            -e DIRECT_URL \
+            "${REGISTRY_HOST}/escape-key/beping-migrate:${IMAGE_SHA}" \
+            pnpm exec prisma migrate status --schema prisma/schema.prisma
 
       - name: Deploy API with rolling update
         env:
@@ -118,3 +180,21 @@ jobs:
             "${{ vars.COOLIFY_BEPING_IMPORTER_UUID }}" \
             "${REGISTRY_HOST}/escape-key/beping-importer" \
             "${IMAGE_SHA}"
+
+      - name: Resume previous importer after failure
+        if: >-
+          ${{
+            always() &&
+            (failure() || cancelled()) &&
+            steps.pause_importer.outputs.was_running == 'true'
+          }}
+        continue-on-error: true
+        env:
+          COOLIFY_TOKEN: ${{ secrets.COOLIFY_TOKEN }}
+          IMPORTER_UUID: ${{ vars.COOLIFY_BEPING_IMPORTER_UUID }}
+        run: |
+          curl --fail-with-body --silent --show-error \
+            -X POST \
+            -H "Authorization: Bearer ${COOLIFY_TOKEN}" \
+            "${COOLIFY_URL%/}/api/v1/applications/${IMPORTER_UUID}/start" \
+            >/dev/null
