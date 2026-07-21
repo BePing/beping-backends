@@ -19,6 +19,7 @@ env:
   REGISTRY_HOST: ${{ vars.HETZNER_REGISTRY_HOST }}
   IMAGE_SHA: ${{ inputs.image_sha }}
   COOLIFY_URL: ${{ vars.COOLIFY_URL }}
+  BEPING_DOCKER_HOST: ${{ vars.BEPING_DOCKER_HOST }}
 
 jobs:
   deploy:
@@ -48,6 +49,7 @@ jobs:
           test -n "${REGISTRY_PASSWORD}"
           test -n "${COOLIFY_URL}"
           test -n "${COOLIFY_TOKEN}"
+          test -n "${BEPING_DOCKER_HOST}"
           test -n "${DATABASE_URL}"
           test -n "${DIRECT_URL}"
           test -n "${API_UUID}"
@@ -73,7 +75,11 @@ jobs:
           DATABASE_URL: ${{ secrets.BEPING_DATABASE_URL }}
           DIRECT_URL: ${{ secrets.BEPING_DIRECT_URL }}
         run: |
-          docker run --rm --pull always \
+          # The database is private to the BePing Coolify network. The Escape
+          # Key runner reaches that Docker daemon over Tailscale SSH, so the
+          # migration never requires a public PostgreSQL port.
+          docker --host "${BEPING_DOCKER_HOST}" run --rm --pull always \
+            --network coolify \
             -e DATABASE_URL \
             -e DIRECT_URL \
             "${REGISTRY_HOST}/escape-key/beping-migrate:${IMAGE_SHA}"

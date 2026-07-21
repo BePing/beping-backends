@@ -82,3 +82,14 @@ same source file.
 7. Keep the old database volume until the restore and rollback window closes.
 
 Do not delete or reuse the old volumes as part of the cutover operation.
+
+## Deployment runner connectivity
+
+The protected production workflow runs on the Escape Key platform runner. Set
+`BEPING_DOCKER_HOST=ssh://root@100.79.25.78` as a repository variable and keep
+`BEPING_DATABASE_URL` plus `BEPING_DIRECT_URL` as repository or Production
+environment secrets.
+
+The migration container runs on the BePing Docker daemon through Tailscale SSH
+and joins the private `coolify` network. PostgreSQL must not be published merely
+to make migrations reachable from the central runner.
