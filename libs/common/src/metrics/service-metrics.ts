@@ -6,6 +6,7 @@ import type { AddressInfo } from 'node:net';
 import {
   collectDefaultMetrics,
   Counter,
+  Gauge,
   Histogram,
   Registry,
 } from 'prom-client';
@@ -23,6 +24,7 @@ export class ServiceMetrics {
 
   private readonly logger = new Logger(ServiceMetrics.name);
   private readonly requests: Counter<'method' | 'route' | 'status_code'>;
+  private readonly requestsInFlight: Gauge<'method'>;
   private readonly requestDuration: Histogram<
     'method' | 'route' | 'status_code'
   >;
@@ -41,6 +43,12 @@ export class ServiceMetrics {
       labelNames: ['method', 'route', 'status_code'],
       registers: [this.registry],
     });
+    this.requestsInFlight = new Gauge({
+      name: 'beping_http_requests_in_flight',
+      help: 'Number of HTTP requests currently being processed.',
+      labelNames: ['method'],
+      registers: [this.registry],
+    });
     this.requestDuration = new Histogram({
       name: 'beping_http_request_duration_seconds',
       help: 'HTTP request duration in seconds.',
@@ -53,17 +61,26 @@ export class ServiceMetrics {
   instrumentHttp(app: Pick<INestApplication, 'use'>): void {
     app.use((request: Request, response: Response, next: NextFunction) => {
       const stopTimer = this.requestDuration.startTimer();
+      const methodLabels = { method: request.method };
+      let completed = false;
+      this.requestsInFlight.inc(methodLabels);
 
-      response.once('finish', () => {
+      const complete = (statusCode: string) => {
+        if (completed) return;
+        completed = true;
         const labels = {
           method: request.method,
           route: this.getRouteLabel(request),
-          status_code: String(response.statusCode),
+          status_code: statusCode,
         };
 
+        this.requestsInFlight.dec(methodLabels);
         this.requests.inc(labels);
         stopTimer(labels);
-      });
+      };
+
+      response.once('finish', () => complete(String(response.statusCode)));
+      response.once('close', () => complete('aborted'));
 
       next();
     });
@@ -152,4 +169,15 @@ export class ServiceMetrics {
 
     return `${request.baseUrl ?? ''}${route.path}` || '/';
   }
+}
+
+const serviceMetricsByName = new Map<string, ServiceMetrics>();
+
+export function getServiceMetrics(serviceName: string): ServiceMetrics {
+  const existing = serviceMetricsByName.get(serviceName);
+  if (existing) return existing;
+
+  const metrics = new ServiceMetrics(serviceName);
+  serviceMetricsByName.set(serviceName, metrics);
+  return metrics;
 }

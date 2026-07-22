@@ -1,4 +1,10 @@
-import { Injectable } from '@nestjs/common';
+import {
+  HttpException,
+  Injectable,
+  Logger,
+  NotFoundException,
+  ServiceUnavailableException,
+} from '@nestjs/common';
 import {
   MemberDashboardDTOV1,
   MemberStatsDTOV1,
@@ -24,7 +30,7 @@ import {
 import {
   PlayerCategoryDTO,
   mapPlayerCategoryToPlayerCategoryDTO,
-} from 'apps/tabt-rest/src/common/dto/player-category.dto';
+} from '../../../common/dto/player-category.dto';
 import {
   MEN_RANKING_ESTIMATION,
   WOMAN_RANKING_ESTIMATION,
@@ -39,6 +45,8 @@ import { PlayerCategory as PrismaPlayerCategory } from '@app/common';
 
 @Injectable()
 export class MemberDashboardService implements DashboardServiceInterface<MemberDashboardDTOV1> {
+  private readonly logger = new Logger(MemberDashboardService.name);
+
   constructor(
     private readonly matchService: MatchService,
     private readonly cacheService: CacheService,
@@ -67,11 +75,18 @@ export class MemberDashboardService implements DashboardServiceInterface<MemberD
       return members.map((member) => member.playerCategory);
     };
 
-    return await this.cacheService.getFromCacheOrGetAndCacheResult(
-      cacheKey,
-      getter,
-      TTL_DURATION.ONE_HOUR,
-    );
+    try {
+      return await this.cacheService.getFromCacheOrGetAndCacheResult(
+        cacheKey,
+        getter,
+        TTL_DURATION.ONE_HOUR,
+      );
+    } catch (error) {
+      throw this.normalizeDashboardError(
+        error,
+        `member categories for member ${licence}`,
+      );
+    }
   }
 
   /**
@@ -96,28 +111,20 @@ export class MemberDashboardService implements DashboardServiceInterface<MemberD
 
       // Get dashboard for each category in parallel
       const dashboardPromises = categories.map(async (category) => {
-        try {
-          // Convert PrismaPlayerCategory to PlayerCategory then to PlayerCategoryDTO
-          const tabtPlayerCategory =
-            category === PrismaPlayerCategory.SENIOR_MEN
-              ? PlayerCategory.SENIOR_MEN
-              : PlayerCategory.SENIOR_WOMEN;
-          const playerCategoryDTO =
-            mapPlayerCategoryToPlayerCategoryDTO(tabtPlayerCategory);
+        // Convert PrismaPlayerCategory to PlayerCategory then to PlayerCategoryDTO
+        const tabtPlayerCategory =
+          category === PrismaPlayerCategory.SENIOR_MEN
+            ? PlayerCategory.SENIOR_MEN
+            : PlayerCategory.SENIOR_WOMEN;
+        const playerCategoryDTO =
+          mapPlayerCategoryToPlayerCategoryDTO(tabtPlayerCategory);
 
-          const dashboard = await this.getDashboard(
-            memberUniqueIndex,
-            playerCategoryDTO,
-            teamId,
-          );
-          return { category, dashboard };
-        } catch (error) {
-          console.warn(
-            `Failed to get dashboard for category ${category}:`,
-            error.message,
-          );
-          return null;
-        }
+        const dashboard = await this.getDashboard(
+          memberUniqueIndex,
+          playerCategoryDTO,
+          teamId,
+        );
+        return { category, dashboard };
       });
 
       const results = await Promise.all(dashboardPromises);
@@ -126,7 +133,7 @@ export class MemberDashboardService implements DashboardServiceInterface<MemberD
       const response: { [key in PrismaPlayerCategory]?: MemberDashboardDTOV1 } =
         {};
       results.forEach((result) => {
-        if (result && result.dashboard?.member) {
+        if (result.dashboard?.member) {
           response[result.category] = result.dashboard;
         }
       });
@@ -141,8 +148,10 @@ export class MemberDashboardService implements DashboardServiceInterface<MemberD
         TTL_DURATION.ONE_HOUR,
       );
     } catch (error) {
-      console.error('Error retrieving multi-category dashboard:', error);
-      return {};
+      throw this.normalizeDashboardError(
+        error,
+        `multi-category dashboard for member ${memberUniqueIndex}`,
+      );
     }
   }
 
@@ -153,43 +162,35 @@ export class MemberDashboardService implements DashboardServiceInterface<MemberD
     memberUniqueIndex: number,
     teamId?: string,
   ): Promise<MultiCategoryMemberDashboardDTOV1> {
-    try {
-      const dashboards = await this.getDashboardForAllCategories(
-        memberUniqueIndex,
-        teamId,
-      );
+    const dashboards = await this.getDashboardForAllCategories(
+      memberUniqueIndex,
+      teamId,
+    );
 
-      if (Object.keys(dashboards).length === 0) {
-        return new MultiCategoryMemberDashboardDTOV1(
-          ResponseDTO.error('No member found for given id'),
-        );
-      }
-
-      const response = new MultiCategoryMemberDashboardDTOV1(
-        ResponseDTO.success(
-          'Multi-category member dashboard retrieved successfully',
-        ),
-      );
-
-      // Set dashboard data for each category
-      if (dashboards[PrismaPlayerCategory.SENIOR_MEN]) {
-        response.SENIOR_MEN = dashboards[PrismaPlayerCategory.SENIOR_MEN];
-        response.availableCategories.push('SENIOR_MEN');
-      }
-
-      if (dashboards[PrismaPlayerCategory.SENIOR_WOMEN]) {
-        response.SENIOR_WOMEN = dashboards[PrismaPlayerCategory.SENIOR_WOMEN];
-        response.availableCategories.push('SENIOR_WOMEN');
-      }
-
-      return response;
-    } catch (error) {
+    if (Object.keys(dashboards).length === 0) {
       return new MultiCategoryMemberDashboardDTOV1(
-        ResponseDTO.error(
-          'Error while retrieving multi-category member dashboard',
-        ),
+        ResponseDTO.error('No member found for given id'),
       );
     }
+
+    const response = new MultiCategoryMemberDashboardDTOV1(
+      ResponseDTO.success(
+        'Multi-category member dashboard retrieved successfully',
+      ),
+    );
+
+    // Set dashboard data for each category
+    if (dashboards[PrismaPlayerCategory.SENIOR_MEN]) {
+      response.SENIOR_MEN = dashboards[PrismaPlayerCategory.SENIOR_MEN];
+      response.availableCategories.push('SENIOR_MEN');
+    }
+
+    if (dashboards[PrismaPlayerCategory.SENIOR_WOMEN]) {
+      response.SENIOR_WOMEN = dashboards[PrismaPlayerCategory.SENIOR_WOMEN];
+      response.availableCategories.push('SENIOR_WOMEN');
+    }
+
+    return response;
   }
 
   async getDashboard(
@@ -219,7 +220,7 @@ export class MemberDashboardService implements DashboardServiceInterface<MemberD
             );
 
         if (member.status === RESPONSE_STATUS.ERROR) {
-          throw new Error('No member found for given id');
+          throw new NotFoundException('No member found for given id');
         }
 
         // Parallelize all data fetching operations
@@ -246,7 +247,17 @@ export class MemberDashboardService implements DashboardServiceInterface<MemberD
 
         return dashboard;
       } catch (error) {
-        throw new MemberDashboardDTOV1(ResponseDTO.error(error.message));
+        if (error instanceof HttpException) {
+          throw error;
+        }
+        const message =
+          error instanceof Error ? error.message : 'Unknown dependency error';
+        this.logger.error(
+          `Failed to build dashboard for member ${memberUniqueIndex}: ${message}`,
+        );
+        throw new ServiceUnavailableException(
+          'Member dashboard dependencies are temporarily unavailable',
+        );
       }
     };
 
@@ -257,10 +268,24 @@ export class MemberDashboardService implements DashboardServiceInterface<MemberD
         TTL_DURATION.ONE_HOUR, // Cache for 1 hour
       );
     } catch (error) {
-      throw new MemberDashboardDTOV1(
-        ResponseDTO.error('Error while retrieving member dashboard'),
+      throw this.normalizeDashboardError(
+        error,
+        `dashboard for member ${memberUniqueIndex}`,
       );
     }
+  }
+
+  private normalizeDashboardError(error: unknown, context: string): Error {
+    if (error instanceof HttpException) {
+      return error;
+    }
+
+    const message =
+      error instanceof Error ? error.message : 'Unknown infrastructure error';
+    this.logger.error(`Failed to retrieve ${context}: ${message}`);
+    return new ServiceUnavailableException(
+      'Member dashboard dependencies are temporarily unavailable',
+    );
   }
 
   private async getNumericRanking(
@@ -832,33 +857,37 @@ export class MemberDashboardService implements DashboardServiceInterface<MemberD
         }
         const playerPoints = latestPlayerRanking.numericPoints;
 
-        // OPTIMIZED: Sequential processing to avoid cache stampede
-        // Instead of parallel batches, process sequentially to allow cache to work
-        const opponentPlayersRanking = [];
+        const rankingResults = await this.mapWithConcurrency(
+          opponentPlayers,
+          3,
+          async (player) => {
+            try {
+              const ranking =
+                await this.numericRankingService.getWeeklyRankingV1(
+                  player.uniqueIndex,
+                  category,
+                );
+              const latestRanking = ranking.numericRankingHistory.at(-1);
+              if (!latestRanking) return undefined;
 
-        for (const player of opponentPlayers) {
-          try {
-            const ranking = await this.numericRankingService.getWeeklyRankingV1(
-              player.uniqueIndex,
-              category,
-            );
-            const latestRanking = ranking.numericRankingHistory.at(-1);
-            if (!latestRanking) continue;
-
-            opponentPlayersRanking.push({
-              ...player,
-              rankingLetter: latestRanking.rankingLetterEstimation,
-              points: latestRanking.numericPoints,
-            });
-          } catch (error) {
-            // Skip players we can't get ranking for
-            console.warn(
-              `Failed to get ranking for player ${player.uniqueIndex}:`,
-              error.message,
-            );
-            continue;
-          }
-        }
+              return {
+                ...player,
+                rankingLetter: latestRanking.rankingLetterEstimation,
+                points: latestRanking.numericPoints,
+              };
+            } catch (error) {
+              const message =
+                error instanceof Error ? error.message : 'Unknown error';
+              this.logger.warn(
+                `Failed to get ranking for player ${player.uniqueIndex}: ${message}`,
+              );
+              return undefined;
+            }
+          },
+        );
+        const opponentPlayersRanking = rankingResults.filter(
+          (ranking) => ranking !== undefined,
+        );
 
         if (!opponentPlayersRanking.length) {
           return undefined;
@@ -929,6 +958,29 @@ export class MemberDashboardService implements DashboardServiceInterface<MemberD
       getter,
       TTL_DURATION.ONE_HOUR, // Cache for 1 hour
     );
+  }
+
+  private async mapWithConcurrency<T, R>(
+    values: T[],
+    concurrency: number,
+    mapper: (value: T) => Promise<R>,
+  ): Promise<R[]> {
+    const results = new Array<R>(values.length);
+    let nextIndex = 0;
+
+    const worker = async () => {
+      while (nextIndex < values.length) {
+        const index = nextIndex++;
+        results[index] = await mapper(values[index]);
+      }
+    };
+
+    await Promise.all(
+      Array.from({ length: Math.min(concurrency, values.length) }, () =>
+        worker(),
+      ),
+    );
+    return results;
   }
 
   private getRankingPoints(

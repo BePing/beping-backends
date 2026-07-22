@@ -19,6 +19,7 @@ import {
 import { Client } from 'pg';
 import { ImportThrottleService } from '../common/import-throttle.service';
 import { parseResultLine } from './result-line.parser';
+import { importMetrics } from '../import-metrics';
 
 interface BatchMergeStats {
   stagedCount: number;
@@ -58,6 +59,10 @@ export class ResultsProcessorService extends WorkerHost {
     await this.importExecutionCoordinatorService.runExclusive(
       `results:${job.data.playerCategory}`,
       async () => {
+        const importRun = importMetrics.startRun(
+          'results',
+          String(job.data.playerCategory),
+        );
         this.logger.log('Processing results...');
         const processingStartTime = Date.now();
 
@@ -88,6 +93,7 @@ export class ResultsProcessorService extends WorkerHost {
               getElapsedMs(),
               { linesAdded: 0, linesUpdated: 0 },
             );
+            importRun.finish('skipped');
             return;
           }
 
@@ -103,6 +109,7 @@ export class ResultsProcessorService extends WorkerHost {
               getElapsedMs(),
               { linesAdded: 0, linesUpdated: 0 },
             );
+            importRun.finish('skipped');
             return;
           }
 
@@ -151,10 +158,17 @@ export class ResultsProcessorService extends WorkerHost {
             },
           );
 
+          importRun.record('processed', dataLines.length);
+          importRun.record('inserted', mergeStats.linesAdded);
+          importRun.record('updated', mergeStats.linesUpdated);
+          importRun.record('dropped', mergeStats.dropped);
+          importRun.finish('success');
+
           this.logger.log(
             `Results processing completed. Processed ${dataLines.length} lines in ${processingTimeMs}ms`,
           );
         } catch (e) {
+          importRun.finish('failed');
           this.logger.error('Failed to finish results job', e);
           throw e;
         }

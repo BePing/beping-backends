@@ -2,7 +2,7 @@ import type { INestApplication } from '@nestjs/common';
 import { EventEmitter } from 'node:events';
 import { get } from 'node:http';
 import type { NextFunction, Request, Response } from 'express';
-import { ServiceMetrics } from './service-metrics';
+import { getServiceMetrics, ServiceMetrics } from './service-metrics';
 
 interface HttpResult {
   body: string;
@@ -60,12 +60,19 @@ describe(ServiceMetrics.name, () => {
       response as Response,
       next,
     );
+
+    expect(await metrics.registry.metrics()).toContain(
+      'beping_http_requests_in_flight{method="POST",service="test-api"} 1',
+    );
     response.emit('finish');
 
     const output = await metrics.registry.metrics();
     expect(next).toHaveBeenCalledTimes(1);
     expect(output).toMatch(
       /beping_http_requests_total\{[^}]*method="POST"[^}]*route="\/v1\/members\/:id"[^}]*status_code="201"[^}]*\} 1/,
+    );
+    expect(output).toContain(
+      'beping_http_requests_in_flight{method="POST",service="test-api"} 0',
     );
   });
 
@@ -87,9 +94,13 @@ describe(ServiceMetrics.name, () => {
       response as Response,
       jest.fn(),
     );
+    response.emit('close');
     response.emit('finish');
 
-    expect(await metrics.registry.metrics()).toContain('route="unmatched"');
+    const output = await metrics.registry.metrics();
+    expect(output).toContain('route="unmatched"');
+    expect(output).toContain('status_code="aborted"');
+    expect(output).not.toContain('status_code="404"');
   });
 
   it('serves health and Prometheus endpoints on the internal listener', async () => {
@@ -127,5 +138,12 @@ describe(ServiceMetrics.name, () => {
       if (previousPort === undefined) delete process.env.METRICS_PORT;
       else process.env.METRICS_PORT = previousPort;
     }
+  });
+
+  it('reuses one registry per service process', () => {
+    const first = getServiceMetrics('singleton-test-service');
+    const second = getServiceMetrics('singleton-test-service');
+
+    expect(second).toBe(first);
   });
 });

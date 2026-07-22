@@ -11,6 +11,21 @@
     "node": "22.x",
     "npm": "10.x"
   },
+  "pnpm": {
+    "overrides": {
+      "@hono/node-server@1": "1.19.13",
+      "body-parser": "2.3.0",
+      "brace-expansion@2": "2.1.2",
+      "brace-expansion@5": "5.0.7",
+      "fast-uri": "3.1.4",
+      "hono": "4.12.27",
+      "js-yaml": "4.3.0",
+      "multer": "2.2.0",
+      "protobufjs": "7.6.5",
+      "qs": "6.15.2",
+      "undici": "7.28.0"
+    }
+  },
   "scripts": {
     "prebuild": "rimraf dist",
     "build:tabt-rest": "nest build tabt-rest",
@@ -154,13 +169,26 @@
       ".decorator.ts",
       "generated/prisma"
     ],
+    "collectCoverageFrom": [
+      "apps/**/*.ts",
+      "libs/**/*.ts",
+      "!**/*.spec.ts",
+      "!**/main.ts",
+      "!**/*.module.ts",
+      "!**/*.dto.ts",
+      "!**/entity/**",
+      "!**/*.contract.ts",
+      "!**/*.constants.ts",
+      "!**/*.decorator.ts",
+      "!libs/common/src/generated/**"
+    ],
     "collectCoverage": true,
     "coverageThreshold": {
       "global": {
-        "lines": 74,
-        "statements": 75,
-        "functions": 70,
-        "branches": 53
+        "lines": 49,
+        "statements": 49,
+        "functions": 46,
+        "branches": 42
       }
     },
     "coverageDirectory": "./coverage",

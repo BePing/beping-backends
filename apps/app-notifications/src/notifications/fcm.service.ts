@@ -1,4 +1,9 @@
-import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
+import {
+  Injectable,
+  Logger,
+  OnModuleInit,
+  ServiceUnavailableException,
+} from '@nestjs/common';
 import { getApps, initializeApp, cert } from 'firebase-admin/app';
 import {
   getMessaging,
@@ -11,6 +16,7 @@ import {
   NotificationStatus,
   NotificationType,
 } from '@app/common';
+import { notificationMetrics } from './notification-metrics';
 
 export interface SendNotificationOptions {
   title: string;
@@ -20,6 +26,18 @@ export interface SendNotificationOptions {
   targetUserId?: string;
   targetDeviceTokens?: string[];
   targetTopic?: string;
+}
+
+export interface NotificationDispatchResult {
+  targeted: number;
+  successCount: number;
+  failureCount: number;
+  skipped: boolean;
+}
+
+interface BatchDispatchResult {
+  successCount: number;
+  failureCount: number;
 }
 
 @Injectable()
@@ -328,10 +346,16 @@ export class FcmService implements OnModuleInit {
     return grouped;
   }
 
-  async sendNotification(options: SendNotificationOptions): Promise<void> {
+  async sendNotification(
+    options: SendNotificationOptions,
+  ): Promise<NotificationDispatchResult> {
+    const finishDispatch = notificationMetrics.startDispatch(
+      options.notificationType,
+    );
+
     if (!getApps().length) {
-      this.logger.warn('Firebase not initialized. Skipping notification.');
-      return;
+      finishDispatch('failed');
+      throw new ServiceUnavailableException('Firebase is not initialized');
     }
 
     try {
@@ -385,19 +409,50 @@ export class FcmService implements OnModuleInit {
         this.logger.log(
           `No active subscriptions found for notification type: ${options.notificationType}`,
         );
-        return;
+        finishDispatch('skipped');
+        return {
+          targeted: 0,
+          successCount: 0,
+          failureCount: 0,
+          skipped: true,
+        };
       }
 
       // Send notifications in batches (FCM supports up to 500 tokens per batch)
       const batchSize = 500;
-      const batches = this.chunkArray(targetDevices, batchSize);
+      const uniqueTargetDevices = [...new Set(targetDevices)];
+      const batches = this.chunkArray(uniqueTargetDevices, batchSize);
+      const results = await this.mapWithConcurrency(batches, 3, async (batch) =>
+        this.sendBatchNotification(batch, options),
+      );
+      const result: NotificationDispatchResult = {
+        targeted: uniqueTargetDevices.length,
+        successCount: results.reduce(
+          (total, batch) => total + batch.successCount,
+          0,
+        ),
+        failureCount: results.reduce(
+          (total, batch) => total + batch.failureCount,
+          0,
+        ),
+        skipped: false,
+      };
 
-      for (const batch of batches) {
-        await this.sendBatchNotification(batch, options);
+      finishDispatch(result.failureCount > 0 ? 'failed' : 'success');
+      this.logger.log(
+        `Notification dispatch completed: targeted=${result.targeted}, sent=${result.successCount}, failed=${result.failureCount}`,
+      );
+
+      if (result.failureCount === result.targeted) {
+        throw new ServiceUnavailableException({
+          message: 'FCM failed for every target device',
+          ...result,
+        });
       }
 
-      this.logger.log(`Notification sent to ${targetDevices.length} devices`);
+      return result;
     } catch (error) {
+      finishDispatch('failed');
       this.logger.error('Failed to send notification', error);
       throw error;
     }
@@ -406,7 +461,7 @@ export class FcmService implements OnModuleInit {
   private async sendBatchNotification(
     deviceTokens: string[],
     options: SendNotificationOptions,
-  ): Promise<void> {
+  ): Promise<BatchDispatchResult> {
     const message: MulticastMessage = {
       tokens: deviceTokens,
       notification: {
@@ -442,14 +497,24 @@ export class FcmService implements OnModuleInit {
       const response = await getMessaging().sendEachForMulticast(message);
 
       // Log results and handle failed tokens
-      await this.processBatchResponse(deviceTokens, response, options);
+      return await this.processBatchResponse(deviceTokens, response, options);
     } catch (error) {
+      notificationMetrics.recordDeliveries(
+        options.notificationType,
+        'failed',
+        deviceTokens.length,
+      );
       this.logger.error('Failed to send batch notification', error);
-
-      // Log failed notifications
-      for (const token of deviceTokens) {
-        await this.logNotification(token, options, 'FAILED', error.message);
-      }
+      await this.persistNotificationLogs(
+        deviceTokens.map((deviceToken) => ({
+          deviceToken,
+          status: NotificationStatus.FAILED,
+          errorMessage:
+            error instanceof Error ? error.message : 'Unknown FCM error',
+        })),
+        options,
+      );
+      return { successCount: 0, failureCount: deviceTokens.length };
     }
   }
 
@@ -457,74 +522,130 @@ export class FcmService implements OnModuleInit {
     deviceTokens: string[],
     response: BatchResponse,
     options: SendNotificationOptions,
-  ): Promise<void> {
-    const failedTokens: string[] = [];
+  ): Promise<BatchDispatchResult> {
+    const invalidTokens: string[] = [];
+    const logs = response.responses.map((result, index) => {
+      const deviceToken = deviceTokens[index];
+      const errorCode = result.error?.code;
+      if (
+        errorCode === 'messaging/registration-token-not-registered' ||
+        errorCode === 'messaging/invalid-registration-token'
+      ) {
+        invalidTokens.push(deviceToken);
+      }
 
-    for (let i = 0; i < response.responses.length; i++) {
-      const result = response.responses[i];
-      const token = deviceTokens[i];
+      return {
+        deviceToken,
+        status: result.success
+          ? NotificationStatus.SENT
+          : NotificationStatus.FAILED,
+        errorMessage: result.error?.message,
+        fcmMessageId: result.messageId,
+      };
+    });
 
-      if (result.success) {
-        await this.logNotification(
-          token,
-          options,
-          'SENT',
-          undefined,
-          result.messageId,
+    const persistenceResults = await Promise.allSettled([
+      this.persistNotificationLogs(logs, options),
+      invalidTokens.length > 0
+        ? this.prisma.deviceSubscription.updateMany({
+            where: { deviceToken: { in: invalidTokens } },
+            data: { active: false },
+          })
+        : Promise.resolve(),
+    ]);
+
+    for (const persistenceResult of persistenceResults) {
+      if (persistenceResult.status === 'rejected') {
+        this.logger.error(
+          'Failed to persist FCM delivery side effects',
+          persistenceResult.reason,
         );
-      } else {
-        const error = result.error;
-        failedTokens.push(token);
-
-        // Handle specific error codes
-        if (
-          error?.code === 'messaging/registration-token-not-registered' ||
-          error?.code === 'messaging/invalid-registration-token'
-        ) {
-          // Remove invalid tokens
-          await this.unregisterDevice(token);
-          this.logger.warn(
-            `Removed invalid token: ${token.substring(0, 10)}...`,
-          );
-        }
-
-        await this.logNotification(token, options, 'FAILED', error?.message);
       }
     }
 
-    if (failedTokens.length > 0) {
-      this.logger.warn(`Failed to send to ${failedTokens.length} tokens`);
+    if (response.failureCount > 0) {
+      this.logger.warn(`Failed to send to ${response.failureCount} tokens`);
     }
+    if (
+      invalidTokens.length > 0 &&
+      persistenceResults[1].status === 'fulfilled'
+    ) {
+      this.logger.warn(`Disabled ${invalidTokens.length} invalid FCM tokens`);
+    }
+
+    notificationMetrics.recordDeliveries(
+      options.notificationType,
+      'sent',
+      response.successCount,
+    );
+    notificationMetrics.recordDeliveries(
+      options.notificationType,
+      'failed',
+      response.failureCount,
+    );
+
+    return {
+      successCount: response.successCount,
+      failureCount: response.failureCount,
+    };
   }
 
-  private async logNotification(
-    deviceToken: string,
+  private async persistNotificationLogs(
+    logs: Array<{
+      deviceToken: string;
+      status: NotificationStatus;
+      errorMessage?: string;
+      fcmMessageId?: string;
+    }>,
     options: SendNotificationOptions,
-    status: NotificationStatus,
-    errorMessage?: string,
-    fcmMessageId?: string,
   ): Promise<void> {
     try {
-      const subscription = await this.prisma.deviceSubscription.findUnique({
-        where: { deviceToken },
-        select: { id: true },
+      const subscriptions = await this.prisma.deviceSubscription.findMany({
+        where: { deviceToken: { in: logs.map((log) => log.deviceToken) } },
+        select: { id: true, deviceToken: true },
       });
+      const subscriptionIds = new Map(
+        subscriptions.map((subscription) => [
+          subscription.deviceToken,
+          subscription.id,
+        ]),
+      );
 
-      await this.prisma.notificationLog.create({
-        data: {
-          deviceSubscriptionId: subscription?.id,
+      await this.prisma.notificationLog.createMany({
+        data: logs.map((log) => ({
+          deviceSubscriptionId: subscriptionIds.get(log.deviceToken),
           notificationType: options.notificationType,
           title: options.title,
           body: options.body,
           data: options.data,
-          status,
-          errorMessage,
-          fcmMessageId,
-        },
+          status: log.status,
+          errorMessage: log.errorMessage,
+          fcmMessageId: log.fcmMessageId,
+        })),
       });
     } catch (error) {
-      this.logger.error('Failed to log notification', error);
+      this.logger.error('Failed to persist notification logs', error);
     }
+  }
+
+  private async mapWithConcurrency<T, R>(
+    items: T[],
+    concurrency: number,
+    mapper: (item: T) => Promise<R>,
+  ): Promise<R[]> {
+    const results = new Array<R>(items.length);
+    let nextIndex = 0;
+    const workers = Array.from(
+      { length: Math.min(concurrency, items.length) },
+      async () => {
+        while (nextIndex < items.length) {
+          const index = nextIndex++;
+          results[index] = await mapper(items[index]);
+        }
+      },
+    );
+    await Promise.all(workers);
+    return results;
   }
 
   private chunkArray<T>(array: T[], size: number): T[][] {
@@ -555,6 +676,14 @@ export class FcmService implements OnModuleInit {
         },
       },
     });
+  }
+
+  async countActiveSubscriptions(): Promise<number> {
+    return this.prisma.deviceSubscription.count({ where: { active: true } });
+  }
+
+  isFirebaseAvailable(): boolean {
+    return getApps().length > 0;
   }
 
   async getNotificationStats(deviceToken?: string): Promise<any> {

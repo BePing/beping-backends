@@ -65,6 +65,9 @@ jobs:
       - name: Test
         run: pnpm test
 
+      - name: Audit production dependencies
+        run: pnpm audit --prod --audit-level high
+
   build:
     needs: changes
     if: needs.changes.outputs.code == 'true'

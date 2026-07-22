@@ -15,11 +15,11 @@ Every application VPS runs Grafana Alloy with node-exporter and cAdvisor:
 The BePing applications additionally expose Prometheus metrics on internal port
 `9464`:
 
-| Service | Metrics |
-| --- | --- |
-| API | Node.js/process defaults, HTTP request count and duration |
-| Notifications | Node.js/process defaults, HTTP request count and duration |
-| Importer | Node.js/process defaults |
+| Service       | Metrics                                                                        |
+| ------------- | ------------------------------------------------------------------------------ |
+| API           | Node.js/process defaults, HTTP request count, in-flight requests and duration  |
+| Notifications | HTTP metrics plus dispatch outcomes, delivery results and dispatch duration    |
+| Importer      | Active jobs, run outcomes/duration and processed/changed/dropped record counts |
 
 `9464` is not an application or health-check port. Do not add a public Coolify
 domain or host port for it.
@@ -113,6 +113,14 @@ rate(beping_http_requests_total{host="beping-backend"}[5m])
 histogram_quantile(0.95, sum by (le, service) (
   rate(beping_http_request_duration_seconds_bucket{host="beping-backend"}[5m])
 ))
+beping_http_requests_in_flight{host="beping-backend"}
+sum by (notification_type, status) (
+  rate(beping_notification_deliveries_total{host="beping-backend"}[5m])
+)
+beping_import_active{host="beping-backend"}
+sum by (import_type, player_category, outcome) (
+  increase(beping_import_runs_total{host="beping-backend"}[24h])
+)
 ```
 
 The metrics listener also exposes `/-/healthy`, but the existing application

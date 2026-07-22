@@ -10,6 +10,7 @@ import {
   UseGuards,
   HttpCode,
   HttpStatus,
+  ServiceUnavailableException,
 } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
 import { FcmService } from '../notifications/fcm.service';
@@ -142,9 +143,9 @@ export class NotificationsController {
   // Backend service endpoints - protected by Basic Auth
   @Post('send')
   @UseGuards(AuthGuard('basic'))
-  @HttpCode(HttpStatus.ACCEPTED)
+  @HttpCode(HttpStatus.OK)
   async sendNotification(@Body() sendNotificationDto: SendNotificationDto) {
-    await this.fcmService.sendNotification({
+    const result = await this.fcmService.sendNotification({
       title: sendNotificationDto.title,
       body: sendNotificationDto.body,
       notificationType: sendNotificationDto.notificationType,
@@ -153,7 +154,7 @@ export class NotificationsController {
       targetDeviceTokens: sendNotificationDto.targetDeviceTokens,
     });
 
-    return { message: 'Notification sent successfully' };
+    return { message: 'Notification dispatch completed', ...result };
   }
 
   @Get('subscriptions')
@@ -183,18 +184,21 @@ export class NotificationsController {
   @HttpCode(HttpStatus.OK)
   async healthCheck() {
     try {
-      const subscriptions = await this.fcmService.getActiveSubscriptions();
+      if (!this.fcmService.isFirebaseAvailable()) {
+        throw new Error('Firebase is not initialized');
+      }
+      const activeSubscriptions =
+        await this.fcmService.countActiveSubscriptions();
       return {
         status: 'healthy',
-        activeSubscriptions: subscriptions.length,
+        activeSubscriptions,
         timestamp: new Date().toISOString(),
       };
-    } catch (error) {
-      return {
+    } catch {
+      throw new ServiceUnavailableException({
         status: 'unhealthy',
-        error: error.message,
         timestamp: new Date().toISOString(),
-      };
+      });
     }
   }
 }

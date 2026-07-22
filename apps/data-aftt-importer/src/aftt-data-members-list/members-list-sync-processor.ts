@@ -12,6 +12,7 @@ import { PERFORMANCE_CONFIG } from '../constants';
 import { ImportExecutionCoordinatorService } from '../common/import-execution-coordinator.service';
 import { PostgresCopyService } from '../common/postgres-copy.service';
 import { Client } from 'pg';
+import { importMetrics } from '../import-metrics';
 
 interface RankingEstimationChange {
   uniqueIndex: number;
@@ -54,6 +55,10 @@ export class MembersListProcessingService extends WorkerHost {
     await this.importExecutionCoordinatorService.runExclusive(
       `members:${playerCategory}`,
       async () => {
+        const importRun = importMetrics.startRun(
+          'members',
+          String(playerCategory),
+        );
         try {
           const downloadStart = Date.now();
           const lines = await this.downloadAndPrepareFile(playerCategory);
@@ -85,6 +90,7 @@ export class MembersListProcessingService extends WorkerHost {
               Date.now() - startTime,
               { linesAdded: 0, linesUpdated: 0 },
             );
+            importRun.finish('skipped');
             return;
           }
 
@@ -156,10 +162,17 @@ export class MembersListProcessingService extends WorkerHost {
             },
           );
 
+          importRun.record('processed', linesProcessed);
+          importRun.record('affected', importStats.memberStats.affected);
+          importRun.record('points_stored', importStats.pointStats.stored);
+          importRun.record('points_skipped', importStats.pointStats.skipped);
+          importRun.finish('success');
+
           this.logger.log(
             `Import completed in ${Math.round(totalTime / 1000)}s (download: ${Date.now() - downloadStart}ms, merge: ${Date.now() - upsertStart}ms)`,
           );
         } catch (e) {
+          importRun.finish('failed');
           this.logger.error('Failed to finish job', e.message);
           throw e;
         }

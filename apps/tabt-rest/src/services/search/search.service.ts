@@ -39,6 +39,7 @@ export class SearchResultDTO {
 export class SearchService {
   // Minimum similarity threshold for fuzzy matching (0 to 1)
   private readonly SIMILARITY_THRESHOLD = 0.8;
+  private readonly MAX_RESULTS_PER_TYPE = 25;
 
   constructor(
     private readonly memberService: MemberService,
@@ -48,8 +49,9 @@ export class SearchService {
   ) {}
 
   async search(query: string, types?: SearchType[]): Promise<SearchResultDTO> {
+    const normalizedQuery = query.trim().toLowerCase();
     const searchTypes = types?.length ? types : Object.values(SearchType);
-    const cacheKey = this.getCacheKey(query, searchTypes);
+    const cacheKey = this.getCacheKey(normalizedQuery, searchTypes);
 
     return this.cacheService.getFromCacheOrGetAndCacheResult(
       cacheKey,
@@ -59,7 +61,7 @@ export class SearchService {
 
         if (searchTypes.includes(SearchType.MEMBER)) {
           searchPromises.push(
-            this.searchMembers(query).then((members) => {
+            this.searchMembers(normalizedQuery).then((members) => {
               result.members = members.map((m) =>
                 MemberEntryDTOV1.fromTabT(m.item),
               );
@@ -69,7 +71,7 @@ export class SearchService {
 
         if (searchTypes.includes(SearchType.CLUB)) {
           searchPromises.push(
-            this.searchClubs(query).then((clubs) => {
+            this.searchClubs(normalizedQuery).then((clubs) => {
               result.clubs = clubs.map((c) => c.item);
             }),
           );
@@ -77,7 +79,7 @@ export class SearchService {
 
         if (searchTypes.includes(SearchType.TOURNAMENT)) {
           searchPromises.push(
-            this.searchTournaments(query).then((tournaments) => {
+            this.searchTournaments(normalizedQuery).then((tournaments) => {
               result.tournaments = tournaments.map((t) => t.item);
             }),
           );
@@ -93,7 +95,7 @@ export class SearchService {
   private getCacheKey(query: string, types: SearchType[]): string {
     const input = {
       query: query.toLowerCase(),
-      types: types.sort(),
+      types: [...types].sort(),
     };
     return `search:${createHash('sha256')
       .update(JSON.stringify(input))
@@ -103,129 +105,116 @@ export class SearchService {
   private async searchMembers(
     query: string,
   ): Promise<ScoredResult<MemberEntry>[]> {
-    try {
-      const results = await this.memberService.getMembersV1({
-        nameSearch: query,
-      });
+    const results = await this.memberService.getMembersV1({
+      nameSearch: query,
+    });
 
-      const normalizedQuery = query.toLowerCase();
-      const scoredResults = results.map((member) => {
-        const fullName = `${member.FirstName} ${member.LastName}`.toLowerCase();
-        const scores = [
-          this.calculateSimilarity(fullName, normalizedQuery),
-          this.calculateSimilarity(
-            member.FirstName.toLowerCase(),
-            normalizedQuery,
-          ),
-          this.calculateSimilarity(
-            member.LastName.toLowerCase(),
-            normalizedQuery,
-          ),
-        ];
+    const normalizedQuery = query.toLowerCase();
+    const scoredResults = results.map((member) => {
+      const fullName = `${member.FirstName} ${member.LastName}`.toLowerCase();
+      const scores = [
+        this.calculateSimilarity(fullName, normalizedQuery),
+        this.calculateSimilarity(
+          member.FirstName.toLowerCase(),
+          normalizedQuery,
+        ),
+        this.calculateSimilarity(
+          member.LastName.toLowerCase(),
+          normalizedQuery,
+        ),
+      ];
 
-        // Use the best match score
-        const score = Math.max(...scores);
+      // Use the best match score
+      const score = Math.max(...scores);
 
-        return new ScoredResult(member, score);
-      });
+      return new ScoredResult(member, score);
+    });
 
-      // Filter by threshold and sort by score
-      return scoredResults
-        .filter((result) => result.score >= this.SIMILARITY_THRESHOLD)
-        .sort((a, b) => b.score - a.score);
-    } catch (error) {
-      console.error('Error searching members:', error);
-      return [];
-    }
+    // Filter by threshold and sort by score
+    return scoredResults
+      .filter((result) => result.score >= this.SIMILARITY_THRESHOLD)
+      .sort((a, b) => b.score - a.score)
+      .slice(0, this.MAX_RESULTS_PER_TYPE);
   }
 
   private async searchClubs(query: string): Promise<ScoredResult<ClubDto>[]> {
-    try {
-      const clubs = await this.clubService.getClubs();
-      const normalizedQuery = query.toLowerCase();
+    const clubs = await this.clubService.getClubs();
+    const normalizedQuery = query.toLowerCase();
 
-      const scoredResults = clubs.map((club) => {
-        const scores = [
-          this.calculateSimilarity(club.Name.toLowerCase(), normalizedQuery),
-          club.LongName
-            ? this.calculateSimilarity(
-                club.LongName.toLowerCase(),
-                normalizedQuery,
-              )
-            : 0,
-          this.calculateSimilarity(
-            club.UniqueIndex.toLowerCase(),
-            normalizedQuery,
-          ),
-        ];
+    const scoredResults = clubs.map((club) => {
+      const scores = [
+        this.calculateSimilarity(club.Name.toLowerCase(), normalizedQuery),
+        club.LongName
+          ? this.calculateSimilarity(
+              club.LongName.toLowerCase(),
+              normalizedQuery,
+            )
+          : 0,
+        this.calculateSimilarity(
+          club.UniqueIndex.toLowerCase(),
+          normalizedQuery,
+        ),
+      ];
 
-        // Use the best match score
-        const score = Math.max(...scores);
+      // Use the best match score
+      const score = Math.max(...scores);
 
-        return new ScoredResult(ClubDto.fromTabT(club), score);
-      });
+      return new ScoredResult(ClubDto.fromTabT(club), score);
+    });
 
-      // Filter by threshold and sort by score
-      return scoredResults
-        .filter((result) => result.score >= this.SIMILARITY_THRESHOLD)
-        .sort((a, b) => b.score - a.score);
-    } catch (error) {
-      console.error('Error searching clubs:', error);
-      return [];
-    }
+    // Filter by threshold and sort by score
+    return scoredResults
+      .filter((result) => result.score >= this.SIMILARITY_THRESHOLD)
+      .sort((a, b) => b.score - a.score)
+      .slice(0, this.MAX_RESULTS_PER_TYPE);
   }
 
   private async searchTournaments(
     query: string,
   ): Promise<ScoredResult<TournamentEntryDTOV1>[]> {
-    try {
-      const tournaments = await this.tournamentService.getTournaments({});
-      const normalizedQuery = query.toLowerCase();
+    const tournaments = await this.tournamentService.getTournaments({});
+    const normalizedQuery = query.toLowerCase();
 
-      const scoredResults = tournaments.map((tournament) => {
-        const score = this.calculateSimilarity(
-          tournament.Name.toLowerCase(),
-          normalizedQuery,
-        );
-        return new ScoredResult(
-          TournamentEntryDTOV1.fromTabT(tournament),
-          score,
-        );
-      });
+    const scoredResults = tournaments.map((tournament) => {
+      const score = this.calculateSimilarity(
+        tournament.Name.toLowerCase(),
+        normalizedQuery,
+      );
+      return new ScoredResult(TournamentEntryDTOV1.fromTabT(tournament), score);
+    });
 
-      // Filter by threshold and sort by score
-      return scoredResults
-        .filter((result) => result.score >= this.SIMILARITY_THRESHOLD)
-        .sort((a, b) => b.score - a.score);
-    } catch (error) {
-      console.error('Error searching tournaments:', error);
-      return [];
-    }
+    // Filter by threshold and sort by score
+    return scoredResults
+      .filter((result) => result.score >= this.SIMILARITY_THRESHOLD)
+      .sort((a, b) => b.score - a.score)
+      .slice(0, this.MAX_RESULTS_PER_TYPE);
   }
 
   /**
    * Calculates the Levenshtein distance between two strings
    */
   private levenshteinDistance(str1: string, str2: string): number {
-    const track = Array(str2.length + 1)
-      .fill(null)
-      .map(() => Array(str1.length + 1).fill(null));
-
-    for (let i = 0; i <= str1.length; i++) track[0][i] = i;
-    for (let j = 0; j <= str2.length; j++) track[j][0] = j;
-
-    for (let j = 1; j <= str2.length; j++) {
-      for (let i = 1; i <= str1.length; i++) {
-        const indicator = str1[i - 1] === str2[j - 1] ? 0 : 1;
-        track[j][i] = Math.min(
-          track[j][i - 1] + 1, // deletion
-          track[j - 1][i] + 1, // insertion
-          track[j - 1][i - 1] + indicator, // substitution
-        );
-      }
+    if (str1.length > str2.length) {
+      return this.levenshteinDistance(str2, str1);
     }
 
-    return track[str2.length][str1.length];
+    let previous = Array.from({ length: str1.length + 1 }, (_, i) => i);
+    let current = new Array<number>(str1.length + 1);
+
+    for (let row = 1; row <= str2.length; row++) {
+      current[0] = row;
+      for (let column = 1; column <= str1.length; column++) {
+        const substitutionCost = str1[column - 1] === str2[row - 1] ? 0 : 1;
+        current[column] = Math.min(
+          current[column - 1] + 1,
+          previous[column] + 1,
+          previous[column - 1] + substitutionCost,
+        );
+      }
+      [previous, current] = [current, previous];
+    }
+
+    return previous[str1.length];
   }
 
   /**

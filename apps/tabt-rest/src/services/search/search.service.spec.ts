@@ -131,12 +131,37 @@ describe('SearchService', () => {
       expect(result.tournaments[0].name).toBe('Summer Open');
     });
 
-    it('should return an empty member list when the underlying service throws', async () => {
+    it('should propagate dependency failures instead of caching a false empty result', async () => {
       memberService.getMembersV1.mockRejectedValue(new Error('SOAP down'));
+
+      await expect(service.search('John', [SearchType.MEMBER])).rejects.toThrow(
+        'SOAP down',
+      );
+    });
+
+    it('should normalize whitespace and casing before querying and caching', async () => {
+      await service.search('  JoHn  ', [SearchType.MEMBER]);
+
+      expect(memberService.getMembersV1).toHaveBeenCalledWith({
+        nameSearch: 'john',
+      });
+    });
+
+    it('should cap each result type to 25 entries', async () => {
+      memberService.getMembersV1.mockResolvedValue(
+        Array.from({ length: 30 }, (_, index) => ({
+          Position: index + 1,
+          UniqueIndex: index + 1,
+          FirstName: 'John',
+          LastName: `Smith${index}`,
+          Ranking: 'B2',
+          Club: 'L360',
+        })),
+      );
 
       const result = await service.search('John', [SearchType.MEMBER]);
 
-      expect(result.members).toEqual([]);
+      expect(result.members).toHaveLength(25);
     });
 
     it('should build a stable cache key regardless of the type order', async () => {

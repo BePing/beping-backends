@@ -10,7 +10,7 @@ import { TestRequestService } from '../../../services/test/test-request.service'
 import { ContextService } from '../../../common/context/context.service';
 import { ConfigService } from '@nestjs/config';
 import { SocksProxyHttpClient } from '../../../common/socks-proxy/socks-proxy-http-client';
-import { PrismaService } from '@app/common';
+import { CacheService, PrismaService } from '@app/common';
 
 describe('HealthController', () => {
   let controller: HealthController;
@@ -19,6 +19,7 @@ describe('HealthController', () => {
   let prismaHealthIndicator: PrismaHealthIndicator;
   let testService: TestRequestService;
   let contextService: ContextService;
+  let cacheService: CacheService;
 
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
@@ -45,6 +46,10 @@ describe('HealthController', () => {
         {
           provide: PrismaService,
           useValue: {},
+        },
+        {
+          provide: CacheService,
+          useValue: { getFromCache: jest.fn().mockResolvedValue(undefined) },
         },
         {
           provide: TestRequestService,
@@ -81,6 +86,7 @@ describe('HealthController', () => {
     prismaHealthIndicator = module.get<PrismaHealthIndicator>(
       PrismaHealthIndicator,
     );
+    cacheService = module.get<CacheService>(CacheService);
     testService = module.get<TestRequestService>(TestRequestService);
     contextService = module.get<ContextService>(ContextService);
   });
@@ -94,7 +100,7 @@ describe('HealthController', () => {
     expect(healthCheckService.check).not.toHaveBeenCalled();
   });
 
-  it('should use only PostgreSQL for readiness', () => {
+  it('should use PostgreSQL and Redis cache for readiness', () => {
     const prismaSpy = jest.spyOn(prismaHealthIndicator, 'pingCheck');
     jest.spyOn(healthCheckService, 'check').mockImplementation((checks) => {
       checks.forEach((check) => check());
@@ -104,6 +110,9 @@ describe('HealthController', () => {
     controller.readiness();
 
     expect(prismaSpy).toHaveBeenCalledTimes(1);
+    expect(cacheService.getFromCache).toHaveBeenCalledWith(
+      '__health:readiness',
+    );
     expect(httpHealthIndicator.pingCheck).not.toHaveBeenCalled();
   });
 

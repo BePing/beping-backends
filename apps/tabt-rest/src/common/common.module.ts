@@ -6,11 +6,10 @@ import { DatabaseContextService } from './context/database-context.service';
 import { TabtClientService } from './tabt-client/tabt-client.service';
 import { TabtClientSwitchingService } from './tabt-client/tabt-client-switching.service';
 import { PackageService } from './package/package.service';
-import { HeaderKeys, TABT_HEADERS } from './context/context.constants';
+import { TABT_HEADERS } from './context/context.constants';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { LoggerModule } from 'nestjs-pino';
 import pino from 'pino';
-import { cloneDeep } from 'lodash';
 import { SocksProxyHttpClient } from './socks-proxy/socks-proxy-http-client';
 import { createSoapClient } from './tabt-client/soap-client.factory';
 import { CacheModuleOptsFactory } from '@app/common';
@@ -91,12 +90,12 @@ const asyncProviders: Provider[] = [
         level: process.env.NODE_ENV === 'production' ? 'info' : 'debug',
         //transport: { target: 'pino-pretty' },
         quietReqLogger: true,
+        redact: {
+          paths: ['req.headers.x-tabt-password'],
+          censor: '[Redacted]',
+        },
         serializers: {
-          req: pino.stdSerializers.wrapRequestSerializer((r) => {
-            const clonedReq = cloneDeep(r);
-            delete clonedReq.headers[HeaderKeys.X_TABT_PASSWORD.toLowerCase()];
-            return clonedReq;
-          }),
+          req: pino.stdSerializers.req,
           err: pino.stdSerializers.err,
           res: pino.stdSerializers.res,
         },
