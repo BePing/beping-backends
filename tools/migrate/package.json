@@ -1,0 +1,11 @@
+{
+  "name": "@beping/migrate",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Minimal runtime dependencies for production Prisma migrations",
+  "packageManager": "pnpm@11.15.1",
+  "dependencies": {
+    "dotenv": "17.4.2",
+    "prisma": "7.9.0"
+  }
+}

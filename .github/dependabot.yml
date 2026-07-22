@@ -8,6 +8,14 @@ updates:
       dependencies:
         patterns: ["*"]
 
+  - package-ecosystem: npm
+    directory: /tools/migrate
+    schedule:
+      interval: weekly
+    groups:
+      migration-dependencies:
+        patterns: ["*"]
+
   - package-ecosystem: github-actions
     directory: /
     schedule:

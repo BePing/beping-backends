@@ -1,0 +1,9 @@
+packages:
+  - .
+
+minimumReleaseAge: 1440
+minimumReleaseAgeStrict: false
+
+allowBuilds:
+  '@prisma/engines': true
+  prisma: true

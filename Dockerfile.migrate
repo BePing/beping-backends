@@ -11,27 +11,26 @@ ENV PATH="$PNPM_HOME:$PATH"
 RUN npm install -g pnpm@11.15.1
 WORKDIR /usr/src/app
 
-# Full install (prisma CLI is a devDependency) with toolchain for native deps.
+# Install only the dedicated migration workspace. This avoids copying the
+# backend's complete build/test toolchain into a run-once production image.
 FROM base AS deps
 RUN apk add --no-cache python3 make g++ libc6-compat openssl
-COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+WORKDIR /usr/src/migrate
+COPY tools/migrate/package.json tools/migrate/pnpm-lock.yaml tools/migrate/pnpm-workspace.yaml ./
 RUN --mount=type=cache,id=pnpm,target=/pnpm/store \
-    pnpm install --frozen-lockfile
+    pnpm install --prod --frozen-lockfile
 
 FROM node:${NODE_VERSION} AS migrate
 RUN apk add --no-cache openssl \
     && addgroup -g 1001 -S nodejs \
     && adduser -S nestjs -u 1001
-ENV PNPM_HOME="/pnpm"
-ENV PATH="$PNPM_HOME:$PATH"
-RUN npm install -g pnpm@11.15.1
 WORKDIR /usr/src/app
 
-COPY --from=deps --chown=nestjs:nodejs /usr/src/app/node_modules ./node_modules
-COPY --chown=nestjs:nodejs package.json pnpm-workspace.yaml prisma.config.ts tsconfig.json ./
+COPY --from=deps --chown=nestjs:nodejs /usr/src/migrate/node_modules ./node_modules
+COPY --chown=nestjs:nodejs prisma.config.ts ./
 COPY --chown=nestjs:nodejs prisma/ ./prisma/
 
 USER nestjs
 
 # DIRECT_URL/DATABASE_URL provided at runtime; prisma.config.ts reads them.
-CMD ["pnpm", "exec", "prisma", "migrate", "deploy", "--schema", "prisma/schema.prisma"]
+CMD ["./node_modules/.bin/prisma", "migrate", "deploy", "--schema", "prisma/schema.prisma"]

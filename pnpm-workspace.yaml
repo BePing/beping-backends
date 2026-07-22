@@ -1,4 +1,5 @@
-# Single-package repo (no `packages:`).
+# Single-package application workspace. The migration container deliberately
+# keeps its tiny dependency graph and lockfile isolated under tools/migrate.
 # Flat node_modules (npm-like) so webpack externals, TS module resolution,
 # and cross-stage Docker copies behave like they did under npm.
 nodeLinker: hoisted

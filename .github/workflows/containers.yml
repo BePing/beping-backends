@@ -9,6 +9,7 @@ on:
       - 'libs/**'
       - 'prisma/**'
       - 'Dockerfile.migrate'
+      - 'tools/migrate/**'
       - 'package.json'
       - 'pnpm-lock.yaml'
       - 'pnpm-workspace.yaml'
