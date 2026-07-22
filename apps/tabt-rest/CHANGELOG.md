@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.2.4](https://github.com/BePing/beping-backends/compare/tabt-rest-v2.2.3...tabt-rest-v2.2.4) (2026-07-22)
+
+
+### Miscellaneous
+
+* **deps:** modernize backend toolchain ([c0aeef2](https://github.com/BePing/beping-backends/commit/c0aeef2512a8b2a891ff56d6a24d679e05a7b285))
+
 ## [2.2.3](https://github.com/BePing/beping-backends/compare/tabt-rest-v2.2.2...tabt-rest-v2.2.3) (2026-07-22)
 
 
