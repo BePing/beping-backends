@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.2.3](https://github.com/BePing/beping-backends/compare/tabt-rest-v2.2.2...tabt-rest-v2.2.3) (2026-07-22)
+
+
+### Bug Fixes
+
+* harden backend stability and performance ([c19221c](https://github.com/BePing/beping-backends/commit/c19221ce926dffa58334acf2bd72955c35e80c52))
+
 ## [2.2.2](https://github.com/BePing/beping-backends/compare/tabt-rest-v2.2.1...tabt-rest-v2.2.2) (2026-07-22)
 
 
