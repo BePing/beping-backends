@@ -205,7 +205,7 @@ jobs:
             -e DATABASE_URL \
             -e DIRECT_URL \
             "${REGISTRY_HOST}/escape-key/beping-migrate:${IMAGE_SHA}" \
-            pnpm exec prisma migrate status --schema prisma/schema.prisma
+            ./node_modules/.bin/prisma migrate status --schema prisma/schema.prisma
 
       - name: Deploy API with rolling update
         env:
