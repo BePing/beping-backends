@@ -1,0 +1,185 @@
+name: Manage production datastores
+
+on:
+  workflow_dispatch:
+    inputs:
+      operation:
+        description: Safe datastore operation
+        required: true
+        type: choice
+        options:
+          - inventory
+          - provision
+      project_uuid:
+        description: Coolify project UUID (required for provision)
+        required: false
+        type: string
+      environment_name:
+        description: Coolify environment name
+        required: true
+        default: production
+        type: string
+      server_uuid:
+        description: BePing Coolify server UUID
+        required: true
+        default: c8ccokg44sw4ksow8048ksok
+        type: string
+
+permissions:
+  actions: write
+  contents: read
+
+concurrency:
+  group: beping-production
+  cancel-in-progress: false
+
+jobs:
+  manage:
+    name: ${{ inputs.operation }} production datastores
+    runs-on: [self-hosted, linux, x64, escape-key-ci]
+    environment: Production
+    timeout-minutes: 20
+    env:
+      COOLIFY_URL: ${{ vars.COOLIFY_URL }}
+      COOLIFY_TOKEN: ${{ secrets.COOLIFY_TOKEN }}
+      GH_TOKEN: ${{ github.token }}
+      POSTGRES_PASSWORD: ${{ secrets.BEPING_PG18_PASSWORD }}
+      REDIS_PASSWORD: ${{ secrets.BEPING_REDIS8_PASSWORD }}
+    steps:
+      - name: Validate configuration
+        run: |
+          test -n "${COOLIFY_URL}"
+          test -n "${COOLIFY_TOKEN}"
+          [[ "${{ inputs.server_uuid }}" =~ ^[a-z0-9]+$ ]]
+
+      - name: Inventory Coolify resources
+        if: inputs.operation == 'inventory'
+        run: |
+          coolify_get() {
+            curl --fail-with-body --silent --show-error \
+              --connect-timeout 10 \
+              --max-time 30 \
+              -H "Authorization: Bearer ${COOLIFY_TOKEN}" \
+              "${COOLIFY_URL%/}/api/v1/$1"
+          }
+
+          echo 'Servers:'
+          coolify_get servers | jq '[.[] | {uuid, name, is_reachable, is_usable}]'
+
+          echo 'Projects and environments:'
+          while IFS= read -r project_uuid; do
+            coolify_get "projects/${project_uuid}" \
+              | jq '{uuid, name, environments: [.environments[] | {uuid, name}]}'
+          done < <(coolify_get projects | jq -r '.[].uuid')
+
+          echo 'Datastores:'
+          coolify_get databases \
+            | jq '[.[] | {uuid, name, database_type, image, status, environment_id, destination_id}]'
+
+      - name: Provision PostgreSQL 18 and Redis 8
+        if: inputs.operation == 'provision'
+        env:
+          PROJECT_UUID: ${{ inputs.project_uuid }}
+          ENVIRONMENT_NAME: ${{ inputs.environment_name }}
+          SERVER_UUID: ${{ inputs.server_uuid }}
+        run: |
+          test -n "${PROJECT_UUID}"
+          test -n "${POSTGRES_PASSWORD}"
+          test -n "${REDIS_PASSWORD}"
+          [[ "${PROJECT_UUID}" =~ ^[a-z0-9]+$ ]]
+          [[ "${ENVIRONMENT_NAME}" =~ ^[a-zA-Z0-9_-]+$ ]]
+
+          coolify_request() {
+            local method="$1"
+            local path="$2"
+            local payload="${3:-}"
+            local args=(
+              --fail-with-body
+              --silent
+              --show-error
+              --connect-timeout 10
+              --max-time 60
+              -X "${method}"
+              -H "Authorization: Bearer ${COOLIFY_TOKEN}"
+              -H 'Content-Type: application/json'
+            )
+            if [[ -n "${payload}" ]]; then
+              args+=(--data "${payload}")
+            fi
+            curl "${args[@]}" "${COOLIFY_URL%/}/api/v1/${path}"
+          }
+
+          databases="$(coolify_request GET databases)"
+          postgres_uuid="$(jq -r '.[] | select(.name == "beping-postgresql-18") | .uuid' <<<"${databases}" | head -n1)"
+          redis_uuid="$(jq -r '.[] | select(.name == "beping-redis-8") | .uuid' <<<"${databases}" | head -n1)"
+
+          if [[ -z "${postgres_uuid}" ]]; then
+            postgres_payload="$(
+              jq -n \
+                --arg project_uuid "${PROJECT_UUID}" \
+                --arg environment_name "${ENVIRONMENT_NAME}" \
+                --arg server_uuid "${SERVER_UUID}" \
+                --arg password "${POSTGRES_PASSWORD}" \
+                '{
+                  project_uuid: $project_uuid,
+                  environment_name: $environment_name,
+                  server_uuid: $server_uuid,
+                  name: "beping-postgresql-18",
+                  description: "BePing PostgreSQL 18 blue-green migration target",
+                  image: "postgres:18.4",
+                  postgres_user: "beping",
+                  postgres_password: $password,
+                  postgres_db: "beping",
+                  postgres_initdb_args: "--data-checksums",
+                  is_public: false,
+                  limits_memory: "1536m",
+                  limits_memory_swap: "2048m",
+                  limits_cpus: "1.25",
+                  instant_deploy: true
+                }'
+            )"
+            postgres_response="$(coolify_request POST databases/postgresql "${postgres_payload}")"
+            postgres_uuid="$(jq -er '.uuid' <<<"${postgres_response}")"
+          fi
+
+          if [[ -z "${redis_uuid}" ]]; then
+            redis_conf="$(printf '%s\n' 'appendonly yes' 'appendfsync everysec' 'save 900 1' 'save 300 10' 'save 60 10000' | base64 -w0)"
+            redis_payload="$(
+              jq -n \
+                --arg project_uuid "${PROJECT_UUID}" \
+                --arg environment_name "${ENVIRONMENT_NAME}" \
+                --arg server_uuid "${SERVER_UUID}" \
+                --arg password "${REDIS_PASSWORD}" \
+                --arg redis_conf "${redis_conf}" \
+                '{
+                  project_uuid: $project_uuid,
+                  environment_name: $environment_name,
+                  server_uuid: $server_uuid,
+                  name: "beping-redis-8",
+                  description: "BePing Redis 8 blue-green migration target",
+                  image: "redis:8.8.0-alpine",
+                  redis_password: $password,
+                  redis_conf: $redis_conf,
+                  is_public: false,
+                  limits_memory: "384m",
+                  limits_memory_swap: "512m",
+                  limits_cpus: "0.50",
+                  instant_deploy: true
+                }'
+            )"
+            redis_response="$(coolify_request POST databases/redis "${redis_payload}")"
+            redis_uuid="$(jq -er '.uuid' <<<"${redis_response}")"
+          fi
+
+          [[ "${postgres_uuid}" =~ ^[a-z0-9]+$ ]]
+          [[ "${redis_uuid}" =~ ^[a-z0-9]+$ ]]
+
+          gh variable set COOLIFY_BEPING_POSTGRES18_UUID \
+            --repo "${GITHUB_REPOSITORY}" \
+            --body "${postgres_uuid}"
+          gh variable set COOLIFY_BEPING_REDIS8_UUID \
+            --repo "${GITHUB_REPOSITORY}" \
+            --body "${redis_uuid}"
+
+          echo "PostgreSQL 18 UUID: ${postgres_uuid}"
+          echo "Redis 8 UUID: ${redis_uuid}"
