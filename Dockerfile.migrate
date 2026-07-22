@@ -2,7 +2,7 @@
 # Run-once migration image. Used as an init step (init container / compose
 # run-once service) before the app images start. Keeps the prisma CLI out of
 # the app runtime images.
-ARG NODE_VERSION=24.18.0-alpine
+ARG NODE_VERSION=26.5.0-alpine
 
 FROM node:${NODE_VERSION} AS base
 ENV PNPM_HOME="/pnpm"

@@ -1,0 +1,11 @@
+{
+  "extends": "./tsconfig.shared.json",
+  "compilerOptions": {
+    "incremental": false,
+    "paths": {
+      "apps/*": ["./apps/*"],
+      "@app/common": ["./libs/common/src"],
+      "@app/common/*": ["./libs/common/src/*"]
+    }
+  }
+}

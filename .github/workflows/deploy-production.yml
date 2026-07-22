@@ -45,6 +45,8 @@ jobs:
           COOLIFY_TOKEN: ${{ secrets.COOLIFY_TOKEN }}
           DATABASE_URL: ${{ secrets.BEPING_DATABASE_URL }}
           DIRECT_URL: ${{ secrets.BEPING_DIRECT_URL }}
+          REDIS_URL: ${{ secrets.BEPING_REDIS_URL }}
+          FIREBASE_PRIVATE_KEY: ${{ secrets.FIREBASE_PRIVATE_KEY_ROTATION }}
           REGISTRY_USERNAME: ${{ secrets.HETZNER_REGISTRY_USERNAME }}
           REGISTRY_PASSWORD: ${{ secrets.HETZNER_REGISTRY_PASSWORD }}
           API_UUID: ${{ vars.COOLIFY_BEPING_API_UUID }}
@@ -60,6 +62,8 @@ jobs:
           test -n "${BEPING_DOCKER_HOST}"
           test -n "${DATABASE_URL}"
           test -n "${DIRECT_URL}"
+          test -n "${REDIS_URL}"
+          test -n "${FIREBASE_PRIVATE_KEY}"
           test -n "${API_UUID}"
           test -n "${NOTIFICATIONS_UUID}"
           test -n "${IMPORTER_UUID}"
@@ -127,6 +131,61 @@ jobs:
 
           echo "Timed out waiting for the importer to stop." >&2
           exit 1
+
+      - name: Synchronize production runtime secrets
+        env:
+          COOLIFY_TOKEN: ${{ secrets.COOLIFY_TOKEN }}
+          DATABASE_URL: ${{ secrets.BEPING_DATABASE_URL }}
+          DIRECT_URL: ${{ secrets.BEPING_DIRECT_URL }}
+          REDIS_URL: ${{ secrets.BEPING_REDIS_URL }}
+          FIREBASE_PRIVATE_KEY: ${{ secrets.FIREBASE_PRIVATE_KEY_ROTATION }}
+          API_UUID: ${{ vars.COOLIFY_BEPING_API_UUID }}
+          NOTIFICATIONS_UUID: ${{ vars.COOLIFY_BEPING_NOTIFICATIONS_UUID }}
+          IMPORTER_UUID: ${{ vars.COOLIFY_BEPING_IMPORTER_UUID }}
+        run: |
+          sync_common_envs() {
+            local application_uuid="$1"
+            jq -n \
+              --arg database_url "${DATABASE_URL}" \
+              --arg direct_url "${DIRECT_URL}" \
+              --arg redis_url "${REDIS_URL}" \
+              '{
+                data: [
+                  {key: "DATABASE_URL", value: $database_url, is_literal: true, is_runtime: true, is_buildtime: false},
+                  {key: "DIRECT_URL", value: $direct_url, is_literal: true, is_runtime: true, is_buildtime: false},
+                  {key: "REDIS_URL", value: $redis_url, is_literal: true, is_runtime: true, is_buildtime: false}
+                ]
+              }' | curl --fail-with-body --silent --show-error \
+              --output /dev/null \
+              -X PATCH \
+              -H "Authorization: Bearer ${COOLIFY_TOKEN}" \
+              -H "Content-Type: application/json" \
+              --data-binary @- \
+              "${COOLIFY_URL%/}/api/v1/applications/${application_uuid}/envs/bulk"
+          }
+
+          sync_common_envs "${API_UUID}"
+          sync_common_envs "${IMPORTER_UUID}"
+
+          jq -n \
+            --arg database_url "${DATABASE_URL}" \
+            --arg direct_url "${DIRECT_URL}" \
+            --arg redis_url "${REDIS_URL}" \
+            --arg firebase_private_key "${FIREBASE_PRIVATE_KEY}" \
+            '{
+              data: [
+                {key: "DATABASE_URL", value: $database_url, is_literal: true, is_runtime: true, is_buildtime: false},
+                {key: "DIRECT_URL", value: $direct_url, is_literal: true, is_runtime: true, is_buildtime: false},
+                {key: "REDIS_URL", value: $redis_url, is_literal: true, is_runtime: true, is_buildtime: false},
+                {key: "FIREBASE_PRIVATE_KEY", value: $firebase_private_key, is_literal: true, is_multiline: true, is_runtime: true, is_buildtime: false}
+              ]
+            }' | curl --fail-with-body --silent --show-error \
+              --output /dev/null \
+              -X PATCH \
+              -H "Authorization: Bearer ${COOLIFY_TOKEN}" \
+              -H "Content-Type: application/json" \
+              --data-binary @- \
+              "${COOLIFY_URL%/}/api/v1/applications/${NOTIFICATIONS_UUID}/envs/bulk"
 
       - name: Apply backward-compatible database migrations
         env:

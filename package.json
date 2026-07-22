@@ -8,7 +8,7 @@
   "packageManager": "pnpm@11.15.1",
   "main": "dist/main.js",
   "engines": {
-    "node": "24.x",
+    "node": "26.x",
     "npm": "11.x"
   },
   "scripts": {
@@ -27,7 +27,10 @@
     "start:prod:app-notifications": "node dist/apps/app-notifications/main",
     "lint": "eslint \"{apps,libs,test}/**/*.ts\"",
     "lint:fix": "eslint \"{apps,libs,test}/**/*.ts\" --fix",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "pnpm run typecheck:all",
+    "typecheck:ts6": "node node_modules/typescript/bin/tsc --noEmit",
+    "typecheck:ts7": "node node_modules/typescript-7/bin/tsc --project tsconfig.ts7.json --noEmit",
+    "typecheck:all": "pnpm run typecheck:ts6 && pnpm run typecheck:ts7",
     "test": "jest",
     "test:watch": "jest --watch",
     "test:coverage": "npm test -- --coverage",
@@ -106,7 +109,7 @@
     "@types/jest": "^30.0.0",
     "@types/lodash": "4.17.24",
     "@types/lunr": "2.3.7",
-    "@types/node": "24.13.3",
+    "@types/node": "26.1.1",
     "@types/response-time": "2.3.9",
     "@types/supertest": "7.2.1",
     "@types/user-agents": "1.0.4",
@@ -126,6 +129,7 @@
     "ts-node": "10.9.2",
     "tsconfig-paths": "4.2.0",
     "typescript": "^6.0.3",
+    "typescript-7": "npm:typescript@7.0.2",
     "typescript-eslint": "^8.65.0"
   },
   "jest": {

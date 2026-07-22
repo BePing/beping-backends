@@ -40,6 +40,7 @@ jobs:
     needs: changes
     if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
+    name: Lint and test (Node 26)
     steps:
       - uses: actions/checkout@v7
 
@@ -47,7 +48,7 @@ jobs:
 
       - uses: actions/setup-node@v7
         with:
-          node-version: '24.18'
+          node-version: '26.5'
           cache: pnpm
 
       - name: Install dependencies
@@ -59,8 +60,8 @@ jobs:
       - name: Lint
         run: pnpm run lint
 
-      - name: Typecheck
-        run: pnpm typecheck
+      - name: Typecheck with TypeScript 6 and 7
+        run: pnpm typecheck:all
 
       - name: Test
         run: pnpm test

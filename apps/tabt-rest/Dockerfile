@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1.4
 
-ARG NODE_VERSION=24.18.0-alpine
+ARG NODE_VERSION=26.5.0-alpine
 
 # ──────────────────────────────────────────────
 # base — node + pnpm (via corepack)
