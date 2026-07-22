@@ -9,13 +9,15 @@ This api is a bridge to the TabT SOAP API. It contacts TabT and cache results in
 
 ## Prerequisites
 
-- Node 22 LTS (https://nodejs.org/)
+- Node.js 26
+- pnpm 11
 
 ## Installation
 
 ```bash
 $ git clone https://github.com/Fllorent0D/TabT-Rest.git
-$ npm install
+$ corepack enable
+$ pnpm install
 ```
 
 Create your own environment file (`.env`) from the `.env.example`
@@ -24,26 +26,26 @@ Create your own environment file (`.env`) from the `.env.example`
 
 ```bash
 # development
-$ npm run start
+$ pnpm run start:tabt-rest
 
 # watch mode
-$ npm run start:dev
+$ pnpm run start:dev:tabt-rest
 
 # production mode
-$ npm run start:prod
+$ pnpm run start:prod:tabt-rest
 ```
 
 ## Test
 
 ```bash
 # unit tests
-$ npm run test
+$ pnpm test
 
 # e2e tests
-$ npm run test:e2e
+$ pnpm run test:e2e
 
 # test coverage
-$ npm run test:cov
+$ pnpm run test:coverage
 ```
 ### Start with pm2
 

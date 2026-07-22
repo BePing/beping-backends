@@ -13,8 +13,8 @@ Kuma.
 | Notifications | `registry.escapekey.app/escape-key/beping-notifications` | `notifications.beping.be` | Individual Coolify Docker Image application             |
 | Importer      | `registry.escapekey.app/escape-key/beping-importer`      |                        No | Individual Coolify worker application                   |
 | Migrations    | `registry.escapekey.app/escape-key/beping-migrate`       |                        No | Run once from the protected deployment workflow         |
-| PostgreSQL    | Coolify database resource                                |                        No | Persistent; never replaced with an app deployment       |
-| Redis         | Coolify database/service resource                        |                        No | Persistent; shared by cache, BullMQ and Nest transports |
+| PostgreSQL    | `postgres:18.4` Coolify database resource                |                        No | Persistent; data checksums enabled                      |
+| Redis         | `redis:8.8.0-alpine` Coolify database resource            |                        No | AOF + RDB; shared by cache, BullMQ and Nest transports  |
 
 Do not deploy the public applications as a Docker Compose stack. Coolify cannot
 perform rolling updates for Compose applications. The root
@@ -72,6 +72,9 @@ Required production environment configuration:
 | Variable | `COOLIFY_BEPING_API_UUID`                     |
 | Variable | `COOLIFY_BEPING_NOTIFICATIONS_UUID`           |
 | Variable | `COOLIFY_BEPING_IMPORTER_UUID`                |
+| Variable | `COOLIFY_BEPING_POSTGRES18_UUID`              |
+| Variable | `COOLIFY_BEPING_REDIS8_UUID`                  |
+| Variable | `BEPING_DATASTORE_GENERATION` (`v18-v8`)      |
 | Secret   | `COOLIFY_TOKEN` (read, write and deploy only) |
 | Secret   | `BEPING_DATABASE_URL`                         |
 | Secret   | `BEPING_DIRECT_URL`                           |
@@ -163,6 +166,19 @@ cache work, move PostgreSQL to a dedicated data node rather than increasing
 worker concurrency.
 
 ## Backup and rollback
+
+PostgreSQL 18 has a daily Coolify backup at `02:17` with seven local restore
+points by default. The manual `Manage production datastores` workflow can audit
+the effective configuration and trigger an immediate backup without exposing
+database credentials. Redis persists every write through AOF and also creates
+periodic RDB snapshots. Before a datastore cutover, keep explicit PostgreSQL
+custom-format and Redis RDB snapshots outside their data volumes.
+
+The previous PostgreSQL 16 and Redis 7 resources remain stopped, with their
+volumes intact, during the rollback window. Changing
+`BEPING_DATASTORE_GENERATION` back to `legacy` and running the production deploy
+workflow reconnects all three applications to them; do not start both datastore
+generations as writers at the same time.
 
 Before a schema or data-bearing deployment:
 

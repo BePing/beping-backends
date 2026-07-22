@@ -40,7 +40,7 @@
     "prisma:generate": "prisma generate"
   },
   "dependencies": {
-    "@google/genai": "^2.12.0",
+    "@google/genai": "^2.13.0",
     "@keyv/redis": "^5.1.6",
     "@nestjs/axios": "^4.0.1",
     "@nestjs/bullmq": "^11.0.4",
@@ -61,7 +61,7 @@
     "@xmldom/xmldom": "0.9.10",
     "axios": "1.18.1",
     "bcryptjs": "^3.0.3",
-    "bullmq": "^5.80.9",
+    "bullmq": "^5.80.10",
     "cache-manager": "^7.2.9",
     "class-transformer": "0.5.1",
     "class-validator": "0.15.1",

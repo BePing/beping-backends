@@ -9,6 +9,8 @@ on:
         type: choice
         options:
           - inventory
+          - backup-inventory
+          - configure-postgres-backup
           - provision
       project_uuid:
         description: Coolify project UUID (required for provision)
@@ -43,6 +45,7 @@ jobs:
       COOLIFY_TOKEN: ${{ secrets.COOLIFY_TOKEN }}
       POSTGRES_PASSWORD: ${{ secrets.BEPING_PG18_PASSWORD }}
       REDIS_PASSWORD: ${{ secrets.BEPING_REDIS8_PASSWORD }}
+      POSTGRES_UUID: ${{ vars.COOLIFY_BEPING_POSTGRES18_UUID }}
     steps:
       - name: Validate configuration
         run: |
@@ -73,6 +76,97 @@ jobs:
           echo 'Datastores:'
           coolify_get databases \
             | jq '[.[] | {uuid, name, database_type, image, status, environment_id, destination_id}]'
+
+      - name: Inventory PostgreSQL 18 backups
+        if: inputs.operation == 'backup-inventory'
+        run: |
+          test -n "${POSTGRES_UUID}"
+          [[ "${POSTGRES_UUID}" =~ ^[a-z0-9]+$ ]]
+
+          curl --fail-with-body --silent --show-error \
+            --connect-timeout 10 \
+            --max-time 30 \
+            -H "Authorization: Bearer ${COOLIFY_TOKEN}" \
+            "${COOLIFY_URL%/}/api/v1/databases/${POSTGRES_UUID}/backups" \
+            | jq '[.[] | {
+                uuid,
+                enabled,
+                frequency,
+                save_s3,
+                databases_to_backup,
+                timeout,
+                database_backup_retention_amount_locally,
+                database_backup_retention_days_locally,
+                database_backup_retention_max_storage_locally,
+                executions: [.executions[:5][]? | {uuid, status, created_at, finished_at, s3_uploaded}]
+              }]'
+
+      - name: Configure PostgreSQL 18 backups
+        if: inputs.operation == 'configure-postgres-backup'
+        run: |
+          test -n "${POSTGRES_UUID}"
+          [[ "${POSTGRES_UUID}" =~ ^[a-z0-9]+$ ]]
+
+          coolify_request() {
+            local method="$1"
+            local path="$2"
+            local payload="${3:-}"
+            local args=(
+              --fail-with-body
+              --silent
+              --show-error
+              --connect-timeout 10
+              --max-time 60
+              -X "${method}"
+              -H "Authorization: Bearer ${COOLIFY_TOKEN}"
+              -H 'Content-Type: application/json'
+            )
+            if [[ -n "${payload}" ]]; then
+              args+=(--data "${payload}")
+            fi
+            curl "${args[@]}" "${COOLIFY_URL%/}/api/v1/${path}"
+          }
+
+          backups="$(coolify_request GET "databases/${POSTGRES_UUID}/backups")"
+          backup_uuid="$(jq -r '.[0].uuid // empty' <<<"${backups}")"
+
+          if [[ -n "${backup_uuid}" ]]; then
+            [[ "${backup_uuid}" =~ ^[a-z0-9]+$ ]]
+            # Preserve an existing off-site destination and retention policy.
+            coolify_request PATCH \
+              "databases/${POSTGRES_UUID}/backups/${backup_uuid}" \
+              '{"enabled":true,"backup_now":true}' \
+              | jq '{uuid, message}'
+          else
+            coolify_request POST \
+              "databases/${POSTGRES_UUID}/backups" \
+              '{
+                "frequency":"17 2 * * *",
+                "enabled":true,
+                "save_s3":false,
+                "databases_to_backup":"beping",
+                "backup_now":true,
+                "database_backup_retention_amount_locally":7,
+                "database_backup_retention_days_locally":7,
+                "database_backup_retention_max_storage_locally":5,
+                "timeout":3600
+              }' \
+              | jq '{uuid, message}'
+          fi
+
+          echo 'Effective backup configuration:'
+          coolify_request GET "databases/${POSTGRES_UUID}/backups" \
+            | jq '[.[] | {
+                uuid,
+                enabled,
+                frequency,
+                save_s3,
+                databases_to_backup,
+                timeout,
+                database_backup_retention_amount_locally,
+                database_backup_retention_days_locally,
+                database_backup_retention_max_storage_locally
+              }]'
 
       - name: Provision PostgreSQL 18 and Redis 8
         if: inputs.operation == 'provision'
