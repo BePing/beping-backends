@@ -5,7 +5,7 @@ ARG NODE_VERSION=26.5.0-alpine
 # ──────────────────────────────────────────────
 # base — node + pnpm (via corepack)
 # ──────────────────────────────────────────────
-FROM node:${NODE_VERSION} AS base
+FROM --platform=$BUILDPLATFORM node:${NODE_VERSION} AS build-base
 ENV PNPM_HOME="/pnpm"
 ENV PATH="$PNPM_HOME:$PATH"
 # Install pnpm via npm, pinned to match repo packageManager.
@@ -15,7 +15,7 @@ WORKDIR /usr/src/app
 # ──────────────────────────────────────────────
 # deps — full install (dev+prod) with native toolchain, for building
 # ──────────────────────────────────────────────
-FROM base AS deps
+FROM build-base AS deps
 RUN apk add --no-cache python3 make g++ libc6-compat openssl
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 RUN --mount=type=cache,id=pnpm,target=/pnpm/store \
@@ -35,7 +35,11 @@ RUN pnpm run build:tabt-rest
 # ──────────────────────────────────────────────
 # prod-deps — production-only node_modules (flat, hoisted)
 # ──────────────────────────────────────────────
-FROM base AS prod-deps
+FROM node:${NODE_VERSION} AS prod-deps
+ENV PNPM_HOME="/pnpm"
+ENV PATH="$PNPM_HOME:$PATH"
+RUN npm install -g pnpm@11.15.1
+WORKDIR /usr/src/app
 RUN apk add --no-cache python3 make g++ libc6-compat openssl
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 RUN --mount=type=cache,id=pnpm,target=/pnpm/store \
