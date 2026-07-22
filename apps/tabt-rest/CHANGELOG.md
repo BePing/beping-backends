@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.2.2](https://github.com/BePing/beping-backends/compare/tabt-rest-v2.2.1...tabt-rest-v2.2.2) (2026-07-22)
+
+
+### Bug Fixes
+
+* deliver reliable localized notifications ([a098b1c](https://github.com/BePing/beping-backends/commit/a098b1ced27124edd82805263353edc61ad0d7bc))
+
 ## [2.2.1](https://github.com/BePing/beping-backends/compare/tabt-rest-v2.2.0...tabt-rest-v2.2.1) (2026-07-21)
 
 
