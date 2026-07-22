@@ -1,14 +1,14 @@
 # syntax=docker/dockerfile:1.4
 
-ARG NODE_VERSION=22.12.0-alpine
+ARG NODE_VERSION=24.18.0-alpine
 
 # ──────────────────────────────────────────────
-# base — node + pnpm (via npm; pnpm 10 pinned to match repo packageManager)
+# base — node + pnpm (via npm; pinned to match repo packageManager)
 # ──────────────────────────────────────────────
 FROM node:${NODE_VERSION} AS base
 ENV PNPM_HOME="/pnpm"
 ENV PATH="$PNPM_HOME:$PATH"
-RUN npm install -g pnpm@10.34.3
+RUN npm install -g pnpm@11.15.1
 WORKDIR /usr/src/app
 
 # ──────────────────────────────────────────────
@@ -16,7 +16,7 @@ WORKDIR /usr/src/app
 # ──────────────────────────────────────────────
 FROM base AS deps
 RUN apk add --no-cache python3 make g++ libc6-compat openssl
-COPY package.json pnpm-lock.yaml pnpm-workspace.yaml .npmrc ./
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 RUN --mount=type=cache,id=pnpm,target=/pnpm/store \
     pnpm install --frozen-lockfile
 
@@ -36,7 +36,7 @@ RUN pnpm run build:data-aftt-importer
 # ──────────────────────────────────────────────
 FROM base AS prod-deps
 RUN apk add --no-cache python3 make g++ libc6-compat openssl
-COPY package.json pnpm-lock.yaml pnpm-workspace.yaml .npmrc ./
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 RUN --mount=type=cache,id=pnpm,target=/pnpm/store \
     pnpm install --prod --frozen-lockfile
 

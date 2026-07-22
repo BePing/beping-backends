@@ -16,6 +16,4 @@ export interface TabtEvent<T = TabtEventPayloadTypes> {
 }
 
 export type TabtEventPayloadTypes =
-  | TeamMatchEventDTO
-  | NumericRankingEventDto
-  | RankingEstimationChangeEventDto;
+  TeamMatchEventDTO | NumericRankingEventDto | RankingEstimationChangeEventDto;

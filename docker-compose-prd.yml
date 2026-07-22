@@ -195,7 +195,7 @@ services:
       start_period: 30s
 
   cache:
-    image: 'redis:7.4.2-alpine@sha256:02419de7eddf55aa5bcf49efb74e88fa8d931b4d77c07eff8a6b2144472b6952'
+    image: 'redis:7.4.9-alpine@sha256:6ab0b6e7381779332f97b8ca76193e45b0756f38d4c0dcda72dbb3c32061ab99'
     restart: unless-stopped
     mem_limit: 256m
     cpus: 0.25
@@ -217,7 +217,7 @@ services:
       REDIS_PASSWORD: '${REDIS_PASSWORD}'
 
   postgres:
-    image: 'postgres:16.9-alpine@sha256:7c688148e5e156d0e86df7ba8ae5a05a2386aaec1e2ad8e6d11bdf10504b1fb7'
+    image: 'postgres:16.14-alpine@sha256:57c72fd2a128e416c7fcc499958864df5301e940bca0a56f58fddf30ffc07777'
     restart: unless-stopped
     shm_size: 256m
     mem_limit: 1024m

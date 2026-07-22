@@ -2,10 +2,35 @@
 # Flat node_modules (npm-like) so webpack externals, TS module resolution,
 # and cross-stage Docker copies behave like they did under npm.
 nodeLinker: hoisted
+strictPeerDependencies: false
+autoInstallPeers: false
+verifyDepsBeforeRun: false
+minimumReleaseAge: 1440
+minimumReleaseAgeStrict: false
+
+peerDependencyRules:
+  ignoreMissing:
+    - react
+    - react-dom
+
+overrides:
+  '@hono/node-server@1': 1.19.13
+  body-parser: 2.3.0
+  'brace-expansion@2': 2.1.2
+  'brace-expansion@5': 5.0.7
+  fast-uri: 3.1.4
+  hono: 4.12.27
+  js-yaml: 4.3.0
+  multer: 2.2.0
+  protobufjs: 7.6.5
+  qs: 6.15.2
+  undici: 7.28.0
+  'uuid@<11.1.1': 11.1.1
 
 # Deps permitted to run install scripts.
 allowBuilds:
   '@firebase/util': true
+  '@google/genai': true
   '@openapitools/openapi-generator-cli': true
   '@prisma/engines': true
   '@scarf/scarf': true

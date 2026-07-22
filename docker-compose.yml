@@ -95,7 +95,7 @@ services:
     ports:
       - "9050:9050"
   cache:
-    image: redis:7-alpine
+    image: redis:7.4.9-alpine
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
     ports:
@@ -103,7 +103,7 @@ services:
     volumes:
       - cache-data:/data
   postgres:
-    image: postgres:16
+    image: postgres:16.14-alpine
     environment:
       POSTGRES_DB: tabt_rest
       POSTGRES_USER: postgres
