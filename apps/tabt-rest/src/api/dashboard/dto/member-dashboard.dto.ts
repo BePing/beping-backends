@@ -5,7 +5,7 @@ import {
   TeamMatchesEntry,
 } from '../../../entity/tabt-soap/TabTAPI_Port';
 import { ResponseDTO } from './common.dto';
-import { WeeklyRankingV1Response } from 'apps/tabt-rest/src/services/members/numeric-ranking.service';
+import { WeeklyRankingV1Response } from '../../../services/members/numeric-ranking.service';
 
 export class WinLossSummaryDTOV1 {
   @ApiProperty({ type: Number })

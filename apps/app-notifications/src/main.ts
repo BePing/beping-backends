@@ -3,14 +3,14 @@ import { NestExpressApplication } from '@nestjs/platform-express';
 import { AppModule } from './app.module';
 import { MicroserviceOptions, Transport } from '@nestjs/microservices';
 import { ValidationPipe } from '@nestjs/common';
-import { getRedisConnectionOptions, ServiceMetrics } from '@app/common';
+import { getRedisConnectionOptions, getServiceMetrics } from '@app/common';
 
 async function bootstrap() {
   // Create HTTP application for external API access
   const app = await NestFactory.create<NestExpressApplication>(AppModule, {
     bufferLogs: true,
   });
-  const metrics = new ServiceMetrics('beping-notifications');
+  const metrics = getServiceMetrics('beping-notifications');
   metrics.instrumentHttp(app);
   // Configure Express v5 query parser to support nested objects and arrays
   app.set('query parser', 'extended');

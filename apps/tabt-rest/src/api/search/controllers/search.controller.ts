@@ -9,6 +9,8 @@ import {
 @ApiTags('search')
 @Controller('search')
 export class SearchController {
+  private static readonly MAX_QUERY_LENGTH = 100;
+
   constructor(private readonly searchService: SearchService) {}
 
   @Get()
@@ -39,15 +41,27 @@ export class SearchController {
     @Query('q') query: string,
     @Query('types') types?: string,
   ): Promise<SearchResultDTO> {
-    if (!query) {
+    if (!query || typeof query !== 'string') {
       throw new BadRequestException('Search query is required');
     }
-    if (query.length < 3) {
+    const normalizedQuery = query.trim();
+    if (normalizedQuery.length < 3) {
       throw new BadRequestException(
         'Search query must be at least 3 characters long',
       );
     }
+    if (normalizedQuery.length > SearchController.MAX_QUERY_LENGTH) {
+      throw new BadRequestException(
+        `Search query must not exceed ${SearchController.MAX_QUERY_LENGTH} characters`,
+      );
+    }
     let searchTypes: SearchType[] | undefined;
+
+    if (types && typeof types !== 'string') {
+      throw new BadRequestException(
+        'Search types must be a comma-separated string',
+      );
+    }
 
     if (types) {
       const requestedTypes = types
@@ -68,6 +82,6 @@ export class SearchController {
       searchTypes = requestedTypes as SearchType[];
     }
 
-    return this.searchService.search(query, searchTypes);
+    return this.searchService.search(normalizedQuery, searchTypes);
   }
 }

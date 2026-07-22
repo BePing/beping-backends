@@ -20,7 +20,7 @@ import { AllExceptionsFilter } from './common/filter/all-exceptions.filter';
     ScheduleModule.forRoot(),
     LoggerModule.forRoot({
       pinoHttp: {
-        level: 'debug',
+        level: process.env.NODE_ENV === 'production' ? 'info' : 'debug',
       },
     }),
     ConfigModule.forRoot(),

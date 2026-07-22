@@ -5,6 +5,7 @@ import { Queue, JobsOptions } from 'bullmq';
 import { PlayerCategory } from '@app/common';
 import { ConfigService } from '@nestjs/config';
 import { ImportQueueStatusService } from '../common/import-queue-status.service';
+import { randomUUID } from 'node:crypto';
 
 interface QueueStatus {
   waiting: number;
@@ -39,8 +40,9 @@ export class ResultsSyncCronService implements OnModuleInit {
   ) {}
 
   async onModuleInit(): Promise<void> {
-    // Always drain stale jobs on startup to prevent queue buildup
-    await this.drainStaleJobs();
+    // Waiting and delayed jobs are durable work and must survive deployments.
+    // Only prune old terminal jobs on startup.
+    await this.cleanOldJobs();
 
     const syncOnStart = this.configService.get('SYNC_RESULTS_ON_START', false);
     if (syncOnStart === true || syncOnStart === 'true') {
@@ -48,33 +50,13 @@ export class ResultsSyncCronService implements OnModuleInit {
       this.logger.log(
         `Results sync scheduled to start in ${delayMs / 1000}s...`,
       );
-      setTimeout(() => this.syncResults(), delayMs);
+      setTimeout(() => {
+        void this.syncResults().catch((error) =>
+          this.logger.error('Startup results sync failed', error),
+        );
+      }, delayMs);
     } else {
       this.logger.log('SYNC_RESULTS_ON_START is not enabled.');
-    }
-  }
-
-  /**
-   * Drain stale waiting/delayed jobs on startup
-   */
-  private async drainStaleJobs(): Promise<void> {
-    const status = await this.getQueueStatus();
-
-    if (status.waiting > 0 || status.delayed > 0) {
-      this.logger.warn(
-        `Draining stale jobs on startup: waiting=${status.waiting}, delayed=${status.delayed}`,
-      );
-
-      // Remove all waiting and delayed jobs
-      await this.queue.drain(true);
-
-      // Also clean old completed/failed
-      await Promise.all([
-        this.queue.clean(0, 0, 'delayed'),
-        this.queue.clean(0, 0, 'wait'),
-      ]);
-
-      this.logger.log('Queue drained successfully');
     }
   }
 
@@ -130,8 +112,14 @@ export class ResultsSyncCronService implements OnModuleInit {
   private async addJobForCategory(
     playerCategory: PlayerCategory,
     delayMs: number = 0,
+    runKey: string = this.currentImportDate(),
   ): Promise<void> {
-    const jobId = `results-${playerCategory}-${Date.now()}`;
+    const jobId = `results-${playerCategory}-${runKey}`;
+
+    if (await this.queue.getJob(jobId)) {
+      this.logger.log(`Job ${jobId} is already scheduled; skipping duplicate`);
+      return;
+    }
 
     const options: JobsOptions = {
       ...this.JOB_OPTIONS,
@@ -144,6 +132,15 @@ export class ResultsSyncCronService implements OnModuleInit {
     this.logger.log(
       `Added job ${jobId} for ${playerCategory}${delayMs > 0 ? ` (delayed ${delayMs}ms)` : ''}`,
     );
+  }
+
+  private currentImportDate(): string {
+    return new Intl.DateTimeFormat('en-CA', {
+      timeZone: process.env.IMPORT_TIME_ZONE || 'Europe/Brussels',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    }).format(new Date());
   }
 
   /**
@@ -175,7 +172,8 @@ export class ResultsSyncCronService implements OnModuleInit {
       return msg;
     }
 
-    await this.addJobForCategory(playerCategory);
+    const runKey = `manual-${Date.now()}-${randomUUID()}`;
+    await this.addJobForCategory(playerCategory, 0, runKey);
     return `Sync triggered for ${playerCategory}`;
   }
 

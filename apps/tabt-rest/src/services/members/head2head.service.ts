@@ -1,4 +1,10 @@
-import { Injectable, Logger } from '@nestjs/common';
+import {
+  HttpException,
+  HttpStatus,
+  Injectable,
+  Logger,
+  ServiceUnavailableException,
+} from '@nestjs/common';
 import { HttpService } from '@nestjs/axios';
 import { firstValueFrom } from 'rxjs';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
@@ -21,6 +27,11 @@ export interface ExtractedMatchInfo {
   season?: number;
   matchId: string;
 }
+
+type MatchDetailResult =
+  | { status: 'found'; match: TeamMatchesEntry }
+  | { status: 'missing' }
+  | { status: 'failed'; error: unknown };
 
 export class PlayersInfo {
   @ApiProperty()
@@ -104,7 +115,11 @@ export class Head2headService {
     playerUniqueIndex: number,
     opponentPlayerUniqueIndex: number,
   ): Promise<Head2HeadData> {
-    const cacheKey = `${CACHE_PREFIX}:${playerUniqueIndex}-${opponentPlayerUniqueIndex}:${new Date().toISOString()}`;
+    const [canonicalPlayer, canonicalOpponent] = [
+      playerUniqueIndex,
+      opponentPlayerUniqueIndex,
+    ].sort((a, b) => a - b);
+    const cacheKey = `${CACHE_PREFIX}:${canonicalPlayer}-${canonicalOpponent}`;
 
     const getter = async (): Promise<Head2HeadData> => {
       try {
@@ -112,8 +127,8 @@ export class Head2headService {
           `Getting head-to-head results for players ${playerUniqueIndex} vs ${opponentPlayerUniqueIndex}`,
         );
         const htmlPage = await this.getPageFromAFTT(
-          playerUniqueIndex,
-          opponentPlayerUniqueIndex,
+          canonicalPlayer,
+          canonicalOpponent,
         );
         this.logger.debug('HTML page fetched, extracting data...');
 
@@ -135,16 +150,36 @@ export class Head2headService {
         this.logger.debug(
           `Fetching details for ${matchesExtracted.length} matches`,
         );
-        const matchesFound = await Promise.all(
-          matchesExtracted.map((m) => this.getMatchDetails(m)),
+        const matchDetailResults = await this.mapWithConcurrency(
+          matchesExtracted,
+          4,
+          (match) => this.getMatchDetails(match),
         );
 
-        const teamMatchEntries = matchesFound.filter(
-          (match): match is TeamMatchesEntry => !!match,
+        const failedDetails = matchDetailResults.filter(
+          (result) => result.status === 'failed',
+        );
+        if (failedDetails.length > 0) {
+          throw new ServiceUnavailableException(
+            `Unable to retrieve ${failedDetails.length} of ${matchDetailResults.length} match details`,
+          );
+        }
+
+        const teamMatchEntries = matchDetailResults
+          .filter(
+            (
+              result,
+            ): result is Extract<MatchDetailResult, { status: 'found' }> =>
+              result.status === 'found',
+          )
+          .map((result) => result.match);
+
+        const missingDetails = matchDetailResults.filter(
+          (result) => result.status === 'missing',
         );
 
         this.logger.debug(
-          `Found ${teamMatchEntries.length} valid match entries out of ${matchesFound.length} attempts`,
+          `Found ${teamMatchEntries.length} valid match entries; ${missingDetails.length} were legitimately absent`,
         );
 
         if (teamMatchEntries.length === 0) {
@@ -172,11 +207,15 @@ export class Head2headService {
       }
     };
 
-    return this.cacheService.getFromCacheOrGetAndCacheResult(
+    const result = await this.cacheService.getFromCacheOrGetAndCacheResult(
       cacheKey,
       getter,
       TTL_DURATION.EIGHT_HOURS,
     );
+
+    return playerUniqueIndex === canonicalPlayer
+      ? result
+      : this.reversePerspective(result);
   }
 
   /**
@@ -189,33 +228,29 @@ export class Head2headService {
     try {
       const url = `${AFTT_BASE_URL}?menu=4&head=1&player_1=${playerA}&player_2=${playerB}`;
       this.logger.debug(`Fetching AFTT page from ${url}`);
+      const configuredTimeout = Number(
+        this.configService.get('AFTT_HEAD2HEAD_TIMEOUT_MS') ?? 5000,
+      );
+      const timeout =
+        Number.isFinite(configuredTimeout) && configuredTimeout > 0
+          ? configuredTimeout
+          : 5000;
       const result = await firstValueFrom(
-        this.httpService.post(
-          url,
-          {
-            responseType: 'text',
-            maxRedirects: 0,
+        this.httpService.post(url, null, {
+          responseType: 'text',
+          maxRedirects: 0,
+          timeout,
+          headers: {
+            'user-agent': UserAgentsUtil.random,
           },
-          {
-            headers: {
-              'user-agent': UserAgentsUtil.random,
-            },
-          },
-        ),
+          httpsAgent:
+            this.configService.get('USE_SOCKS_PROXY') === 'true'
+              ? this.socksProxyService.createHttpsAgent()
+              : undefined,
+        }),
       );
       const htmlLength = result.data?.length || 0;
-      this.logger.debug(
-        `Fetched AFTT page: ${htmlLength} characters, first 500 chars: ${result.data?.substring(0, 500)}`,
-      );
-      // Log a sample of the HTML around potential match links
-      const matchLinkSample = result.data?.match(
-        /<A[^>]*href="[^"]*season=[^"]*"[^>]*>.*?<\/A>/i,
-      );
-      if (matchLinkSample) {
-        this.logger.debug(`Sample match link found: ${matchLinkSample[0]}`);
-      } else {
-        this.logger.warn('No match link pattern found in HTML');
-      }
+      this.logger.debug(`Fetched AFTT page: ${htmlLength} characters`);
       return result.data;
     } catch (error) {
       this.logger.error(
@@ -224,6 +259,75 @@ export class Head2headService {
       );
       throw new Error('Failed to fetch data from AFTT');
     }
+  }
+
+  private async mapWithConcurrency<T, R>(
+    values: T[],
+    concurrency: number,
+    mapper: (value: T) => Promise<R>,
+  ): Promise<R[]> {
+    const results = new Array<R>(values.length);
+    let nextIndex = 0;
+
+    const worker = async () => {
+      while (nextIndex < values.length) {
+        const index = nextIndex++;
+        results[index] = await mapper(values[index]);
+      }
+    };
+
+    await Promise.all(
+      Array.from({ length: Math.min(concurrency, values.length) }, () =>
+        worker(),
+      ),
+    );
+    return results;
+  }
+
+  private reversePerspective(data: Head2HeadData): Head2HeadData {
+    const reversedHistory = data.matchEntryHistory.map((entry) => ({
+      ...entry,
+      date: new Date(entry.date),
+      playerRanking: entry.opponentRanking,
+      opponentRanking: entry.playerRanking,
+      score: this.reverseScore(entry.score),
+    }));
+    const originalDefeats = data.matchEntryHistory
+      .filter((entry) => this.isDefeat(entry.score))
+      .map((entry) => entry.date);
+
+    return {
+      ...data,
+      victoryCount: data.defeatCount,
+      defeatCount: data.victoryCount,
+      lastVictory: data.lastDefeat,
+      firstVictory:
+        originalDefeats.length > 0
+          ? new Date(
+              Math.min(
+                ...originalDefeats.map((date) => new Date(date).getTime()),
+              ),
+            )
+          : undefined,
+      lastDefeat: data.lastVictory,
+      matchEntryHistory: reversedHistory,
+      playersInfo: {
+        playerUniqueIndex: data.playersInfo.opponentPlayerUniqueIndex,
+        opponentPlayerUniqueIndex: data.playersInfo.playerUniqueIndex,
+        playerName: data.playersInfo.opponentPlayerName,
+        opponentPlayerName: data.playersInfo.playerName,
+      },
+    };
+  }
+
+  private reverseScore(score?: string): string | undefined {
+    const match = score?.match(/^(\d+)\s*-\s*(\d+)$/);
+    return match ? `${match[2]} - ${match[1]}` : score;
+  }
+
+  private isDefeat(score?: string): boolean {
+    const match = score?.match(/^(\d+)\s*-\s*(\d+)$/);
+    return !!match && Number(match[1]) < Number(match[2]);
   }
 
   /**
@@ -402,7 +506,7 @@ export class Head2headService {
    */
   private async getMatchDetails(
     matchExtracted: ExtractedMatchInfo,
-  ): Promise<TeamMatchesEntry | undefined> {
+  ): Promise<MatchDetailResult> {
     try {
       this.logger.debug(
         `Getting match details for: season=${matchExtracted.season}, divisionId=${matchExtracted.divisionId}, weekName=${matchExtracted.weekName}, matchId=${matchExtracted.matchId}`,
@@ -422,7 +526,18 @@ export class Head2headService {
         `Querying matches with params: ${JSON.stringify(queryParams)}`,
       );
 
-      const matches = await this.matchService.getMatches(queryParams);
+      const configuredTimeout = Number(
+        this.configService.get('AFTT_MATCH_DETAILS_TIMEOUT_MS') ?? 5000,
+      );
+      const timeoutMs =
+        Number.isFinite(configuredTimeout) && configuredTimeout > 0
+          ? configuredTimeout
+          : 5000;
+      const matches = await this.withTimeout(
+        this.matchService.getMatches(queryParams),
+        timeoutMs,
+        `Match details request timed out after ${timeoutMs}ms`,
+      );
 
       this.logger.debug(
         `Found ${matches.length} matches for the query. Looking for matchId: ${matchExtracted.matchId}`,
@@ -449,14 +564,47 @@ export class Head2headService {
         );
       }
 
-      return foundMatch;
+      return foundMatch
+        ? { status: 'found', match: foundMatch }
+        : { status: 'missing' };
     } catch (error) {
+      if (
+        error instanceof HttpException &&
+        error.getStatus() === HttpStatus.NOT_FOUND
+      ) {
+        return { status: 'missing' };
+      }
+      const message = error instanceof Error ? error.message : 'Unknown error';
       this.logger.error(
-        `Failed to get match details for matchId=${matchExtracted.matchId}: ${error.message}`,
-        error.stack,
+        `Failed to get match details for matchId=${matchExtracted.matchId}: ${message}`,
+        error instanceof Error ? error.stack : undefined,
       );
-      return undefined;
+      return { status: 'failed', error };
     }
+  }
+
+  private withTimeout<T>(
+    promise: Promise<T>,
+    timeoutMs: number,
+    timeoutMessage: string,
+  ): Promise<T> {
+    return new Promise<T>((resolve, reject) => {
+      const timer = setTimeout(
+        () => reject(new Error(timeoutMessage)),
+        timeoutMs,
+      );
+
+      promise.then(
+        (value) => {
+          clearTimeout(timer);
+          resolve(value);
+        },
+        (error) => {
+          clearTimeout(timer);
+          reject(error);
+        },
+      );
+    });
   }
 
   /**

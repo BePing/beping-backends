@@ -65,7 +65,7 @@ services:
         - CMD
         - wget
         - '--spider'
-        - 'http://127.0.0.1:3050/v1/health/live'
+        - 'http://127.0.0.1:3050/${API_PREFIX:-api}/v1/health/live'
       interval: 15s
       timeout: 3s
       retries: 3

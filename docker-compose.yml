@@ -78,7 +78,7 @@ services:
       AFTT_DATA_PASSWORD: ${AFTT_DATA_PASSWORD}
       NODE_ENV: dev
       AFTT_WSDL: https://api.aftt.be/?wsdl
-      VTLL_WSDL: https://api.aftt.be/?wsdl
+      VTLL_WSDL: https://api.vttl.be/?wsdl
       USE_SOCKS_PROXY: false
       PORT: 3050
       SOCKS_PROXY_HOST: torproxy

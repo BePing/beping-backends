@@ -28,7 +28,7 @@ export class MembersListSyncCron implements OnModuleInit {
   ) {}
 
   async onModuleInit(): Promise<void> {
-    await this.drainStaleJobs();
+    await this.cleanOldJobs();
 
     const syncOnStart = this.configService.get('SYNC_MEMBERS_ON_START', false);
     if (syncOnStart === true || syncOnStart === 'true') {
@@ -36,7 +36,9 @@ export class MembersListSyncCron implements OnModuleInit {
         `Members sync scheduled to start in ${this.STARTUP_DELAY_MS / 1000}s...`,
       );
       setTimeout(() => {
-        void this.syncMembers();
+        void this.syncMembers().catch((error) =>
+          this.logger.error('Startup members sync failed', error),
+        );
       }, this.STARTUP_DELAY_MS);
     } else {
       this.logger.log('SYNC_MEMBERS_ON_START is not enabled. ');
@@ -76,7 +78,12 @@ export class MembersListSyncCron implements OnModuleInit {
     playerCategory: PlayerCategory,
     delayMs: number,
   ): Promise<void> {
-    const jobId = `members-${playerCategory}-${Date.now()}`;
+    const jobId = `members-${playerCategory}-${this.currentImportDate()}`;
+
+    if (await this.queue.getJob(jobId)) {
+      this.logger.log(`Job ${jobId} is already scheduled; skipping duplicate`);
+      return;
+    }
 
     await this.queue.add(
       'members',
@@ -93,27 +100,25 @@ export class MembersListSyncCron implements OnModuleInit {
     );
   }
 
-  private async drainStaleJobs(): Promise<void> {
-    const [waiting, delayed] = await Promise.all([
-      this.queue.getWaitingCount(),
-      this.queue.getDelayedCount(),
-    ]);
+  private currentImportDate(): string {
+    return new Intl.DateTimeFormat('en-CA', {
+      timeZone: process.env.IMPORT_TIME_ZONE || 'Europe/Brussels',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    }).format(new Date());
+  }
 
-    if (waiting === 0 && delayed === 0) {
-      return;
+  private async cleanOldJobs(): Promise<void> {
+    const gracePeriod = 24 * 60 * 60 * 1000;
+    const [completed, failed] = await Promise.all([
+      this.queue.clean(gracePeriod, 0, 'completed'),
+      this.queue.clean(gracePeriod, 0, 'failed'),
+    ]);
+    const cleaned = completed.length + failed.length;
+    if (cleaned > 0) {
+      this.logger.log(`Cleaned ${cleaned} old member jobs from queue`);
     }
-
-    this.logger.warn(
-      `Draining stale member jobs on startup: waiting=${waiting}, delayed=${delayed}`,
-    );
-
-    await this.queue.drain(true);
-    await Promise.all([
-      this.queue.clean(0, 0, 'delayed'),
-      this.queue.clean(0, 0, 'wait'),
-    ]);
-
-    this.logger.log('Members queue drained successfully');
   }
 
   /*

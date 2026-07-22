@@ -13,7 +13,7 @@ import { ContextService } from '../../../common/context/context.service';
 import { SocksProxyHttpClient } from '../../../common/socks-proxy/socks-proxy-http-client';
 import { ConfigService } from '@nestjs/config';
 import { UserAgentsUtil } from '../../../common/utils/user-agents.util';
-import { PrismaService } from '@app/common';
+import { CacheService, PrismaService } from '@app/common';
 
 @ApiTags('Health')
 @Controller({
@@ -30,6 +30,7 @@ export class HealthController {
     private readonly socksProxyService: SocksProxyHttpClient,
     private readonly configService: ConfigService,
     private readonly prismaService: PrismaService,
+    private readonly cacheService: CacheService,
   ) {}
 
   @Get('live')
@@ -45,6 +46,10 @@ export class HealthController {
     return this.health.check([
       () =>
         this.prismaHealthIndicator.pingCheck('database', this.prismaService),
+      async () => {
+        await this.cacheService.getFromCache('__health:readiness');
+        return { cache: { status: 'up' as const } };
+      },
     ]);
   }
 
