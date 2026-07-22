@@ -150,12 +150,28 @@ jobs:
           coolify_db_container="$(
             docker ps --filter name=coolify-db --format '{{.Names}}' | head -n1
           )"
-          test -n "${coolify_db_container}"
-          s3_storage_uuid="$(
-            docker exec "${coolify_db_container}" \
-              psql -U coolify -d coolify -At \
-              -c "SELECT uuid FROM s3_storages WHERE id = ${legacy_s3_id};"
-          )"
+          if [[ -n "${coolify_db_container}" ]]; then
+            echo 'Resolving the S3 storage on the local Coolify control plane.'
+            s3_storage_uuid="$(
+              docker exec "${coolify_db_container}" \
+                psql -U coolify -d coolify -At \
+                -c "SELECT uuid FROM s3_storages WHERE id = ${legacy_s3_id};"
+            )"
+          else
+            echo 'Resolving the S3 storage through the private control-plane SSH endpoint.'
+            control_plane_host="$(
+              sed -E 's#^https?://([^:/]+).*#\1#' <<<"${COOLIFY_URL}"
+            )"
+            [[ "${control_plane_host}" =~ ^[0-9a-fA-F:.]+$ ]]
+            s3_storage_uuid="$(
+              ssh \
+                -o BatchMode=yes \
+                -o ConnectTimeout=10 \
+                -o StrictHostKeyChecking=yes \
+                "root@${control_plane_host}" \
+                "docker exec coolify-db psql -U coolify -d coolify -At -c 'SELECT uuid FROM s3_storages WHERE id = ${legacy_s3_id};'"
+            )"
+          fi
           [[ "${s3_storage_uuid}" =~ ^[a-z0-9]+$ ]]
 
           backup_payload="$(
