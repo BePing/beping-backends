@@ -168,11 +168,13 @@ worker concurrency.
 ## Backup and rollback
 
 PostgreSQL 18 has a daily Coolify backup at `02:17` with seven local restore
-points by default. The manual `Manage production datastores` workflow can audit
-the effective configuration and trigger an immediate backup without exposing
-database credentials. Redis persists every write through AOF and also creates
-periodic RDB snapshots. Before a datastore cutover, keep explicit PostgreSQL
-custom-format and Redis RDB snapshots outside their data volumes.
+points and 30 days of off-site retention in the dedicated BePing object-storage
+bucket. The manual `Manage production datastores` workflow can audit the
+effective configuration and trigger an immediate backup without exposing
+database or object-storage credentials. Redis persists every write through AOF
+and also creates periodic RDB snapshots. Before a datastore cutover, keep
+explicit PostgreSQL custom-format and Redis RDB snapshots outside their data
+volumes.
 
 The previous PostgreSQL 16 and Redis 7 resources remain stopped, with their
 volumes intact, during the rollback window. Changing

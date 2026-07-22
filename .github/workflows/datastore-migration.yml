@@ -46,6 +46,7 @@ jobs:
       POSTGRES_PASSWORD: ${{ secrets.BEPING_PG18_PASSWORD }}
       REDIS_PASSWORD: ${{ secrets.BEPING_REDIS8_PASSWORD }}
       POSTGRES_UUID: ${{ vars.COOLIFY_BEPING_POSTGRES18_UUID }}
+      LEGACY_POSTGRES_UUID: jkz4iipmqv48zeeq9soyvtqz
     steps:
       - name: Validate configuration
         run: |
@@ -83,16 +84,19 @@ jobs:
           test -n "${POSTGRES_UUID}"
           [[ "${POSTGRES_UUID}" =~ ^[a-z0-9]+$ ]]
 
-          curl --fail-with-body --silent --show-error \
-            --connect-timeout 10 \
-            --max-time 30 \
-            -H "Authorization: Bearer ${COOLIFY_TOKEN}" \
-            "${COOLIFY_URL%/}/api/v1/databases/${POSTGRES_UUID}/backups" \
-            | jq '[.[] | {
+          for database_uuid in "${POSTGRES_UUID}" "${LEGACY_POSTGRES_UUID}"; do
+            echo "Backup configuration for ${database_uuid}:"
+            curl --fail-with-body --silent --show-error \
+              --connect-timeout 10 \
+              --max-time 30 \
+              -H "Authorization: Bearer ${COOLIFY_TOKEN}" \
+              "${COOLIFY_URL%/}/api/v1/databases/${database_uuid}/backups" \
+              | jq '[.[] | {
                 uuid,
                 enabled,
                 frequency,
                 save_s3,
+                s3_storage_id,
                 databases_to_backup,
                 timeout,
                 database_backup_retention_amount_locally,
@@ -100,6 +104,7 @@ jobs:
                 database_backup_retention_max_storage_locally,
                 executions: [.executions[:5][]? | {uuid, status, created_at, finished_at, s3_uploaded}]
               }]'
+          done
 
       - name: Configure PostgreSQL 18 backups
         if: inputs.operation == 'configure-postgres-backup'
@@ -129,28 +134,63 @@ jobs:
 
           backups="$(coolify_request GET "databases/${POSTGRES_UUID}/backups")"
           backup_uuid="$(jq -r '.[0].uuid // empty' <<<"${backups}")"
+          legacy_backups="$(coolify_request GET "databases/${LEGACY_POSTGRES_UUID}/backups")"
+          legacy_s3_id="$(
+            jq -r '[.[] | select(.save_s3 == true and .s3_storage_id != null)][0].s3_storage_id // empty' \
+              <<<"${legacy_backups}"
+          )"
+
+          test -n "${legacy_s3_id}"
+          [[ "${legacy_s3_id}" =~ ^[0-9]+$ ]]
+
+          # Coolify v4.1 exposes the storage's numeric relation on backup
+          # configurations but accepts its public UUID on writes. Resolve that
+          # UUID read-only from the control-plane database on the protected
+          # self-hosted runner; credentials never leave the database container.
+          coolify_db_container="$(
+            docker ps --filter name=coolify-db --format '{{.Names}}' | head -n1
+          )"
+          test -n "${coolify_db_container}"
+          s3_storage_uuid="$(
+            docker exec "${coolify_db_container}" \
+              psql -U coolify -d coolify -At \
+              -c "SELECT uuid FROM s3_storages WHERE id = ${legacy_s3_id};"
+          )"
+          [[ "${s3_storage_uuid}" =~ ^[a-z0-9]+$ ]]
+
+          backup_payload="$(
+            jq -n \
+              --arg s3_storage_uuid "${s3_storage_uuid}" \
+              '{
+                enabled: true,
+                save_s3: true,
+                s3_storage_uuid: $s3_storage_uuid,
+                backup_now: true,
+                database_backup_retention_amount_s3: 14,
+                database_backup_retention_days_s3: 30,
+                database_backup_retention_max_storage_s3: 25
+              }'
+          )"
 
           if [[ -n "${backup_uuid}" ]]; then
             [[ "${backup_uuid}" =~ ^[a-z0-9]+$ ]]
-            # Preserve an existing off-site destination and retention policy.
             coolify_request PATCH \
               "databases/${POSTGRES_UUID}/backups/${backup_uuid}" \
-              '{"enabled":true,"backup_now":true}' \
+              "${backup_payload}" \
               | jq '{uuid, message}'
           else
-            coolify_request POST \
-              "databases/${POSTGRES_UUID}/backups" \
-              '{
-                "frequency":"17 2 * * *",
-                "enabled":true,
-                "save_s3":false,
-                "databases_to_backup":"beping",
-                "backup_now":true,
-                "database_backup_retention_amount_locally":7,
-                "database_backup_retention_days_locally":7,
-                "database_backup_retention_max_storage_locally":5,
-                "timeout":3600
-              }' \
+            create_payload="$(
+              jq \
+                '. + {
+                  frequency: "17 2 * * *",
+                  databases_to_backup: "beping",
+                  database_backup_retention_amount_locally: 7,
+                  database_backup_retention_days_locally: 7,
+                  database_backup_retention_max_storage_locally: 5,
+                  timeout: 3600
+                }' <<<"${backup_payload}"
+            )"
+            coolify_request POST "databases/${POSTGRES_UUID}/backups" "${create_payload}" \
               | jq '{uuid, message}'
           fi
 
@@ -161,11 +201,15 @@ jobs:
                 enabled,
                 frequency,
                 save_s3,
+                s3_storage_id,
                 databases_to_backup,
                 timeout,
                 database_backup_retention_amount_locally,
                 database_backup_retention_days_locally,
-                database_backup_retention_max_storage_locally
+                database_backup_retention_max_storage_locally,
+                database_backup_retention_amount_s3,
+                database_backup_retention_days_s3,
+                database_backup_retention_max_storage_s3
               }]'
 
       - name: Provision PostgreSQL 18 and Redis 8
