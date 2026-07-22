@@ -1,30 +1,20 @@
 import { HttpService } from '@nestjs/axios';
 import { firstValueFrom } from 'rxjs';
-import { Logger, Inject } from '@nestjs/common';
-import { PlayerCategory, ImportType } from '@app/common';
+import { Logger } from '@nestjs/common';
+import { PlayerCategory, ImportType, estimateLetterRanking } from '@app/common';
 import { OnWorkerEvent, Processor, WorkerHost } from '@nestjs/bullmq';
 import { PrismaService } from '@app/common';
 import { Job } from 'bullmq';
 import { CacheService } from '@app/common';
 import { createHash } from 'crypto';
-import { ClientProxy } from '@nestjs/microservices';
 import { PERFORMANCE_CONFIG } from '../constants';
 import { ImportExecutionCoordinatorService } from '../common/import-execution-coordinator.service';
 import { PostgresCopyService } from '../common/postgres-copy.service';
 import { Client } from 'pg';
 
-interface RankingEstimationChange {
-  uniqueIndex: number;
-  oldRankingEstimation: string;
-  newRankingEstimation: string;
-  playerCategory: PlayerCategory;
-}
-
-interface PointUpsertRow {
-  memberId: number;
-  memberLicence: number;
-  oldRankingEstimation: string | null;
-  newRankingEstimation: string | null;
+interface PointUpsertStats {
+  stored: string;
+  queued: string;
 }
 
 @Processor('members')
@@ -37,7 +27,6 @@ export class MembersListProcessingService extends WorkerHost {
     private readonly cacheService: CacheService,
     private readonly importExecutionCoordinatorService: ImportExecutionCoordinatorService,
     private readonly postgresCopyService: PostgresCopyService,
-    @Inject('BEPING_NOTIFIER') private readonly notifierClient: ClientProxy,
   ) {
     super();
   }
@@ -88,7 +77,7 @@ export class MembersListProcessingService extends WorkerHost {
             return;
           }
 
-          const importDate = this.toPgDate(new Date());
+          const importDate = this.toPgDate(fileDate ?? new Date());
           const upsertStart = Date.now();
           const importStats = await this.postgresCopyService.withClient(
             async (client) => {
@@ -103,7 +92,6 @@ export class MembersListProcessingService extends WorkerHost {
               const pointStats = await this.mergeNumericPointsFromStage(
                 client,
                 importDate,
-                playerCategory,
               );
 
               return { memberStats, pointStats };
@@ -113,24 +101,6 @@ export class MembersListProcessingService extends WorkerHost {
           this.logger.log(
             `Members affected: ${importStats.memberStats.affected}, points stored: ${importStats.pointStats.stored}, points skipped: ${importStats.pointStats.skipped} in ${Date.now() - upsertStart}ms`,
           );
-
-          if (importStats.pointStats.changes.length > 0) {
-            this.logger.log(
-              `Sending ${importStats.pointStats.changes.length} ranking estimation change events`,
-            );
-            for (const change of importStats.pointStats.changes) {
-              try {
-                await firstValueFrom(
-                  this.notifierClient.emit('RANKING_ESTIMATION_CHANGE', change),
-                );
-              } catch (error) {
-                this.logger.error(
-                  `Failed to emit ranking change for ${change.uniqueIndex}`,
-                  error,
-                );
-              }
-            }
-          }
 
           if (
             importStats.memberStats.affected > 0 ||
@@ -275,6 +245,11 @@ export class MembersListProcessingService extends WorkerHost {
     lines: string[],
     playerCategory: PlayerCategory,
   ): Generator<string> {
+    const totalRankedPlayers = this.getTotalRankedPlayers(
+      lines,
+      playerCategory,
+    );
+
     for (let index = 1; index < lines.length; index++) {
       const line = lines[index];
       const cols = line.split(';');
@@ -283,6 +258,17 @@ export class MembersListProcessingService extends WorkerHost {
         this.logger.warn(`Skipping invalid member line ${index}: ${line}`);
         continue;
       }
+
+      const rankingWi = cols[11].length ? parseInt(cols[11], 10) : null;
+      const rankingNumber = cols[12].length ? parseInt(cols[12], 10) : null;
+      const numericPosition = rankingNumber ?? rankingWi;
+      const rankingEstimation =
+        cols[13] ||
+        estimateLetterRanking(
+          numericPosition,
+          totalRankedPlayers,
+          playerCategory,
+        );
 
       yield this.postgresCopyService.buildCsvRow([
         index,
@@ -298,11 +284,36 @@ export class MembersListProcessingService extends WorkerHost {
         cols[9],
         '',
         parseFloat(cols[10]),
-        cols[11].length ? parseInt(cols[11], 10) : null,
-        cols[12].length ? parseInt(cols[12], 10) : null,
-        cols[13] || null,
+        rankingWi,
+        rankingNumber,
+        rankingEstimation,
       ]);
     }
+  }
+
+  private getTotalRankedPlayers(
+    lines: string[],
+    playerCategory: PlayerCategory,
+  ): number {
+    let maximumPosition = 0;
+
+    for (let index = 1; index < lines.length; index++) {
+      const cols = lines[index].split(';');
+      if (cols.length < 14) continue;
+
+      const rankingWi = cols[11].length ? parseInt(cols[11], 10) : null;
+      const rankingNumber = cols[12].length ? parseInt(cols[12], 10) : null;
+      const position =
+        playerCategory === PlayerCategory.SENIOR_WOMEN
+          ? (rankingNumber ?? rankingWi)
+          : (rankingWi ?? rankingNumber);
+
+      if (position != null && Number.isFinite(position)) {
+        maximumPosition = Math.max(maximumPosition, position);
+      }
+    }
+
+    return maximumPosition;
   }
 
   private async prepareMemberStageTable(client: Client): Promise<void> {
@@ -399,11 +410,10 @@ export class MembersListProcessingService extends WorkerHost {
   private async mergeNumericPointsFromStage(
     client: Client,
     importDate: string,
-    playerCategory: PlayerCategory,
   ): Promise<{
     stored: number;
     skipped: number;
-    changes: RankingEstimationChange[];
+    queued: number;
   }> {
     const totalPointsResult = await client.query<{ total: string }>(`
       SELECT COUNT(*)::text AS total
@@ -416,12 +426,13 @@ export class MembersListProcessingService extends WorkerHost {
     `);
     const totalPoints = parseInt(totalPointsResult.rows[0]?.total || '0', 10);
 
-    const upsertResult = await client.query<PointUpsertRow>(
+    const upsertResult = await client.query<PointUpsertStats>(
       `
         WITH staged_points AS (
           SELECT DISTINCT ON (member_id, member_licence)
             member_id,
             member_licence,
+            player_category,
             points,
             ranking_number,
             ranking_wi,
@@ -489,38 +500,80 @@ export class MembersListProcessingService extends WorkerHost {
              OR "NumericPoints"."rankingWI" IS DISTINCT FROM EXCLUDED."rankingWI"
              OR "NumericPoints"."rankingLetterEstimation" IS DISTINCT FROM EXCLUDED."rankingLetterEstimation"
           RETURNING "memberId", "memberLicence"
+        ),
+        notification_candidates AS (
+          SELECT
+            changed_points.*,
+            concat_ws(
+              '|',
+              'player-ranking-updated',
+              changed_points.player_category::text,
+              changed_points.member_licence::text,
+              $1::date::text,
+              changed_points.points::text,
+              COALESCE(changed_points.ranking_letter_estimation, '')
+            ) AS deduplication_source
+          FROM changed_points
+          JOIN upserted_points
+            ON upserted_points."memberId" = changed_points.member_id
+           AND upserted_points."memberLicence" = changed_points.member_licence
+          WHERE changed_points.previous_points IS NOT NULL
+            AND (
+              changed_points.previous_points IS DISTINCT FROM changed_points.points
+              OR changed_points.previous_ranking_letter_estimation
+                IS DISTINCT FROM changed_points.ranking_letter_estimation
+            )
+        ),
+        queued_notifications AS (
+          INSERT INTO "NotificationOutbox" (
+            id,
+            type,
+            "deduplicationKey",
+            payload,
+            "availableAt",
+            "createdAt",
+            "updatedAt"
+          )
+          SELECT
+            'ranking_' || md5(deduplication_source),
+            'PLAYER_RANKING_UPDATED'::"NotificationOutboxType",
+            deduplication_source,
+            jsonb_build_object(
+              'uniqueIndex', member_licence,
+              'playerCategory', player_category::text,
+              'effectiveDate', $1::date,
+              'oldPoints', previous_points,
+              'newPoints', points,
+              'oldNumericRanking', COALESCE(previous_ranking, previous_ranking_wi),
+              'newNumericRanking', COALESCE(ranking_number, ranking_wi),
+              'oldRankingEstimation', previous_ranking_letter_estimation,
+              'newRankingEstimation', ranking_letter_estimation
+            ),
+            NOW(),
+            NOW(),
+            NOW()
+          FROM notification_candidates
+          ON CONFLICT ("deduplicationKey") DO NOTHING
+          RETURNING 1
         )
         SELECT
-          upserted_points."memberId" AS "memberId",
-          upserted_points."memberLicence" AS "memberLicence",
-          changed_points.previous_ranking_letter_estimation AS "oldRankingEstimation",
-          changed_points.ranking_letter_estimation AS "newRankingEstimation"
-        FROM upserted_points
-        JOIN changed_points
-          ON changed_points.member_id = upserted_points."memberId"
-         AND changed_points.member_licence = upserted_points."memberLicence"
+          (SELECT COUNT(*)::text FROM upserted_points) AS stored,
+          (SELECT COUNT(*)::text FROM queued_notifications) AS queued
       `,
       [importDate],
     );
 
-    const changes = upsertResult.rows
-      .filter(
-        (row) =>
-          row.oldRankingEstimation !== null &&
-          row.newRankingEstimation !== null &&
-          row.oldRankingEstimation !== row.newRankingEstimation,
-      )
-      .map((row) => ({
-        uniqueIndex: row.memberId,
-        oldRankingEstimation: row.oldRankingEstimation || '',
-        newRankingEstimation: row.newRankingEstimation || '',
-        playerCategory,
-      }));
+    const stored = parseInt(upsertResult.rows[0]?.stored || '0', 10);
+    const queued = parseInt(upsertResult.rows[0]?.queued || '0', 10);
+
+    if (queued > 0) {
+      this.logger.log(`Queued ${queued} ranking update notifications`);
+    }
 
     return {
-      stored: upsertResult.rowCount,
-      skipped: Math.max(0, totalPoints - upsertResult.rowCount),
-      changes,
+      stored,
+      skipped: Math.max(0, totalPoints - stored),
+      queued,
     };
   }
 

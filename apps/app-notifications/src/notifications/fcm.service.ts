@@ -11,6 +11,7 @@ import {
   NotificationStatus,
   NotificationType,
 } from '@app/common';
+import { normalizeNotificationLocale } from './notification-content.service';
 
 export interface SendNotificationOptions {
   title: string;
@@ -73,7 +74,7 @@ export class FcmService implements OnModuleInit {
           userId,
           appVersion,
           metadata,
-          locale,
+          locale: normalizeNotificationLocale(locale),
         },
         create: {
           deviceToken,
@@ -82,7 +83,7 @@ export class FcmService implements OnModuleInit {
           userId,
           appVersion,
           metadata,
-          locale,
+          locale: normalizeNotificationLocale(locale),
         },
       });
 
@@ -97,7 +98,7 @@ export class FcmService implements OnModuleInit {
     try {
       await this.prisma.deviceSubscription.update({
         where: { deviceToken },
-        data: { locale },
+        data: { locale: normalizeNotificationLocale(locale) },
       });
       this.logger.log(
         `Device locale updated: ${deviceToken.substring(0, 10)}... to ${locale}`,
@@ -298,12 +299,25 @@ export class FcmService implements OnModuleInit {
 
   async getDevicesByTopicGroupedByLocale(
     topic: string,
+    notificationType?: NotificationType,
   ): Promise<Record<string, string[]>> {
+    return this.getDevicesByTopicsGroupedByLocale([topic], notificationType);
+  }
+
+  async getDevicesByTopicsGroupedByLocale(
+    topics: string[],
+    notificationType?: NotificationType,
+  ): Promise<Record<string, string[]>> {
+    if (topics.length === 0) return {};
+
     const topicSubscriptions = await this.prisma.topicSubscription.findMany({
       where: {
-        topic,
+        topic: { in: [...new Set(topics)] },
         deviceSubscription: {
           active: true,
+          ...(notificationType && {
+            notificationTypes: { has: notificationType },
+          }),
         },
       },
       include: {
@@ -316,29 +330,33 @@ export class FcmService implements OnModuleInit {
       },
     });
 
-    const grouped: Record<string, string[]> = {};
+    const groupedSets: Record<string, Set<string>> = {};
     for (const sub of topicSubscriptions) {
-      const locale = sub.deviceSubscription.locale || 'en';
-      if (!grouped[locale]) {
-        grouped[locale] = [];
+      const locale = sub.deviceSubscription.locale || 'fr';
+      if (!groupedSets[locale]) {
+        groupedSets[locale] = new Set();
       }
-      grouped[locale].push(sub.deviceSubscription.deviceToken);
+      groupedSets[locale].add(sub.deviceSubscription.deviceToken);
     }
 
-    return grouped;
+    return Object.fromEntries(
+      Object.entries(groupedSets).map(([locale, tokens]) => [
+        locale,
+        [...tokens],
+      ]),
+    );
   }
 
   async sendNotification(options: SendNotificationOptions): Promise<void> {
     if (!getApps().length) {
-      this.logger.warn('Firebase not initialized. Skipping notification.');
-      return;
+      throw new Error('Firebase is not initialized');
     }
 
     try {
       let targetDevices: string[] = [];
 
       if (options.targetDeviceTokens) {
-        targetDevices = options.targetDeviceTokens;
+        targetDevices = [...new Set(options.targetDeviceTokens)];
       } else if (options.targetTopic) {
         // Get active devices subscribed to this topic
         const topicSubscriptions = await this.prisma.topicSubscription.findMany(
@@ -446,10 +464,18 @@ export class FcmService implements OnModuleInit {
     } catch (error) {
       this.logger.error('Failed to send batch notification', error);
 
+      if (
+        error instanceof Error &&
+        error.message.startsWith('FCM temporarily failed')
+      ) {
+        throw error;
+      }
+
       // Log failed notifications
       for (const token of deviceTokens) {
         await this.logNotification(token, options, 'FAILED', error.message);
       }
+      throw error;
     }
   }
 
@@ -459,6 +485,7 @@ export class FcmService implements OnModuleInit {
     options: SendNotificationOptions,
   ): Promise<void> {
     const failedTokens: string[] = [];
+    const retryableFailures: string[] = [];
 
     for (let i = 0; i < response.responses.length; i++) {
       const result = response.responses[i];
@@ -486,6 +513,8 @@ export class FcmService implements OnModuleInit {
           this.logger.warn(
             `Removed invalid token: ${token.substring(0, 10)}...`,
           );
+        } else {
+          retryableFailures.push(token);
         }
 
         await this.logNotification(token, options, 'FAILED', error?.message);
@@ -494,6 +523,11 @@ export class FcmService implements OnModuleInit {
 
     if (failedTokens.length > 0) {
       this.logger.warn(`Failed to send to ${failedTokens.length} tokens`);
+    }
+    if (retryableFailures.length > 0) {
+      throw new Error(
+        `FCM temporarily failed for ${retryableFailures.length} device(s)`,
+      );
     }
   }
 

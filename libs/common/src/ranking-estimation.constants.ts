@@ -529,3 +529,40 @@ export const MEN_RANKING_ESTIMATION = {
     NC: 20000,
   },
 };
+
+export type RankingPlayerCategory = 'SENIOR_MEN' | 'SENIOR_WOMEN';
+
+export function getRankingEstimationTable(
+  totalPlayers: number,
+  category: RankingPlayerCategory,
+): Record<string, number> {
+  const estimationTable =
+    category === 'SENIOR_MEN'
+      ? MEN_RANKING_ESTIMATION
+      : WOMAN_RANKING_ESTIMATION;
+  const availableCounts = Object.keys(estimationTable)
+    .map(Number)
+    .sort((a, b) => a - b);
+  const selectedCount =
+    availableCounts.filter((count) => count <= totalPlayers).at(-1) ??
+    availableCounts[0];
+
+  return estimationTable[selectedCount.toString()];
+}
+
+export function estimateLetterRanking(
+  position: number | null | undefined,
+  totalPlayers: number,
+  category: RankingPlayerCategory,
+): string | null {
+  if (position == null || !Number.isFinite(position) || position <= 0) {
+    return null;
+  }
+
+  const rankingTable = getRankingEstimationTable(totalPlayers, category);
+  return (
+    Object.entries(rankingTable).find(
+      ([, threshold]) => position <= threshold,
+    )?.[0] ?? 'NC'
+  );
+}

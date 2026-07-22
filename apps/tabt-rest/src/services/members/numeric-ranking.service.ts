@@ -13,7 +13,7 @@ import {
 } from '../../api/member/dto/member.dto';
 import { ConfigService } from '@nestjs/config';
 import { PlayerCategoryDTO } from '../../common/dto/player-category.dto';
-import { PrismaService } from '@app/common';
+import { estimateLetterRanking, PrismaService } from '@app/common';
 import { BepingNotifierService } from '../notifications/beping-notifier.service';
 import { RankingDistributionService } from './ranking-distribution.service';
 import { ApiProperty } from '@nestjs/swagger';
@@ -95,10 +95,26 @@ export class NumericRankingService {
           this.getActualPoints(licence, category),
         ]);
 
-        // Find the ranking letter for each points value (optimized single pass)
+        const totalPlayers =
+          await this.rankingDistributionService.getMembersWithRankingCount(
+            category,
+          );
+
+        // Historical AFTT files did not provide a letter estimation. Derive it
+        // from the numeric position so old and new histories use one rule.
         const numericRankingHistory = actualPoints.map((p) => {
           const points = p?.points ?? 0;
-          const rankingLetter = p?.rankingLetterEstimation ?? '-';
+          const rankingPosition = p.ranking ?? p.rankingWI;
+          const rankingLetter =
+            p.rankingLetterEstimation ??
+            estimateLetterRanking(
+              rankingPosition,
+              totalPlayers,
+              category === PlayerCategoryDTO.SENIOR_MEN
+                ? 'SENIOR_MEN'
+                : 'SENIOR_WOMEN',
+            ) ??
+            '-';
           return {
             numericRanking: p.rankingWI,
             rankingLetterEstimation: rankingLetter,

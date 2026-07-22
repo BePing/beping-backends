@@ -126,6 +126,7 @@ export class ResultsProcessorService extends WorkerHost {
           const mergeStats = await this.mergeResultsInChunks(
             linesToProcess,
             job.data.playerCategory,
+            fileDate ?? new Date(),
           );
 
           this.logger.log(
@@ -347,6 +348,7 @@ export class ResultsProcessorService extends WorkerHost {
   private async mergeResultsInChunks(
     linesToProcess: string[],
     playerCategory: PlayerCategory,
+    effectiveDate: Date,
   ): Promise<{ linesAdded: number; linesUpdated: number; dropped: number }> {
     const chunkSize = Math.max(1, PERFORMANCE_CONFIG.RESULTS_STAGE_CHUNK_SIZE);
     const totals = { linesAdded: 0, linesUpdated: 0, dropped: 0 };
@@ -366,7 +368,7 @@ export class ResultsProcessorService extends WorkerHost {
           await this.copyResultsStageRows(client, chunk, playerCategory);
           await this.prepareDedupedResultsStage(client);
           await this.upsertCompetitionsFromStage(client);
-          return this.mergeResultBatches(client);
+          return this.mergeResultBatches(client, effectiveDate);
         },
       );
 
@@ -549,6 +551,7 @@ export class ResultsProcessorService extends WorkerHost {
 
   private async mergeResultBatches(
     client: Client,
+    effectiveDate: Date,
   ): Promise<{ linesAdded: number; linesUpdated: number; dropped: number }> {
     const boundsResult = await client.query<{
       total: string;
@@ -578,6 +581,7 @@ export class ResultsProcessorService extends WorkerHost {
         client,
         lineStart,
         lineEnd,
+        effectiveDate,
       );
 
       if (batchStats.stagedCount > 0) {
@@ -602,6 +606,7 @@ export class ResultsProcessorService extends WorkerHost {
     client: Client,
     lineStart: number,
     lineEnd: number,
+    effectiveDate: Date,
   ): Promise<BatchMergeStats> {
     const result = await client.query<{
       stagedCount: string;
@@ -622,8 +627,10 @@ export class ResultsProcessorService extends WorkerHost {
             staged_rows.player_category AS "playerCategory",
             member.id AS "memberId",
             member.licence AS "memberLicence",
+            member.club AS "memberClub",
             opponent.id AS "opponentId",
             opponent.licence AS "opponentLicence",
+            opponent.club AS "opponentClub",
             LEFT(staged_rows.member_ranking, 4) AS "memberRanking",
             LEFT(staged_rows.opponent_ranking, 4) AS "opponentRanking",
             staged_rows.member_points::numeric(6,2) AS "memberPoints",
@@ -631,13 +638,14 @@ export class ResultsProcessorService extends WorkerHost {
             staged_rows.result_value AS result,
             LEFT(staged_rows.score, 3) AS score,
             staged_rows.competition_id AS "competitionId",
+            competition.name AS "competitionName",
             staged_rows.diff_points::numeric(6,2) AS "diffPoints",
             staged_rows.points_to_add::smallint AS "pointsToAdd",
             staged_rows.loose_factor::numeric(3,2) AS "looseFactor",
             staged_rows.definitive_points_to_add::numeric(6,2) AS "definitivePointsToAdd"
           FROM staged_rows
           JOIN LATERAL (
-            SELECT candidate.id, candidate.licence
+            SELECT candidate.id, candidate.licence, candidate.club
             FROM "Member" AS candidate
             WHERE candidate.licence = staged_rows.member_licence
               AND candidate."playerCategory" = staged_rows.player_category
@@ -645,7 +653,7 @@ export class ResultsProcessorService extends WorkerHost {
             LIMIT 1
           ) AS member ON TRUE
           JOIN LATERAL (
-            SELECT candidate.id, candidate.licence
+            SELECT candidate.id, candidate.licence, candidate.club
             FROM "Member" AS candidate
             WHERE candidate.licence = staged_rows.opponent_licence
               AND candidate."playerCategory" = staged_rows.player_category
@@ -729,7 +737,73 @@ export class ResultsProcessorService extends WorkerHost {
              OR "IndividualResult"."memberLicence" IS DISTINCT FROM EXCLUDED."memberLicence"
              OR "IndividualResult"."opponentId" IS DISTINCT FROM EXCLUDED."opponentId"
              OR "IndividualResult"."opponentLicence" IS DISTINCT FROM EXCLUDED."opponentLicence"
-          RETURNING (xmax = 0) AS inserted
+          RETURNING
+            (xmax = 0) AS inserted,
+            id,
+            date,
+            "playerCategory",
+            "memberId",
+            "memberLicence",
+            "opponentId",
+            "opponentLicence",
+            result,
+            score,
+            "competitionId"
+        ),
+        notification_candidates AS (
+          SELECT
+            upserted_results.*,
+            valid_results."memberClub",
+            valid_results."opponentClub",
+            valid_results."competitionName",
+            concat_ws(
+              '|',
+              'result-updated',
+              upserted_results."playerCategory"::text,
+              upserted_results.id::text,
+              upserted_results.date::text,
+              upserted_results.result::text,
+              upserted_results.score,
+              upserted_results."competitionId"
+            ) AS deduplication_source
+          FROM upserted_results
+          JOIN valid_results
+            ON valid_results.id = upserted_results.id
+           AND valid_results."playerCategory" = upserted_results."playerCategory"
+          WHERE upserted_results.date >= $3::date - INTERVAL '14 days'
+            AND upserted_results.date <= $3::date + INTERVAL '1 day'
+        ),
+        queued_notifications AS (
+          INSERT INTO "NotificationOutbox" (
+            id,
+            type,
+            "deduplicationKey",
+            payload,
+            "availableAt",
+            "createdAt",
+            "updatedAt"
+          )
+          SELECT
+            'result_' || md5(deduplication_source),
+            'RESULT_UPDATED'::"NotificationOutboxType",
+            deduplication_source,
+            jsonb_build_object(
+              'resultId', id,
+              'competitionId', "competitionId",
+              'competitionName', "competitionName",
+              'playerCategory', "playerCategory"::text,
+              'resultDate', date,
+              'playerUniqueIndexes', jsonb_build_array("memberLicence", "opponentLicence"),
+              'clubIds', jsonb_build_array("memberClub", "opponentClub"),
+              'result', result::text,
+              'score', score
+            ),
+            NOW() + INTERVAL '2 minutes',
+            NOW(),
+            NOW()
+          FROM notification_candidates
+          ON CONFLICT ("deduplicationKey") DO NOTHING
+          RETURNING 1
         )
         SELECT
           (SELECT COUNT(*)::text FROM staged_rows) AS "stagedCount",
@@ -737,7 +811,7 @@ export class ResultsProcessorService extends WorkerHost {
           COALESCE((SELECT COUNT(*)::text FROM upserted_results WHERE inserted), '0') AS "insertedCount",
           COALESCE((SELECT COUNT(*)::text FROM upserted_results WHERE NOT inserted), '0') AS "updatedCount"
       `,
-      [lineStart, lineEnd],
+      [lineStart, lineEnd, this.toPgDate(effectiveDate)],
     );
 
     return {

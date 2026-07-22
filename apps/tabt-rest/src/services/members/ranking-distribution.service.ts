@@ -1,10 +1,7 @@
 import { Injectable, OnModuleInit, OnModuleDestroy } from '@nestjs/common';
 import { PlayerCategoryDTO } from '../../common/dto/player-category.dto';
 import { PrismaService } from '@app/common';
-import {
-  MEN_RANKING_ESTIMATION,
-  WOMAN_RANKING_ESTIMATION,
-} from '../../common/consts/ranking-estimation';
+import { estimateLetterRanking, getRankingEstimationTable } from '@app/common';
 
 interface MemberCountCache {
   [PlayerCategoryDTO.SENIOR_MEN]: number | null;
@@ -153,22 +150,10 @@ export class RankingDistributionService
     totalPlayers: number,
     category: PlayerCategoryDTO,
   ): Record<string, number> {
-    // Get the estimation table based on category
-    const estimationTable =
-      category === PlayerCategoryDTO.SENIOR_MEN
-        ? MEN_RANKING_ESTIMATION
-        : WOMAN_RANKING_ESTIMATION;
-
-    // Get all available player counts and find the highest one that's lower than or equal to totalPlayers
-    const availableCounts = Object.keys(estimationTable)
-      .map(Number)
-      .sort((a, b) => b - a); // Sort in descending order
-
-    const selectedCount =
-      availableCounts.find((count) => count <= totalPlayers) ||
-      estimationTable[availableCounts[0]];
-
-    return estimationTable[selectedCount.toString()];
+    return getRankingEstimationTable(
+      totalPlayers,
+      category === PlayerCategoryDTO.SENIOR_MEN ? 'SENIOR_MEN' : 'SENIOR_WOMEN',
+    );
   }
 
   async getLetterRankingEstimationFromNumericPoints(
@@ -176,11 +161,14 @@ export class RankingDistributionService
     category: PlayerCategoryDTO,
   ): Promise<string> {
     const totalPlayers = await this.getMembersWithRankingCount(category);
-    const rankingTable = this.getRankingTable(totalPlayers, category);
     return (
-      Object.entries(rankingTable).find(
-        ([, threshold]) => ranking <= threshold,
-      )?.[0] || 'NC'
+      estimateLetterRanking(
+        ranking,
+        totalPlayers,
+        category === PlayerCategoryDTO.SENIOR_MEN
+          ? 'SENIOR_MEN'
+          : 'SENIOR_WOMEN',
+      ) ?? 'NC'
     );
   }
 }

@@ -161,7 +161,7 @@ model DeviceSubscription {
   deviceToken        String              @unique
   platform           DevicePlatform
   appVersion         String?
-  locale             String              @default("en")
+  locale             String              @default("fr")
   active             Boolean             @default(true)
   notificationTypes  NotificationType[]
   metadata           Json? // Additional device/user metadata
@@ -216,4 +216,33 @@ enum NotificationStatus {
   SENT
   FAILED
   DELIVERED
+}
+
+enum NotificationOutboxType {
+  PLAYER_RANKING_UPDATED
+  RESULT_UPDATED
+}
+
+enum NotificationOutboxStatus {
+  PENDING
+  PROCESSING
+  PROCESSED
+  FAILED
+}
+
+model NotificationOutbox {
+  id               String                   @id @default(cuid())
+  type             NotificationOutboxType
+  deduplicationKey String                   @unique
+  payload          Json
+  status           NotificationOutboxStatus @default(PENDING)
+  attempts         Int                      @default(0)
+  availableAt      DateTime                 @default(now())
+  processedAt      DateTime?
+  lastError        String?
+  createdAt        DateTime                 @default(now())
+  updatedAt        DateTime                 @updatedAt
+
+  @@index([status, availableAt])
+  @@index([type, createdAt])
 }

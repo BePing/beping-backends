@@ -25,10 +25,7 @@ import {
   PlayerCategoryDTO,
   mapPlayerCategoryToPlayerCategoryDTO,
 } from 'apps/tabt-rest/src/common/dto/player-category.dto';
-import {
-  MEN_RANKING_ESTIMATION,
-  WOMAN_RANKING_ESTIMATION,
-} from '../../../common/consts/ranking-estimation';
+import { MEN_RANKING_ESTIMATION, WOMAN_RANKING_ESTIMATION } from '@app/common';
 import {
   MatchesMembersRankerService,
   SortSystem,

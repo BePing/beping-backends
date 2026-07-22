@@ -4,6 +4,8 @@ import {
   IsOptional,
   IsArray,
   IsObject,
+  IsIn,
+  Matches,
 } from 'class-validator';
 import { DevicePlatform, NotificationType } from '@app/common';
 
@@ -20,6 +22,7 @@ export class RegisterDeviceDto {
   notificationTypes?: NotificationType[];
 
   @IsString()
+  @IsIn(['fr', 'nl', 'en', 'de'])
   @IsOptional()
   userId?: string;
 
@@ -44,11 +47,13 @@ export class UpdateNotificationTypesDto {
 
 export class UpdateDeviceLocaleDto {
   @IsString()
+  @IsIn(['fr', 'nl', 'en', 'de'])
   locale: string;
 }
 
 export class SubscribeTopicDto {
   @IsString()
+  @Matches(/^(match|player|club|division):[A-Za-z0-9_./-]{1,128}$/)
   topic: string;
 }
 
