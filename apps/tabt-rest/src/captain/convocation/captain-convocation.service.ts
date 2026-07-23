@@ -178,6 +178,38 @@ export class CaptainConvocationService {
     );
   }
 
+  async getForPlayer(
+    matchUniqueId: number,
+    responseToken: string,
+  ): Promise<ConvocationDto> {
+    const claims = await this.tokens
+      .verifyResponseToken(responseToken)
+      .catch(() => null);
+    if (
+      !claims ||
+      claims.matchUniqueId !== matchUniqueId ||
+      claims.purpose !== 'convocation'
+    ) {
+      throw new ForbiddenException('Invalid response token');
+    }
+    const convocation = await this.prisma.convocation.findUnique({
+      where: { id: claims.resourceId },
+      include: {
+        lineup: true,
+        responses: { where: { uniqueIndex: claims.uniqueIndex } },
+      },
+    });
+    if (
+      !convocation ||
+      convocation.matchUniqueId !== matchUniqueId ||
+      convocation.responses.length !== 1
+    ) {
+      throw new NotFoundException('No convocation for this player');
+    }
+    const members = await this.membersMap(convocation.lineup.clubIndex);
+    return this.toDto(convocation, members);
+  }
+
   async getPublicByToken(token: string): Promise<{
     dto: PublicConvocationDto;
     opponent: string;

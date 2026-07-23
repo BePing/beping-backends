@@ -7,6 +7,7 @@ import {
   Param,
   ParseIntPipe,
   Post,
+  Query,
   UseGuards,
 } from '@nestjs/common';
 import { ApiOkResponse, ApiOperation, ApiTags } from '@nestjs/swagger';
@@ -47,6 +48,16 @@ export class CaptainConvocationController {
     @CaptainUser() captain: CaptainPrincipal,
   ): Promise<ConvocationDto> {
     return this.service.getConvocation(matchUniqueId, captain);
+  }
+
+  @Get('matches/:matchUniqueId/convocation/player')
+  @ApiOperation({ operationId: 'getPlayerConvocation' })
+  @ApiOkResponse({ type: ConvocationDto })
+  getForPlayer(
+    @Param('matchUniqueId', ParseIntPipe) matchUniqueId: number,
+    @Query('responseToken') responseToken: string,
+  ): Promise<ConvocationDto> {
+    return this.service.getForPlayer(matchUniqueId, responseToken);
   }
 
   @Post('matches/:matchUniqueId/convocation/respond')
