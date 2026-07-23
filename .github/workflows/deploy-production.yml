@@ -26,7 +26,7 @@ env:
   IMAGE_SHA: ${{ inputs.image_sha }}
   COOLIFY_URL: ${{ vars.COOLIFY_URL }}
   BEPING_DOCKER_HOST: ${{ vars.BEPING_DOCKER_HOST }}
-  BEPING_BACKUP_DIRECTORY: /data/coolify/backups/postgresql/beping
+  BEPING_BACKUP_DIRECTORY: /data/coolify/backups/databases/escape-key-team-0/beping-postgresql-18-${{ vars.COOLIFY_BEPING_POSTGRES18_UUID }}
   BEPING_BACKUP_MAX_AGE_MINUTES: 1560
 
 jobs:
@@ -36,10 +36,9 @@ jobs:
     environment: Production
     timeout-minutes: 45
     env:
-      DATASTORE_GENERATION: ${{ vars.BEPING_DATASTORE_GENERATION || 'legacy' }}
-      DATABASE_URL: ${{ vars.BEPING_DATASTORE_GENERATION == 'v18-v8' && format('postgresql://beping:{0}@{1}:5432/beping', secrets.BEPING_PG18_PASSWORD, vars.COOLIFY_BEPING_POSTGRES18_UUID) || secrets.BEPING_DATABASE_URL }}
-      DIRECT_URL: ${{ vars.BEPING_DATASTORE_GENERATION == 'v18-v8' && format('postgresql://beping:{0}@{1}:5432/beping', secrets.BEPING_PG18_PASSWORD, vars.COOLIFY_BEPING_POSTGRES18_UUID) || secrets.BEPING_DIRECT_URL }}
-      REDIS_URL: ${{ vars.BEPING_DATASTORE_GENERATION == 'v18-v8' && format('redis://default:{0}@{1}:6379/0', secrets.BEPING_REDIS8_PASSWORD, vars.COOLIFY_BEPING_REDIS8_UUID) || secrets.BEPING_REDIS_URL }}
+      DATABASE_URL: ${{ format('postgresql://beping:{0}@{1}:5432/beping', secrets.BEPING_PG18_PASSWORD, vars.COOLIFY_BEPING_POSTGRES18_UUID) }}
+      DIRECT_URL: ${{ format('postgresql://beping:{0}@{1}:5432/beping', secrets.BEPING_PG18_PASSWORD, vars.COOLIFY_BEPING_POSTGRES18_UUID) }}
+      REDIS_URL: ${{ format('redis://default:{0}@{1}:6379/0', secrets.BEPING_REDIS8_PASSWORD, vars.COOLIFY_BEPING_REDIS8_UUID) }}
       FIREBASE_PRIVATE_KEY: ${{ secrets.FIREBASE_PRIVATE_KEY_ROTATION }}
 
     steps:
@@ -62,7 +61,6 @@ jobs:
           test -n "${COOLIFY_URL}"
           test -n "${COOLIFY_TOKEN}"
           test -n "${BEPING_DOCKER_HOST}"
-          [[ "${DATASTORE_GENERATION}" == 'legacy' || "${DATASTORE_GENERATION}" == 'v18-v8' ]]
           test -n "${DATABASE_URL}"
           test -n "${DIRECT_URL}"
           test -n "${REDIS_URL}"
@@ -98,7 +96,7 @@ jobs:
             -o BatchMode=yes \
             -o ConnectTimeout=10 \
             "${docker_ssh_target}" \
-            "find '${BEPING_BACKUP_DIRECTORY}' -maxdepth 1 -type f -name '*.dump' -size +1048576c -mmin -${BEPING_BACKUP_MAX_AGE_MINUTES} -print -quit" \
+            "find '${BEPING_BACKUP_DIRECTORY}' -maxdepth 1 -type f -name '*.dmp' -size +1048576c -mmin -${BEPING_BACKUP_MAX_AGE_MINUTES} -print -quit" \
             | grep -q .
 
       - name: Pause importer before migration

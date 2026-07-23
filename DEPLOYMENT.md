@@ -74,10 +74,11 @@ Required production environment configuration:
 | Variable | `COOLIFY_BEPING_IMPORTER_UUID`                |
 | Variable | `COOLIFY_BEPING_POSTGRES18_UUID`              |
 | Variable | `COOLIFY_BEPING_REDIS8_UUID`                  |
-| Variable | `BEPING_DATASTORE_GENERATION` (`v18-v8`)      |
+| Variable | `COOLIFY_BEPING_BACKUP_STORAGE_UUID`          |
 | Secret   | `COOLIFY_TOKEN` (read, write and deploy only) |
-| Secret   | `BEPING_DATABASE_URL`                         |
-| Secret   | `BEPING_DIRECT_URL`                           |
+| Secret   | `BEPING_PG18_PASSWORD`                        |
+| Secret   | `BEPING_REDIS8_PASSWORD`                      |
+| Secret   | `FIREBASE_PRIVATE_KEY_ROTATION`               |
 
 The deployment job uses the shared runner label `escape-key-ci`. The runner and
 database communicate only over Tailscale or another explicitly private link.
@@ -167,18 +168,19 @@ worker concurrency.
 
 ## Backup and rollback
 
-PostgreSQL 18 has a daily Coolify backup at `02:17` with seven local restore
-points by default. The manual `Manage production datastores` workflow can audit
-the effective configuration and trigger an immediate backup without exposing
-database credentials. Redis persists every write through AOF and also creates
-periodic RDB snapshots. Before a datastore cutover, keep explicit PostgreSQL
-custom-format and Redis RDB snapshots outside their data volumes.
+PostgreSQL 18 has a daily Coolify backup at `02:17` UTC with seven local restore
+points. Each successful dump is also uploaded to the dedicated
+`beping-coolify-backups` object-storage bucket, with 14 objects, 30 days and
+25 GB as retention ceilings. The manual `Manage production datastores` workflow
+can audit the effective configuration and trigger an immediate backup without
+exposing database or S3 credentials. Redis persists every write through AOF and
+also creates periodic RDB snapshots.
 
-The previous PostgreSQL 16 and Redis 7 resources remain stopped, with their
-volumes intact, during the rollback window. Changing
-`BEPING_DATASTORE_GENERATION` back to `legacy` and running the production deploy
-workflow reconnects all three applications to them; do not start both datastore
-generations as writers at the same time.
+The retired PostgreSQL 16 and Redis 7 resources and their volumes were deleted
+on 2026-07-23 after a PostgreSQL 18 dump completed locally and in object storage
+and a Redis 8 RDB snapshot was validated outside its data volume. Datastore
+rollback now means restoring those backups into a new isolated resource; there
+is no live `legacy` generation.
 
 Before a schema or data-bearing deployment:
 

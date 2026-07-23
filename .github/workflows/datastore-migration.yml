@@ -46,6 +46,7 @@ jobs:
       POSTGRES_PASSWORD: ${{ secrets.BEPING_PG18_PASSWORD }}
       REDIS_PASSWORD: ${{ secrets.BEPING_REDIS8_PASSWORD }}
       POSTGRES_UUID: ${{ vars.COOLIFY_BEPING_POSTGRES18_UUID }}
+      BACKUP_STORAGE_UUID: ${{ vars.COOLIFY_BEPING_BACKUP_STORAGE_UUID }}
     steps:
       - name: Validate configuration
         run: |
@@ -93,11 +94,15 @@ jobs:
                 enabled,
                 frequency,
                 save_s3,
+                s3_storage_id,
                 databases_to_backup,
                 timeout,
                 database_backup_retention_amount_locally,
                 database_backup_retention_days_locally,
                 database_backup_retention_max_storage_locally,
+                database_backup_retention_amount_s3,
+                database_backup_retention_days_s3,
+                database_backup_retention_max_storage_s3,
                 executions: [.executions[:5][]? | {uuid, status, created_at, finished_at, s3_uploaded}]
               }]'
 
@@ -105,7 +110,9 @@ jobs:
         if: inputs.operation == 'configure-postgres-backup'
         run: |
           test -n "${POSTGRES_UUID}"
+          test -n "${BACKUP_STORAGE_UUID}"
           [[ "${POSTGRES_UUID}" =~ ^[a-z0-9]+$ ]]
+          [[ "${BACKUP_STORAGE_UUID}" =~ ^[a-z0-9]+$ ]]
 
           coolify_request() {
             local method="$1"
@@ -129,28 +136,41 @@ jobs:
 
           backups="$(coolify_request GET "databases/${POSTGRES_UUID}/backups")"
           backup_uuid="$(jq -r '.[0].uuid // empty' <<<"${backups}")"
+          backup_payload="$(
+            jq -n \
+              --arg s3_storage_uuid "${BACKUP_STORAGE_UUID}" \
+              '{
+                enabled: true,
+                save_s3: true,
+                s3_storage_uuid: $s3_storage_uuid,
+                backup_now: true,
+                database_backup_retention_amount_s3: 14,
+                database_backup_retention_days_s3: 30,
+                database_backup_retention_max_storage_s3: 25
+              }'
+          )"
 
           if [[ -n "${backup_uuid}" ]]; then
             [[ "${backup_uuid}" =~ ^[a-z0-9]+$ ]]
-            # Preserve an existing off-site destination and retention policy.
             coolify_request PATCH \
               "databases/${POSTGRES_UUID}/backups/${backup_uuid}" \
-              '{"enabled":true,"backup_now":true}' \
+              "${backup_payload}" \
               | jq '{uuid, message}'
           else
+            create_payload="$(
+              jq \
+                '. + {
+                  frequency: "17 2 * * *",
+                  databases_to_backup: "beping",
+                  database_backup_retention_amount_locally: 7,
+                  database_backup_retention_days_locally: 7,
+                  database_backup_retention_max_storage_locally: 5,
+                  timeout: 3600
+                }' <<<"${backup_payload}"
+            )"
             coolify_request POST \
               "databases/${POSTGRES_UUID}/backups" \
-              '{
-                "frequency":"17 2 * * *",
-                "enabled":true,
-                "save_s3":false,
-                "databases_to_backup":"beping",
-                "backup_now":true,
-                "database_backup_retention_amount_locally":7,
-                "database_backup_retention_days_locally":7,
-                "database_backup_retention_max_storage_locally":5,
-                "timeout":3600
-              }' \
+              "${create_payload}" \
               | jq '{uuid, message}'
           fi
 
@@ -161,11 +181,15 @@ jobs:
                 enabled,
                 frequency,
                 save_s3,
+                s3_storage_id,
                 databases_to_backup,
                 timeout,
                 database_backup_retention_amount_locally,
                 database_backup_retention_days_locally,
-                database_backup_retention_max_storage_locally
+                database_backup_retention_max_storage_locally,
+                database_backup_retention_amount_s3,
+                database_backup_retention_days_s3,
+                database_backup_retention_max_storage_s3
               }]'
 
       - name: Provision PostgreSQL 18 and Redis 8
