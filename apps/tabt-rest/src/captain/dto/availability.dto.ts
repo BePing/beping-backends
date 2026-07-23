@@ -97,12 +97,12 @@ export class SubmitAvailabilityDto {
   @IsOptional()
   note?: string;
 
-  @ApiPropertyOptional({
+  @ApiProperty({
     description: 'Signed token from the push/link, scoping the response.',
   })
   @IsString()
-  @IsOptional()
-  responseToken?: string;
+  @IsNotEmpty()
+  responseToken: string;
 }
 
 export class OverrideAvailabilityDto {

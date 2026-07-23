@@ -39,14 +39,17 @@ export class CaptainHubService {
 
     const [polls, lineups, convocations] = await Promise.all([
       this.prisma.availabilityPoll.findMany({
-        where: { matchUniqueId: { in: matchIds } },
+        where: { matchUniqueId: { in: matchIds }, clubIndex },
         include: { responses: true },
       }),
       this.prisma.lineup.findMany({
-        where: { matchUniqueId: { in: matchIds } },
+        where: { matchUniqueId: { in: matchIds }, clubIndex },
       }),
       this.prisma.convocation.findMany({
-        where: { matchUniqueId: { in: matchIds } },
+        where: {
+          matchUniqueId: { in: matchIds },
+          lineup: { clubIndex },
+        },
       }),
     ]);
     const pollByMatch = new Map(

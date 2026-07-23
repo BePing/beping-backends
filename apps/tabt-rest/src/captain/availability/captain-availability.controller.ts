@@ -8,6 +8,7 @@ import {
   ParseIntPipe,
   Patch,
   Post,
+  Query,
   UseGuards,
 } from '@nestjs/common';
 import { ApiOkResponse, ApiOperation, ApiTags } from '@nestjs/swagger';
@@ -71,8 +72,9 @@ export class CaptainAvailabilityController {
   @ApiOkResponse({ type: PlayerAvailabilityDto })
   getPlayerAvailability(
     @Param('uniqueIndex', ParseIntPipe) uniqueIndex: number,
+    @Query('responseToken') responseToken: string,
   ): Promise<PlayerAvailabilityDto> {
-    return this.service.getPlayerAvailability(uniqueIndex);
+    return this.service.getPlayerAvailability(uniqueIndex, responseToken);
   }
 
   @Patch('matches/:matchUniqueId/availability/:uniqueIndex')

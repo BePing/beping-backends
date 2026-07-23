@@ -11,7 +11,6 @@ import {
 } from '@nestjs/common';
 import { Response } from 'express';
 import { ApiExcludeEndpoint, ApiOperation, ApiTags } from '@nestjs/swagger';
-import { ConvocationStatus } from '@app/common';
 import { CaptainConvocationService } from './captain-convocation.service';
 import {
   ConvocationResponseDto,
@@ -36,10 +35,7 @@ export class ConvocationPublicController {
       res.status(HttpStatus.OK).json(dto);
       return;
     }
-    res
-      .status(HttpStatus.OK)
-      .type('html')
-      .send(renderConvocationPage(token, dto));
+    res.status(HttpStatus.OK).type('html').send(renderConvocationPage(dto));
   }
 
   @Post(':token/respond')
@@ -50,7 +46,12 @@ export class ConvocationPublicController {
     @Param('token') token: string,
     @Body() dto: PublicRespondConvocationDto,
   ): Promise<ConvocationResponseDto> {
-    return this.service.respondPublic(token, dto.uniqueIndex, dto.status);
+    return this.service.respondPublic(
+      token,
+      dto.uniqueIndex,
+      dto.status,
+      dto.responseToken,
+    );
   }
 }
 
@@ -104,21 +105,10 @@ function formatFrDateTime(value: unknown): string {
 }
 
 /**
- * Minimal self-contained French page for players without the app. Uses inline
- * styles and a tiny fetch script (posting to the tokenised respond endpoint).
+ * Minimal self-contained read-only page. Responses require the per-player
+ * signed capability delivered through the app notification.
  */
-function renderConvocationPage(
-  token: string,
-  dto: PublicConvocationDto,
-): string {
-  const rows = dto.responses
-    .map(
-      (r) =>
-        `<li>${escapeHtml(r.name || String(r.uniqueIndex))} — <strong>${statusLabel(
-          r.status,
-        )}</strong></li>`,
-    )
-    .join('');
+function renderConvocationPage(dto: PublicConvocationDto): string {
   const meeting = dto.meetingTime
     ? `<p><strong>Rendez-vous :</strong> ${escapeHtml(formatFrDateTime(dto.meetingTime))}</p>`
     : '';
@@ -138,14 +128,6 @@ function renderConvocationPage(
   h1 { font-size: 20px; margin: 0 0 8px; }
   .opponent { color: #6b6b70; margin-bottom: 16px; }
   .message { white-space: pre-wrap; background: #f0f0f3; border-radius: 12px; padding: 12px; margin: 16px 0; }
-  ul { list-style: none; padding: 0; }
-  li { padding: 6px 0; border-bottom: 1px solid #eee; }
-  .actions { display: flex; gap: 12px; margin-top: 20px; }
-  button { flex: 1; padding: 14px; font-size: 16px; border: 0; border-radius: 12px; cursor: pointer; }
-  .yes { background: #34c759; color: #fff; }
-  .no { background: #ff3b30; color: #fff; }
-  .field { width: 100%; padding: 12px; font-size: 16px; border: 1px solid #d0d0d5; border-radius: 12px; box-sizing: border-box; margin-top: 8px; }
-  .ok { color: #34c759; margin-top: 12px; }
 </style>
 </head>
 <body>
@@ -155,39 +137,8 @@ function renderConvocationPage(
     <div class="message">${escapeHtml(dto.message)}</div>
     ${meeting}
     ${venue}
-    <h2 style="font-size:16px;">Réponses</h2>
-    <ul>${rows}</ul>
-    <label for="idx">Ton numéro d'affilié :</label>
-    <input class="field" id="idx" inputmode="numeric" placeholder="Ex. 512345" />
-    <div class="actions">
-      <button class="yes" onclick="respond('CONFIRMED')">Je serai présent</button>
-      <button class="no" onclick="respond('DECLINED')">Absent</button>
-    </div>
-    <p class="ok" id="ok" hidden>Réponse enregistrée, merci !</p>
+    <p>Réponds depuis la notification BePing reçue sur ton appareil.</p>
   </div>
-<script>
-  async function respond(status) {
-    var idx = parseInt(document.getElementById('idx').value, 10);
-    if (!idx) { alert('Indique ton numéro d\\'affilié'); return; }
-    await fetch(${JSON.stringify(`/v1/captain/public/convocation/${token}/respond`)}, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ uniqueIndex: idx, status: status })
-    });
-    document.getElementById('ok').hidden = false;
-  }
-</script>
 </body>
 </html>`;
-}
-
-function statusLabel(status: ConvocationStatus): string {
-  switch (status) {
-    case ConvocationStatus.CONFIRMED:
-      return 'Présent';
-    case ConvocationStatus.DECLINED:
-      return 'Absent';
-    default:
-      return 'En attente';
-  }
 }

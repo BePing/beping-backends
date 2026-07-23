@@ -57,7 +57,12 @@ export class CaptainLineupService {
     );
 
     const lineup = await this.prisma.lineup.findUnique({
-      where: { matchUniqueId },
+      where: {
+        matchUniqueId_clubIndex: {
+          matchUniqueId,
+          clubIndex: captain.clubIndex,
+        },
+      },
       include: { slots: true },
     });
     const slots: StoredSlot[] =
@@ -84,7 +89,11 @@ export class CaptainLineupService {
       matchUniqueId,
       status: lineup?.status ?? LineupStatus.A_FAIRE,
       slots: slots.map((s) => this.toSlotDto(s, roster)),
-      roster: await this.rosterEntries(matchUniqueId, roster),
+      roster: await this.rosterEntries(
+        matchUniqueId,
+        captain.clubIndex,
+        roster,
+      ),
       validation,
       opponentLastLineup: this.opponentLineup(match, captain.clubIndex),
     };
@@ -99,7 +108,12 @@ export class CaptainLineupService {
     const team = await this.resolveTeamForMatch(captain.clubIndex, match);
 
     await this.prisma.lineup.upsert({
-      where: { matchUniqueId },
+      where: {
+        matchUniqueId_clubIndex: {
+          matchUniqueId,
+          clubIndex: captain.clubIndex,
+        },
+      },
       create: {
         matchUniqueId,
         teamId: team.teamId,
@@ -137,7 +151,12 @@ export class CaptainLineupService {
     dto: ValidateLineupDto,
   ): Promise<LineupValidationDto> {
     const lineup = await this.prisma.lineup.findUnique({
-      where: { matchUniqueId },
+      where: {
+        matchUniqueId_clubIndex: {
+          matchUniqueId,
+          clubIndex: captain.clubIndex,
+        },
+      },
       include: { slots: true },
     });
     if (!lineup) {
@@ -180,20 +199,24 @@ export class CaptainLineupService {
 
     // Blocking errors can never be validated.
     if (errors.length > 0) {
-      await this.persistValidation(matchUniqueId, LineupStatus.BROUILLON, {
-        errors,
-        warnings,
-      });
+      await this.persistValidation(
+        matchUniqueId,
+        captain.clubIndex,
+        LineupStatus.BROUILLON,
+        { errors, warnings },
+      );
       validation.status = LineupStatus.BROUILLON;
       throw new UnprocessableEntityException(validation);
     }
 
     // Warnings block validation unless explicitly overridden with a justification.
     if (warnings.length > 0 && !dto.overrideWarnings) {
-      await this.persistValidation(matchUniqueId, LineupStatus.BROUILLON, {
-        errors,
-        warnings,
-      });
+      await this.persistValidation(
+        matchUniqueId,
+        captain.clubIndex,
+        LineupStatus.BROUILLON,
+        { errors, warnings },
+      );
       validation.status = LineupStatus.BROUILLON;
       return validation;
     }
@@ -205,7 +228,12 @@ export class CaptainLineupService {
 
     const forceSnapshot = this.snapshot(slots, roster);
     await this.prisma.lineup.update({
-      where: { matchUniqueId },
+      where: {
+        matchUniqueId_clubIndex: {
+          matchUniqueId,
+          clubIndex: captain.clubIndex,
+        },
+      },
       data: {
         status: LineupStatus.VALIDEE,
         validation: { errors, warnings } as any,
@@ -239,11 +267,14 @@ export class CaptainLineupService {
 
   private async persistValidation(
     matchUniqueId: number,
+    clubIndex: string,
     status: LineupStatus,
     payload: { errors: RuleViolation[]; warnings: RuleViolation[] },
   ): Promise<void> {
     await this.prisma.lineup.update({
-      where: { matchUniqueId },
+      where: {
+        matchUniqueId_clubIndex: { matchUniqueId, clubIndex },
+      },
       data: { status, validation: payload as any },
     });
   }
@@ -410,10 +441,16 @@ export class CaptainLineupService {
   /** Roster enriched with availability responses (present players first). */
   private async rosterEntries(
     matchUniqueId: number,
+    clubIndex: string,
     roster: Map<number, RosterPlayer>,
   ) {
     const poll = await this.prisma.availabilityPoll.findUnique({
-      where: { matchUniqueId },
+      where: {
+        matchUniqueId_clubIndex: {
+          matchUniqueId,
+          clubIndex,
+        },
+      },
       include: { responses: true },
     });
     const responseByIndex = new Map(

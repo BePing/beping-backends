@@ -37,7 +37,12 @@ export class CaptainIntelligenceService {
     captain: CaptainPrincipal,
   ): Promise<LineupIntelligenceDto> {
     const lineup = await this.prisma.lineup.findUnique({
-      where: { matchUniqueId },
+      where: {
+        matchUniqueId_clubIndex: {
+          matchUniqueId,
+          clubIndex: captain.clubIndex,
+        },
+      },
       include: { slots: true },
     });
     if (!lineup) {

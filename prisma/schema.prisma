@@ -304,7 +304,7 @@ model CaptainAccount {
 
 model AvailabilityPoll {
   id            String                 @id @default(cuid())
-  matchUniqueId Int                    @unique
+  matchUniqueId Int
   teamId        String
   clubIndex     String
   createdBy     Int
@@ -312,6 +312,7 @@ model AvailabilityPoll {
   createdAt     DateTime               @default(now())
   updatedAt     DateTime               @updatedAt
 
+  @@unique([matchUniqueId, clubIndex])
   @@index([clubIndex])
   @@index([teamId])
 }
@@ -334,7 +335,7 @@ model AvailabilityResponse {
 
 model Lineup {
   id                    String       @id @default(cuid())
-  matchUniqueId         Int          @unique
+  matchUniqueId         Int
   teamId                String
   clubIndex             String
   status                LineupStatus @default(A_FAIRE)
@@ -348,6 +349,7 @@ model Lineup {
   createdAt             DateTime     @default(now())
   updatedAt             DateTime     @updatedAt
 
+  @@unique([matchUniqueId, clubIndex])
   @@index([clubIndex])
   @@index([teamId])
 }
@@ -366,19 +368,22 @@ model LineupSlot {
 }
 
 model Convocation {
-  id            String                @id @default(cuid())
-  lineupId      String                @unique
-  lineup        Lineup                @relation(fields: [lineupId], references: [id], onDelete: Cascade)
-  matchUniqueId Int                   @unique
-  message       String
-  meetingTime   String?
-  venue         String?
-  publicToken   String                @unique
-  sentBy        Int
-  responses     ConvocationResponse[]
-  sentAt        DateTime              @default(now())
-  createdAt     DateTime              @default(now())
-  updatedAt     DateTime              @updatedAt
+  id                   String                @id @default(cuid())
+  lineupId             String                @unique
+  lineup               Lineup                @relation(fields: [lineupId], references: [id], onDelete: Cascade)
+  matchUniqueId        Int
+  message              String
+  meetingTime          String?
+  venue                String?
+  publicTokenHash      String                @unique @map("publicToken")
+  publicTokenExpiresAt DateTime?
+  sentBy               Int
+  responses            ConvocationResponse[]
+  sentAt               DateTime              @default(now())
+  createdAt            DateTime              @default(now())
+  updatedAt            DateTime              @updatedAt
+
+  @@index([matchUniqueId])
 }
 
 model ConvocationResponse {

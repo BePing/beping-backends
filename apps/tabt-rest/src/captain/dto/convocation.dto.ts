@@ -48,8 +48,8 @@ export class ConvocationDto {
   @ApiPropertyOptional()
   venue?: string;
 
-  @ApiProperty()
-  publicLink: string;
+  @ApiPropertyOptional()
+  publicLink?: string;
 
   @ApiProperty()
   sentAt: string;
@@ -67,10 +67,9 @@ export class RespondConvocationDto {
   @IsEnum(ConvocationStatus)
   status: ConvocationStatus;
 
-  @ApiPropertyOptional()
+  @ApiProperty()
   @IsString()
-  @IsOptional()
-  responseToken?: string;
+  responseToken: string;
 }
 
 export class ConvocationResponseDto extends ConvocationResponseEntryDto {}
@@ -83,6 +82,10 @@ export class PublicRespondConvocationDto {
   @ApiProperty({ enum: ConvocationStatus })
   @IsEnum(ConvocationStatus)
   status: ConvocationStatus;
+
+  @ApiProperty()
+  @IsString()
+  responseToken: string;
 }
 
 export class PublicConvocationDto {

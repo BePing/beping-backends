@@ -3,7 +3,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { randomBytes } from 'crypto';
+import { createHash, randomBytes } from 'crypto';
 import { ConfigService } from '@nestjs/config';
 import { ConvocationStatus, ResponseSource, SlotRole } from '@app/common';
 import { PrismaService } from '@app/common';
@@ -41,13 +41,22 @@ export class CaptainConvocationService {
     return `${this.publicBaseUrl()}/v1/captain/public/convocation/${token}`;
   }
 
+  private hashPublicToken(token: string): string {
+    return createHash('sha256').update(token).digest('hex');
+  }
+
   async sendConvocation(
     matchUniqueId: number,
     captain: CaptainPrincipal,
     dto: SendConvocationDto,
   ): Promise<ConvocationDto> {
     const lineup = await this.prisma.lineup.findUnique({
-      where: { matchUniqueId },
+      where: {
+        matchUniqueId_clubIndex: {
+          matchUniqueId,
+          clubIndex: captain.clubIndex,
+        },
+      },
       include: { slots: true },
     });
     if (!lineup) {
@@ -62,15 +71,20 @@ export class CaptainConvocationService {
       .map((s) => s.uniqueIndex);
 
     const publicToken = randomBytes(24).toString('hex');
+    const publicTokenHash = this.hashPublicToken(publicToken);
+    const publicTokenExpiresAt = new Date(
+      Date.now() + 14 * 24 * 60 * 60 * 1000,
+    );
     const convocation = await this.prisma.convocation.upsert({
-      where: { matchUniqueId },
+      where: { lineupId: lineup.id },
       create: {
         lineupId: lineup.id,
         matchUniqueId,
         message: dto.message,
         meetingTime: dto.meetingTime,
         venue: dto.venue,
-        publicToken,
+        publicTokenHash,
+        publicTokenExpiresAt,
         sentBy: captain.uniqueIndex,
         responses: {
           create: starters.map((uniqueIndex) => ({
@@ -83,24 +97,44 @@ export class CaptainConvocationService {
         message: dto.message,
         meetingTime: dto.meetingTime,
         venue: dto.venue,
+        publicTokenHash,
+        publicTokenExpiresAt,
         sentBy: captain.uniqueIndex,
         sentAt: new Date(),
+        responses: {
+          deleteMany: {},
+          create: starters.map((uniqueIndex) => ({
+            uniqueIndex,
+            status: ConvocationStatus.PENDING,
+          })),
+        },
       },
       include: { responses: true },
     });
 
-    await this.notifyPlayers(matchUniqueId, starters);
+    await this.notifyPlayers(matchUniqueId, convocation.id, starters);
 
     const members = await this.membersMap(lineup.clubIndex);
-    return this.toDto(convocation, members);
+    return this.toDto(convocation, members, publicToken);
   }
 
   async getConvocation(
     matchUniqueId: number,
     captain: CaptainPrincipal,
   ): Promise<ConvocationDto> {
+    const lineup = await this.prisma.lineup.findUnique({
+      where: {
+        matchUniqueId_clubIndex: {
+          matchUniqueId,
+          clubIndex: captain.clubIndex,
+        },
+      },
+    });
+    if (!lineup) {
+      throw new NotFoundException('No lineup for this match');
+    }
     const convocation = await this.prisma.convocation.findUnique({
-      where: { matchUniqueId },
+      where: { lineupId: lineup.id },
       include: { responses: true, lineup: true },
     });
     if (!convocation) {
@@ -117,27 +151,25 @@ export class CaptainConvocationService {
     matchUniqueId: number,
     dto: RespondConvocationDto,
   ): Promise<ConvocationResponseDto> {
+    const claims = await this.tokens
+      .verifyResponseToken(dto.responseToken)
+      .catch(() => null);
+    if (
+      !claims ||
+      claims.matchUniqueId !== matchUniqueId ||
+      claims.uniqueIndex !== dto.uniqueIndex ||
+      claims.purpose !== 'convocation'
+    ) {
+      throw new ForbiddenException('Invalid response token');
+    }
     const convocation = await this.prisma.convocation.findUnique({
-      where: { matchUniqueId },
+      where: { id: claims.resourceId },
       include: { lineup: true },
     });
-    if (!convocation) {
+    if (!convocation || convocation.matchUniqueId !== matchUniqueId) {
       throw new NotFoundException('No convocation for this match');
     }
-    if (dto.responseToken) {
-      const claims = await this.tokens
-        .verifyResponseToken(dto.responseToken)
-        .catch(() => null);
-      if (
-        !claims ||
-        claims.matchUniqueId !== matchUniqueId ||
-        claims.uniqueIndex !== dto.uniqueIndex ||
-        claims.purpose !== 'convocation'
-      ) {
-        throw new ForbiddenException('Invalid response token');
-      }
-    }
-    return this.upsertResponse(
+    return this.updateResponse(
       convocation.id,
       convocation.lineup.clubIndex,
       dto.uniqueIndex,
@@ -153,16 +185,19 @@ export class CaptainConvocationService {
     time: string;
   }> {
     const convocation = await this.prisma.convocation.findUnique({
-      where: { publicToken: token },
+      where: { publicTokenHash: this.hashPublicToken(token) },
       include: { responses: true, lineup: true },
     });
-    if (!convocation) {
+    if (
+      !convocation ||
+      !convocation.publicTokenExpiresAt ||
+      convocation.publicTokenExpiresAt <= new Date()
+    ) {
       throw new NotFoundException('Convocation not found');
     }
     const match = await this.roster.getMatch(convocation.matchUniqueId);
     const isHome = match?.HomeClub === convocation.lineup.clubIndex;
     const opponent = match ? (isHome ? match.AwayTeam : match.HomeTeam) : '';
-    const members = await this.membersMap(convocation.lineup.clubIndex);
     const dto: PublicConvocationDto = {
       matchUniqueId: convocation.matchUniqueId,
       message: convocation.message,
@@ -171,9 +206,9 @@ export class CaptainConvocationService {
       opponent,
       date: match?.Date ?? '',
       time: match?.Time ?? '',
-      responses: convocation.responses.map((r) =>
-        this.toResponseEntry(r, members),
-      ),
+      // The shared link deliberately exposes logistics only. Player names,
+      // identifiers and response statuses stay captain-authenticated.
+      responses: [],
     };
     return { dto, opponent, date: match?.Date ?? '', time: match?.Time ?? '' };
   }
@@ -182,15 +217,32 @@ export class CaptainConvocationService {
     token: string,
     uniqueIndex: number,
     status: ConvocationStatus,
+    responseToken: string,
   ): Promise<ConvocationResponseDto> {
     const convocation = await this.prisma.convocation.findUnique({
-      where: { publicToken: token },
+      where: { publicTokenHash: this.hashPublicToken(token) },
       include: { lineup: true },
     });
-    if (!convocation) {
+    if (
+      !convocation ||
+      !convocation.publicTokenExpiresAt ||
+      convocation.publicTokenExpiresAt <= new Date()
+    ) {
       throw new NotFoundException('Convocation not found');
     }
-    return this.upsertResponse(
+    const claims = await this.tokens
+      .verifyResponseToken(responseToken)
+      .catch(() => null);
+    if (
+      !claims ||
+      claims.resourceId !== convocation.id ||
+      claims.matchUniqueId !== convocation.matchUniqueId ||
+      claims.uniqueIndex !== uniqueIndex ||
+      claims.purpose !== 'convocation'
+    ) {
+      throw new ForbiddenException('Invalid response token');
+    }
+    return this.updateResponse(
       convocation.id,
       convocation.lineup.clubIndex,
       uniqueIndex,
@@ -201,23 +253,22 @@ export class CaptainConvocationService {
 
   // --- helpers ------------------------------------------------------------
 
-  private async upsertResponse(
+  private async updateResponse(
     convocationId: string,
     clubIndex: string,
     uniqueIndex: number,
     status: ConvocationStatus,
     source: ResponseSource,
   ): Promise<ConvocationResponseDto> {
-    const response = await this.prisma.convocationResponse.upsert({
+    const existing = await this.prisma.convocationResponse.findUnique({
       where: { convocationId_uniqueIndex: { convocationId, uniqueIndex } },
-      create: {
-        convocationId,
-        uniqueIndex,
-        status,
-        source,
-        respondedAt: new Date(),
-      },
-      update: { status, source, respondedAt: new Date() },
+    });
+    if (!existing) {
+      throw new ForbiddenException('Player is not part of this convocation');
+    }
+    const response = await this.prisma.convocationResponse.update({
+      where: { convocationId_uniqueIndex: { convocationId, uniqueIndex } },
+      data: { status, source, respondedAt: new Date() },
     });
     const members = await this.membersMap(clubIndex);
     return this.toResponseEntry(response, members);
@@ -225,6 +276,7 @@ export class CaptainConvocationService {
 
   private async notifyPlayers(
     matchUniqueId: number,
+    convocationId: string,
     uniqueIndexes: number[],
   ): Promise<void> {
     const notifications = await Promise.all(
@@ -236,6 +288,7 @@ export class CaptainConvocationService {
         matchUniqueId,
         deepLink: `beping://captain/match/${matchUniqueId}/convocation`,
         responseToken: await this.tokens.signResponseToken({
+          resourceId: convocationId,
           matchUniqueId,
           uniqueIndex,
           purpose: 'convocation',
@@ -276,7 +329,6 @@ export class CaptainConvocationService {
       message: string;
       meetingTime?: string | null;
       venue?: string | null;
-      publicToken: string;
       sentAt: Date;
       responses: Array<{
         uniqueIndex: number;
@@ -285,6 +337,7 @@ export class CaptainConvocationService {
       }>;
     },
     members: Map<number, MemberEntry>,
+    publicToken?: string,
   ): ConvocationDto {
     return {
       id: convocation.id,
@@ -292,7 +345,7 @@ export class CaptainConvocationService {
       message: convocation.message,
       meetingTime: convocation.meetingTime ?? undefined,
       venue: convocation.venue ?? undefined,
-      publicLink: this.publicLink(convocation.publicToken),
+      publicLink: publicToken ? this.publicLink(publicToken) : undefined,
       sentAt: convocation.sentAt.toISOString(),
       responses: convocation.responses.map((r) =>
         this.toResponseEntry(r, members),

@@ -20,6 +20,7 @@ export interface CaptainRefreshClaims {
 export type ResponseTokenPurpose = 'availability' | 'convocation';
 
 export interface ResponseTokenClaims {
+  resourceId: string;
   matchUniqueId: number;
   uniqueIndex: number;
   purpose: ResponseTokenPurpose;
