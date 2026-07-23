@@ -38,6 +38,7 @@ describe('validateApiEnvironment', () => {
         CAPTAIN_JWT_SECRET: 'a'.repeat(32),
         CAPTAIN_JWT_REFRESH_SECRET: 'b'.repeat(32),
         PUBLIC_BASE_URL: 'https://api.beping.be',
+        REVENUECAT_SECRET_API_KEY: 'revenuecat-secret',
       }),
     ).toEqual(expect.objectContaining({ PORT: 3004 }));
   });
@@ -50,6 +51,7 @@ describe('validateApiEnvironment', () => {
       AFTT_WSDL: 'https://api.aftt.be/?wsdl',
       VTLL_WSDL: 'https://api.vttl.be/?wsdl',
       PUBLIC_BASE_URL: 'https://api.beping.be',
+      REVENUECAT_SECRET_API_KEY: 'revenuecat-secret',
     };
 
     expect(() =>
@@ -79,6 +81,7 @@ describe('validateApiEnvironment', () => {
         CAPTAIN_JWT_SECRET: 'a'.repeat(32),
         CAPTAIN_JWT_REFRESH_SECRET: 'b'.repeat(32),
         PUBLIC_BASE_URL: 'http://api.beping.be',
+        REVENUECAT_SECRET_API_KEY: 'revenuecat-secret',
       }),
     ).toThrow('must use HTTPS');
   });

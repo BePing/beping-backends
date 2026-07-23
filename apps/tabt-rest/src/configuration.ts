@@ -47,6 +47,7 @@ export function validateApiEnvironment(environment: Environment): Environment {
       'CAPTAIN_JWT_SECRET',
       'CAPTAIN_JWT_REFRESH_SECRET',
       'PUBLIC_BASE_URL',
+      'REVENUECAT_SECRET_API_KEY',
     ].filter((key) => !environment[key]);
     const hasRedis =
       !!environment.REDIS_URL ||
