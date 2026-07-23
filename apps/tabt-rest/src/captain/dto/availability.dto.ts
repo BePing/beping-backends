@@ -128,13 +128,31 @@ export class PlayerAvailabilityPollDto {
   matchUniqueId: number;
 
   @ApiProperty()
-  teamId: string;
+  teamLabel: string;
 
   @ApiProperty({ enum: AvailabilityStatus })
-  status: AvailabilityStatus;
+  myStatus: AvailabilityStatus;
 
   @ApiPropertyOptional()
-  note?: string;
+  divisionName?: string;
+
+  @ApiPropertyOptional()
+  weekName?: string;
+
+  @ApiProperty()
+  opponent: string;
+
+  @ApiProperty()
+  date: string;
+
+  @ApiProperty()
+  time: string;
+
+  @ApiProperty()
+  home: boolean;
+
+  @ApiPropertyOptional()
+  venue?: string;
 }
 
 export class PlayerAvailabilityDto {

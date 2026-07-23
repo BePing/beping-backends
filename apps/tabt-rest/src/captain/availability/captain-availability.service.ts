@@ -251,14 +251,31 @@ export class CaptainAvailabilityService {
       where: { uniqueIndex },
       include: { poll: true },
     });
+    const polls = await Promise.all(
+      responses.map(async (response) => {
+        const match = await this.roster.getMatch(response.poll.matchUniqueId);
+        const home = match?.HomeClub === response.poll.clubIndex;
+        return {
+          matchUniqueId: response.poll.matchUniqueId,
+          teamLabel: match
+            ? home
+              ? match.HomeTeam
+              : match.AwayTeam
+            : response.poll.teamId,
+          divisionName: match?.DivisionName,
+          weekName: match?.WeekName,
+          opponent: match ? (home ? match.AwayTeam : match.HomeTeam) : '',
+          date: match?.Date ?? '',
+          time: match?.Time ?? '',
+          home,
+          venue: match?.VenueEntry?.Name,
+          myStatus: response.status,
+        };
+      }),
+    );
     return {
       uniqueIndex,
-      polls: responses.map((r) => ({
-        matchUniqueId: r.poll.matchUniqueId,
-        teamId: r.poll.teamId,
-        status: r.status,
-        note: r.note ?? undefined,
-      })),
+      polls,
     };
   }
 
