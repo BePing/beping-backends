@@ -1,5 +1,17 @@
 # Changelog
 
+## [2.2.5](https://github.com/BePing/beping-backends/compare/tabt-rest-v2.2.4...tabt-rest-v2.2.5) (2026-07-23)
+
+
+### Bug Fixes
+
+* build application code on native architecture ([c49af28](https://github.com/BePing/beping-backends/commit/c49af2828066b3a0da69b3086d3b75b1114a6b85))
+
+
+### Miscellaneous
+
+* prepare Node 26 and TypeScript 7 migration ([495717c](https://github.com/BePing/beping-backends/commit/495717cd48de147f8182feabf1c5650935ee49af))
+
 ## [2.2.4](https://github.com/BePing/beping-backends/compare/tabt-rest-v2.2.3...tabt-rest-v2.2.4) (2026-07-22)
 
 
