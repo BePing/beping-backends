@@ -1,5 +1,34 @@
 # Changelog
 
+## [2.3.0](https://github.com/BePing/beping-backends/compare/tabt-rest-v2.2.5...tabt-rest-v2.3.0) (2026-07-23)
+
+
+### Features
+
+* **captain:** add token-scoped player convocation ([87b9ac0](https://github.com/BePing/beping-backends/commit/87b9ac04e65567dbb672daa8a299bcbd776d1a29))
+* **captain:** captain module — auth, availability, lineup, convocation (Task [#3](https://github.com/BePing/beping-backends/issues/3)) ([d3595ce](https://github.com/BePing/beping-backends/commit/d3595cee1ccec1b9a11073f6a0c40c0a47d32eaf))
+* **captain:** federal lineup rule engine (Task [#4](https://github.com/BePing/beping-backends/issues/4)) ([e0b415a](https://github.com/BePing/beping-backends/commit/e0b415a9490ba34c8d28655a6aad0864ed6ac135))
+
+
+### Bug Fixes
+
+* **captain:** align player availability contract ([ab1bb64](https://github.com/BePing/beping-backends/commit/ab1bb64259197db27562a62e769e698cc6d028ce))
+* **captain:** harden identity and token issuance ([f45cc9f](https://github.com/BePing/beping-backends/commit/f45cc9f79aafaa123cdf7a51f74a8180024ee815))
+* **captain:** isolate club data and player responses ([feef63e](https://github.com/BePing/beping-backends/commit/feef63e2034c02f543110d6804b45b72eedbf497))
+* **captain:** public convocation HTML 500 + notifier observability ([5e2fd04](https://github.com/BePing/beping-backends/commit/5e2fd047fe2538969c5cb26cd35d4d9f2e80d57c))
+* **captain:** verify Pro entitlement server-side ([02ae76e](https://github.com/BePing/beping-backends/commit/02ae76e4a3235e06edfa17972a8e370049bd37d5))
+* **tabt:** default AFTT/VTTL SOAP clients to their own host ([455bc32](https://github.com/BePing/beping-backends/commit/455bc322ffdb53a53833366d8f3bded4f9e6fa77))
+
+
+### Miscellaneous
+
+* **captain:** format intelligence service ([cc55bcc](https://github.com/BePing/beping-backends/commit/cc55bcc8a006abd9da42870227ad284ed48e3d3f))
+
+
+### Tests
+
+* **captain:** cover security boundaries ([7c0b292](https://github.com/BePing/beping-backends/commit/7c0b292fc3a0ece250d6bbed4be2287200ee9848))
+
 ## [2.2.5](https://github.com/BePing/beping-backends/compare/tabt-rest-v2.2.4...tabt-rest-v2.2.5) (2026-07-23)
 
 
