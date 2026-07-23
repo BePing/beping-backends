@@ -94,8 +94,10 @@ Do not delete or reuse the old volumes as part of the cutover operation.
 
 The protected production workflow runs on the Escape Key platform runner. Set
 `BEPING_DOCKER_HOST=ssh://root@100.79.25.78` as a repository variable and keep
-`BEPING_DATABASE_URL` plus `BEPING_DIRECT_URL` as repository or Production
-environment secrets.
+`COOLIFY_BEPING_POSTGRES18_UUID`, `COOLIFY_BEPING_REDIS8_UUID` and
+`COOLIFY_BEPING_BACKUP_STORAGE_UUID` as repository variables. Keep
+`BEPING_PG18_PASSWORD` and `BEPING_REDIS8_PASSWORD` in the protected Production
+environment.
 
 The migration container runs on the BePing Docker daemon through Tailscale SSH
 and joins the private `coolify` network. PostgreSQL must not be published merely
@@ -103,8 +105,10 @@ to make migrations reachable from the central runner.
 
 Before a production migration, the workflow requires a non-empty local
 PostgreSQL dump less than 26 hours old in
-`/data/coolify/backups/postgresql/beping`. It then pauses the importer, runs
-`prisma migrate deploy` through `DIRECT_URL`, verifies `prisma migrate status`,
-and only then promotes the applications. If a later step fails, the workflow
-restarts the previous importer image; it never attempts an automatic database
-rollback, so production migrations must remain backward-compatible.
+`/data/coolify/backups/databases/escape-key-team-0/beping-postgresql-18-<uuid>`.
+The same scheduled dump is uploaded to the dedicated BePing object-storage
+bucket. The workflow then pauses the importer, runs `prisma migrate deploy`
+through `DIRECT_URL`, verifies `prisma migrate status`, and only then promotes
+the applications. If a later step fails, the workflow restarts the previous
+importer image; it never attempts an automatic database rollback, so production
+migrations must remain backward-compatible.
