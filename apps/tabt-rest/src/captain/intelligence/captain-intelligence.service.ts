@@ -117,13 +117,11 @@ export class CaptainIntelligenceService {
     return {
       winProbability,
       probabilityDelta,
-      optimalOrder: order.map(
-        (p, i): LineupSlotInputDto => ({
-          uniqueIndex: p.uniqueIndex,
-          orderPos: i + 1,
-          role: SlotRole.TITULAIRE,
-        }),
-      ),
+      optimalOrder: order.map((p, i): LineupSlotInputDto => ({
+        uniqueIndex: p.uniqueIndex,
+        orderPos: i + 1,
+        role: SlotRole.TITULAIRE,
+      })),
       faceToFace,
       reinforcements,
     };
