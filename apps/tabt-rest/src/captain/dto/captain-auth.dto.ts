@@ -16,7 +16,7 @@ export class CaptainLoginDto {
 
   @ApiProperty({
     description:
-      'Self-declared member unique index; verified against the AFTT account.',
+      'Member unique index; must already be provisioned as a captain.',
   })
   @IsInt()
   claimedUniqueIndex: number;

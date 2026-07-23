@@ -40,9 +40,14 @@ export function validateApiEnvironment(environment: Environment): Environment {
   }
 
   if (environment.NODE_ENV === 'production') {
-    const missing = ['DATABASE_URL', 'AFTT_WSDL', 'VTLL_WSDL'].filter(
-      (key) => !environment[key],
-    );
+    const missing = [
+      'DATABASE_URL',
+      'AFTT_WSDL',
+      'VTLL_WSDL',
+      'CAPTAIN_JWT_SECRET',
+      'CAPTAIN_JWT_REFRESH_SECRET',
+      'PUBLIC_BASE_URL',
+    ].filter((key) => !environment[key]);
     const hasRedis =
       !!environment.REDIS_URL ||
       !!environment.REDIS_TLS_URL ||
@@ -52,6 +57,24 @@ export function validateApiEnvironment(environment: Environment): Environment {
       throw new Error(
         `Missing required production configuration: ${missing.join(', ')}`,
       );
+    }
+
+    const accessSecret = String(environment.CAPTAIN_JWT_SECRET);
+    const refreshSecret = String(environment.CAPTAIN_JWT_REFRESH_SECRET);
+    if (accessSecret.length < 32 || refreshSecret.length < 32) {
+      throw new Error(
+        'Captain JWT secrets must each contain at least 32 characters',
+      );
+    }
+    if (accessSecret === refreshSecret) {
+      throw new Error(
+        'Captain JWT access and refresh secrets must be distinct',
+      );
+    }
+
+    const publicBaseUrl = new URL(String(environment.PUBLIC_BASE_URL));
+    if (publicBaseUrl.protocol !== 'https:') {
+      throw new Error('PUBLIC_BASE_URL must use HTTPS in production');
     }
   }
 

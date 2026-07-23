@@ -13,7 +13,9 @@ import { CaptainLoginDto, CaptainSessionDto } from '../dto/captain-auth.dto';
 /**
  * Captain authentication. Verifies AFTT credentials against the TabT SOAP API
  * (TestAsync → IsValidAccount), resolves the claimed member (GetMembers) to get
- * the club, upserts a verified CaptainAccount and issues application JWTs.
+ * the club, checks the pre-provisioned CaptainAccount and issues application
+ * JWTs. Federation credentials prove API access, not member identity, so a
+ * self-declared member can never create or switch a CaptainAccount.
  *
  * AFTT credentials are used only for the two SOAP calls and are never persisted
  * or logged.
@@ -45,8 +47,17 @@ export class CaptainAuthService {
       throw new UnauthorizedException('Invalid AFTT credentials');
     }
 
-    // 2. Resolve the claimed member (TabT has no "who am I": we trust the account
-    //    is valid, then look up the self-declared member to get his club).
+    // 2. The identity must have been provisioned by a trusted operator. TabT
+    //    does not expose "who am I", so valid credentials alone cannot bind the
+    //    caller to an arbitrary claimed member.
+    const account = await this.prisma.captainAccount.findUnique({
+      where: { uniqueIndex: dto.claimedUniqueIndex },
+    });
+    if (!account) {
+      throw new UnauthorizedException('Captain access is not enabled');
+    }
+
+    // 3. Refresh the provisioned member data from the federation.
     const season = Number(this.config.get('CURRENT_SEASON')) || undefined;
     let member;
     try {
@@ -72,18 +83,16 @@ export class CaptainAuthService {
 
     const clubIndex = member.Club;
 
-    // 3. Upsert the verified captain identity (no credentials stored).
-    await this.prisma.captainAccount.upsert({
-      where: { uniqueIndex: member.UniqueIndex },
-      create: {
-        uniqueIndex: member.UniqueIndex,
-        clubIndex,
-        firstName: member.FirstName,
-        lastName: member.LastName,
-        ranking: member.Ranking,
-        lastVerifiedAt: new Date(),
-      },
-      update: {
+    if (
+      member.UniqueIndex !== account.uniqueIndex ||
+      clubIndex !== account.clubIndex
+    ) {
+      throw new UnauthorizedException('Captain identity does not match');
+    }
+
+    await this.prisma.captainAccount.update({
+      where: { uniqueIndex: account.uniqueIndex },
+      data: {
         clubIndex,
         firstName: member.FirstName,
         lastName: member.LastName,

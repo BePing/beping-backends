@@ -1,5 +1,6 @@
 import { Body, Controller, HttpCode, HttpStatus, Post } from '@nestjs/common';
 import { ApiOkResponse, ApiOperation, ApiTags } from '@nestjs/swagger';
+import { Throttle } from '@nestjs/throttler';
 import { CaptainAuthService } from './captain-auth.service';
 import {
   CaptainLoginDto,
@@ -13,6 +14,7 @@ export class CaptainAuthController {
   constructor(private readonly authService: CaptainAuthService) {}
 
   @Post('login')
+  @Throttle({ default: { limit: 5, ttl: 60_000 } })
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ operationId: 'captainLogin' })
   @ApiOkResponse({ type: CaptainSessionDto })
