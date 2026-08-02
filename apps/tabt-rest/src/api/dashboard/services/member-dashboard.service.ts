@@ -9,6 +9,7 @@ import {
   MemberDashboardDTOV1,
   MemberStatsDTOV1,
   MultiCategoryMemberDashboardDTOV1,
+  MyTeamSummaryDTOV1,
   NextMatchEstimationDTO,
   OpponentEstimationDTO,
 } from '../dto/member-dashboard.dto';
@@ -241,6 +242,10 @@ export class MemberDashboardService implements DashboardServiceInterface<MemberD
         dashboard.numericRanking = numericRankingResponse;
         dashboard.latestTeamMatches = latestTeamMatches;
         dashboard.stats = stats;
+        dashboard.myTeam = this.computeMyTeam(
+          latestTeamMatches,
+          member.payload?.Club,
+        );
 
         return dashboard;
       } catch (error) {
@@ -767,6 +772,23 @@ export class MemberDashboardService implements DashboardServiceInterface<MemberD
     };
   }
 
+  /**
+   * Resolve the team the member played the most matches with.
+   * Never throws: returns undefined when nothing can be resolved.
+   */
+  private computeMyTeam(
+    matches: TeamMatchesEntry[],
+    memberClub: string | undefined,
+  ): MyTeamSummaryDTOV1 | undefined {
+    try {
+      return computeMyTeamSummary(matches, memberClub);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unknown error';
+      this.logger.warn(`Failed to compute my team summary: ${message}`);
+      return undefined;
+    }
+  }
+
   private async getLatestMatches(
     member: MemberEntry,
     category?: PlayerCategoryDTO,
@@ -993,3 +1015,116 @@ export class MemberDashboardService implements DashboardServiceInterface<MemberD
     return estimationTable[ranking] || 0;
   }
 }
+
+const normalizeClub = (club: string | undefined | null): string =>
+  (club ?? '').trim().toUpperCase();
+
+const parseMatchTimestamp = (
+  date: string | undefined | null,
+): number | null => {
+  if (!date) {
+    return null;
+  }
+  const timestamp = Date.parse(date);
+  return Number.isNaN(timestamp) ? null : timestamp;
+};
+
+/**
+ * Pure computation of the member "most played team" out of the matches the
+ * member actually played. The winner is the team with the highest match count,
+ * ties being broken by the most recently dated match (unparseable dates lose).
+ *
+ * Returns undefined when no team can be resolved.
+ */
+export const computeMyTeamSummary = (
+  matches: TeamMatchesEntry[] | undefined | null,
+  memberClub: string | undefined | null,
+): MyTeamSummaryDTOV1 | undefined => {
+  const club = normalizeClub(memberClub);
+  if (!club || !Array.isArray(matches) || matches.length === 0) {
+    return undefined;
+  }
+
+  type Aggregate = {
+    team: string;
+    matchCount: number;
+    latestTimestamp: number | null;
+    latestMatch: TeamMatchesEntry;
+  };
+
+  const aggregates = new Map<string, Aggregate>();
+
+  for (const match of matches) {
+    if (!match) {
+      continue;
+    }
+
+    let team: string | undefined;
+    if (normalizeClub(match.HomeClub) === club) {
+      team = match.HomeTeam;
+    } else if (normalizeClub(match.AwayClub) === club) {
+      team = match.AwayTeam;
+    }
+
+    team = typeof team === 'string' ? team.trim() : undefined;
+    if (!team) {
+      continue;
+    }
+
+    const timestamp = parseMatchTimestamp(match.Date);
+    const existing = aggregates.get(team);
+
+    if (!existing) {
+      aggregates.set(team, {
+        team,
+        matchCount: 1,
+        latestTimestamp: timestamp,
+        latestMatch: match,
+      });
+      continue;
+    }
+
+    existing.matchCount += 1;
+    if (
+      timestamp !== null &&
+      (existing.latestTimestamp === null ||
+        timestamp > existing.latestTimestamp)
+    ) {
+      existing.latestTimestamp = timestamp;
+      existing.latestMatch = match;
+    }
+  }
+
+  let winner: Aggregate | undefined;
+  for (const aggregate of aggregates.values()) {
+    if (!winner) {
+      winner = aggregate;
+      continue;
+    }
+
+    if (aggregate.matchCount > winner.matchCount) {
+      winner = aggregate;
+      continue;
+    }
+
+    if (aggregate.matchCount === winner.matchCount) {
+      const challenger = aggregate.latestTimestamp;
+      const champion = winner.latestTimestamp;
+      if (challenger !== null && (champion === null || challenger > champion)) {
+        winner = aggregate;
+      }
+    }
+  }
+
+  if (!winner) {
+    return undefined;
+  }
+
+  const summary = new MyTeamSummaryDTOV1();
+  summary.team = winner.team;
+  summary.divisionId = winner.latestMatch.DivisionId;
+  summary.divisionName = winner.latestMatch.DivisionName ?? '';
+  summary.matchCount = winner.matchCount;
+
+  return summary;
+};

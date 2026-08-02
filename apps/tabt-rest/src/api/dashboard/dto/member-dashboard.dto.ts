@@ -226,6 +226,32 @@ export class NextMatchEstimationDTO {
   worstCase: OpponentEstimationDTO[];
 }
 
+export class MyTeamSummaryDTOV1 {
+  @ApiProperty({
+    type: String,
+    description: 'Full team name, e.g. "PATAPONGISTES A"',
+  })
+  team: string;
+
+  @ApiProperty({
+    type: Number,
+    description: 'Division id of the most recent match played with this team',
+  })
+  divisionId: number;
+
+  @ApiProperty({
+    type: String,
+    description: 'Division name of the most recent match played with this team',
+  })
+  divisionName: string;
+
+  @ApiProperty({
+    type: Number,
+    description: 'Number of the member played matches made with this team',
+  })
+  matchCount: number;
+}
+
 export class MemberDashboardDTOV1 {
   @ApiProperty({
     type: () => ResponseDTO,
@@ -257,6 +283,12 @@ export class MemberDashboardDTOV1 {
 
   @ApiProperty({ type: () => NextMatchEstimationDTO, required: false })
   public nextMatchEstimation?: NextMatchEstimationDTO;
+
+  @ApiPropertyOptional({
+    type: MyTeamSummaryDTOV1,
+    description: 'The team the member played the most matches with',
+  })
+  public myTeam?: MyTeamSummaryDTOV1;
 
   constructor(status: ResponseDTO<string>) {
     this.status = status;
