@@ -11,6 +11,7 @@ export class ClubTeamService {
 
   async getClubsTeams(input: GetClubTeamsInput): Promise<TeamEntry[]> {
     const result = await this.tabtClient.GetClubTeamsAsync(input);
-    return result.TeamEntries;
+    // TabT omits TeamEntries when the club has no teams (yet) this season.
+    return result.TeamEntries ?? [];
   }
 }

@@ -22,7 +22,9 @@ export class DivisionService {
       ShowDivisionName: query.showDivisionName,
     };
     const result = await this.tabtClient.GetDivisionsAsync(input);
-    return result.DivisionEntries.filter((division) => {
+    // TabT omits DivisionEntries entirely when a level has no divisions yet
+    // (e.g. a province that has not published its new-season calendar).
+    return (result.DivisionEntries ?? []).filter((division) => {
       if (query.divisionCategory) {
         return (
           division.DivisionCategory ===
@@ -48,7 +50,7 @@ export class DivisionService {
     input: GetDivisionsInput,
   ): Promise<DivisionEntry> {
     const divisions = await this.tabtClient.GetDivisionsAsync(input);
-    return divisions.DivisionEntries.find(
+    return (divisions.DivisionEntries ?? []).find(
       (division) => division.DivisionId === id,
     );
   }
