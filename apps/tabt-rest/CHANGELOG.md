@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.4.0](https://github.com/BePing/beping-backends/compare/tabt-rest-v2.3.0...tabt-rest-v2.4.0) (2026-08-02)
+
+
+### Features
+
+* **dashboard:** expose most-played team as myTeam ([090a40e](https://github.com/BePing/beping-backends/commit/090a40e8b82084f56e1f643c50d3128eaebc8f85))
+
 ## [2.3.0](https://github.com/BePing/beping-backends/compare/tabt-rest-v2.2.5...tabt-rest-v2.3.0) (2026-08-02)
 
 
