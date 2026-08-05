@@ -1,5 +1,4 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { Transform } from 'class-transformer';
 import {
   TournamentEntry,
   TournamentSerieEntry,
@@ -68,7 +67,6 @@ export class TournamentEntryDTOV1 {
   name: string;
 
   @ApiProperty({ enum: LevelDTO })
-  @Transform((l) => mapLevelToLevelDTO(l.value), { toPlainOnly: true })
   level: LevelDTO;
 
   @ApiProperty()
