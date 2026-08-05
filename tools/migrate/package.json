@@ -6,6 +6,6 @@
   "packageManager": "pnpm@11.15.1",
   "dependencies": {
     "dotenv": "17.4.2",
-    "prisma": "7.9.0"
+    "prisma": "7.9.1"
   }
 }
