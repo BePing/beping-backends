@@ -1,5 +1,5 @@
 import { Module } from '@nestjs/common';
-import { APP_FILTER } from '@nestjs/core';
+import { APP_FILTER, APP_INTERCEPTOR } from '@nestjs/core';
 import { ScheduleModule } from '@nestjs/schedule';
 import { ConfigModule } from '@nestjs/config';
 import { LoggerModule } from 'nestjs-pino';
@@ -11,6 +11,7 @@ import { NotificationsModule } from './notifications/notifications.module';
 import { NotificationsController } from './controllers/notifications.controller';
 import { EventsController } from './controllers/events.controller';
 import { AllExceptionsFilter } from './common/filter/all-exceptions.filter';
+import { PostHogRequestInterceptor, PostHogService } from '@app/common';
 
 @Module({
   imports: [
@@ -31,6 +32,12 @@ import { AllExceptionsFilter } from './common/filter/all-exceptions.filter';
     {
       provide: APP_FILTER,
       useClass: AllExceptionsFilter,
+    },
+    {
+      provide: APP_INTERCEPTOR,
+      useFactory: (posthog: PostHogService) =>
+        new PostHogRequestInterceptor(posthog, 'app-notifications'),
+      inject: [PostHogService],
     },
   ],
 })

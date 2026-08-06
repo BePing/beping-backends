@@ -1,7 +1,12 @@
 import { HttpService } from '@nestjs/axios';
 import { firstValueFrom } from 'rxjs';
 import { Logger } from '@nestjs/common';
-import { PlayerCategory, ImportType, estimateLetterRanking } from '@app/common';
+import {
+  PlayerCategory,
+  ImportType,
+  estimateLetterRanking,
+  PostHogService,
+} from '@app/common';
 import { OnWorkerEvent, Processor, WorkerHost } from '@nestjs/bullmq';
 import { PrismaService } from '@app/common';
 import { Job } from 'bullmq';
@@ -28,6 +33,7 @@ export class MembersListProcessingService extends WorkerHost {
     private readonly cacheService: CacheService,
     private readonly importExecutionCoordinatorService: ImportExecutionCoordinatorService,
     private readonly postgresCopyService: PostgresCopyService,
+    private readonly posthog: PostHogService,
   ) {
     super();
   }
@@ -80,6 +86,13 @@ export class MembersListProcessingService extends WorkerHost {
               { linesAdded: 0, linesUpdated: 0 },
             );
             importRun.finish('skipped');
+            this.posthog.capture('import_run_completed', 'data-aftt-importer', {
+              source: 'data-aftt-importer',
+              import_type: 'members',
+              player_category: String(playerCategory),
+              outcome: 'skipped',
+              duration_ms: Date.now() - startTime,
+            });
             return;
           }
 
@@ -137,12 +150,27 @@ export class MembersListProcessingService extends WorkerHost {
           importRun.record('points_stored', importStats.pointStats.stored);
           importRun.record('points_skipped', importStats.pointStats.skipped);
           importRun.finish('success');
+          this.posthog.capture('import_run_completed', 'data-aftt-importer', {
+            source: 'data-aftt-importer',
+            import_type: 'members',
+            player_category: String(playerCategory),
+            outcome: 'success',
+            duration_ms: totalTime,
+            processed_records: linesProcessed,
+            affected_records: importStats.memberStats.affected,
+          });
 
           this.logger.log(
             `Import completed in ${Math.round(totalTime / 1000)}s (download: ${Date.now() - downloadStart}ms, merge: ${Date.now() - upsertStart}ms)`,
           );
         } catch (e) {
           importRun.finish('failed');
+          this.posthog.captureException(e, 'data-aftt-importer', {
+            source: 'data-aftt-importer',
+            import_type: 'members',
+            player_category: String(playerCategory),
+            duration_ms: Date.now() - startTime,
+          });
           this.logger.error('Failed to finish job', e.message);
           throw e;
         }

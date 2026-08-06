@@ -4,6 +4,7 @@ import { PostHogService } from '@app/common';
 jest.mock('posthog-node', () => {
   return {
     PostHog: jest.fn().mockImplementation(() => ({
+      capture: jest.fn(),
       captureException: jest.fn(),
       shutdown: jest.fn().mockResolvedValue(undefined),
     })),
@@ -39,6 +40,13 @@ describe('PostHogService', () => {
       ).not.toThrow();
     });
 
+    it('capture is a safe no-op', () => {
+      const service = new PostHogService();
+      expect(() =>
+        service.capture('api_request_completed', 'user-1'),
+      ).not.toThrow();
+    });
+
     it('onApplicationShutdown resolves without a client', async () => {
       const service = new PostHogService();
       await expect(service.onApplicationShutdown()).resolves.toBeUndefined();
@@ -50,7 +58,7 @@ describe('PostHogService', () => {
       process.env.POSTHOG_API_KEY = 'phc_test';
       new PostHogService();
       expect(PostHogMock).toHaveBeenCalledWith('phc_test', {
-        host: 'https://eu.i.posthog.com',
+        host: 'https://t.beping.be',
       });
     });
 
@@ -72,8 +80,44 @@ describe('PostHogService', () => {
       service.captureException(error, 'user-1', { source: 'test' });
 
       expect(client.captureException).toHaveBeenCalledWith(error, 'user-1', {
+        $process_person_profile: false,
         source: 'test',
       });
+    });
+
+    it('captures product events without creating person profiles', () => {
+      process.env.POSTHOG_API_KEY = 'phc_test';
+      const service = new PostHogService();
+      const client = PostHogMock.mock.results[0].value;
+
+      service.capture('api_request_completed', 'user-1', { status_code: 200 });
+
+      expect(client.capture).toHaveBeenCalledWith({
+        event: 'api_request_completed',
+        distinctId: 'user-1',
+        properties: {
+          $process_person_profile: false,
+          status_code: 200,
+        },
+      });
+    });
+
+    it('uses a stable anonymous id when exception context has no id', () => {
+      process.env.POSTHOG_API_KEY = 'phc_test';
+      const service = new PostHogService();
+      const client = PostHogMock.mock.results[0].value;
+      const error = new Error('boom');
+
+      service.captureException(error, undefined, { source: 'tabt-rest' });
+
+      expect(client.captureException).toHaveBeenCalledWith(
+        error,
+        'tabt-rest:anonymous',
+        {
+          $process_person_profile: false,
+          source: 'tabt-rest',
+        },
+      );
     });
 
     it('swallows client errors in captureException', () => {
@@ -96,5 +140,12 @@ describe('PostHogService', () => {
 
       expect(client.shutdown).toHaveBeenCalledTimes(1);
     });
+  });
+
+  it('fails loudly in development when POSTHOG_API_KEY is missing', () => {
+    process.env.NODE_ENV = 'development';
+    expect(() => new PostHogService()).toThrow(
+      'POSTHOG_API_KEY variable required by PostHog is missing or un-configured, this causes events to be silently missed. This error stops appearing once POSTHOG_API_KEY is configured',
+    );
   });
 });

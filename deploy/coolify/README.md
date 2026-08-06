@@ -46,6 +46,13 @@ For API and notifications:
 - configure only `Ports Exposes`, never a host port mapping;
 - use registry pull credentials scoped to the Escape Key namespace.
 
+Set the same `POSTHOG_API_KEY` and `POSTHOG_HOST=https://t.beping.be` on
+API, Notifications and Importer. Sharing the BePing project with the mobile
+app keeps sessions, requests, exceptions and import telemetry correlated on
+the same observability dashboard.
+The direct `https://eu.i.posthog.com` host remains an explicit fallback if the
+reverse proxy must be bypassed during diagnostics.
+
 For the importer, disable auto-deploy. Production promotion updates it only
 after the schema and public applications are healthy.
 

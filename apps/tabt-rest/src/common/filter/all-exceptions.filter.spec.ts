@@ -26,7 +26,18 @@ describe('AllExceptionsFilter', () => {
     jest.restoreAllMocks();
   });
 
-  const host = {} as ArgumentsHost;
+  const request = {
+    headers: {
+      'x-posthog-distinct-id': 'mobile-user-1',
+      'x-posthog-session-id': 'session-1',
+    },
+    method: 'GET',
+    path: '/v1/members/42',
+    route: { path: '/v1/members/:id' },
+  };
+  const host = {
+    switchToHttp: () => ({ getRequest: () => request }),
+  } as unknown as ArgumentsHost;
 
   it('reports 500 HttpExceptions to PostHog and delegates', () => {
     const exception = new HttpException('boom', 500);
@@ -36,9 +47,13 @@ describe('AllExceptionsFilter', () => {
     expect(posthog.captureException).toHaveBeenCalledTimes(1);
     expect(posthog.captureException).toHaveBeenCalledWith(
       exception,
-      undefined,
+      'mobile-user-1',
       {
         source: 'tabt-rest',
+        request_method: 'GET',
+        request_route: '/v1/members/:id',
+        $session_id: 'session-1',
+        status_code: 500,
       },
     );
     expect(superCatch).toHaveBeenCalledWith(exception, host);
@@ -52,9 +67,13 @@ describe('AllExceptionsFilter', () => {
     expect(posthog.captureException).toHaveBeenCalledTimes(1);
     expect(posthog.captureException).toHaveBeenCalledWith(
       exception,
-      undefined,
+      'mobile-user-1',
       {
         source: 'tabt-rest',
+        request_method: 'GET',
+        request_route: '/v1/members/:id',
+        $session_id: 'session-1',
+        status_code: 500,
       },
     );
     expect(superCatch).toHaveBeenCalledWith(exception, host);

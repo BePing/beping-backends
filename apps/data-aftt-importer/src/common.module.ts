@@ -8,6 +8,7 @@ import {
   CacheModuleOptsFactory,
   CacheService,
   getRedisConnectionOptions,
+  PostHogService,
   PrismaService,
 } from '@app/common';
 import { ImportExecutionCoordinatorService } from './common/import-execution-coordinator.service';
@@ -76,6 +77,7 @@ import { ImportThrottleService } from './common/import-throttle.service';
     ImportQueueStatusService,
     PostgresCopyService,
     ImportThrottleService,
+    PostHogService,
   ],
   exports: [
     BullModule,
@@ -87,6 +89,7 @@ import { ImportThrottleService } from './common/import-throttle.service';
     ImportQueueStatusService,
     PostgresCopyService,
     ImportThrottleService,
+    PostHogService,
   ],
 })
 export class CommonModule {}

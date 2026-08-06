@@ -1,7 +1,7 @@
 import { HttpService } from '@nestjs/axios';
 import { firstValueFrom } from 'rxjs';
 import { Logger } from '@nestjs/common';
-import { ImportType, PlayerCategory } from '@app/common';
+import { ImportType, PlayerCategory, PostHogService } from '@app/common';
 import { OnWorkerEvent, Processor, WorkerHost } from '@nestjs/bullmq';
 import { Job } from 'bullmq';
 import { PrismaService } from '@app/common';
@@ -44,6 +44,7 @@ export class ResultsProcessorService extends WorkerHost {
     private readonly importExecutionCoordinatorService: ImportExecutionCoordinatorService,
     private readonly postgresCopyService: PostgresCopyService,
     private readonly importThrottleService: ImportThrottleService,
+    private readonly posthog: PostHogService,
   ) {
     super();
   }
@@ -94,6 +95,11 @@ export class ResultsProcessorService extends WorkerHost {
               { linesAdded: 0, linesUpdated: 0 },
             );
             importRun.finish('skipped');
+            this.captureImportOutcome(
+              job.data.playerCategory,
+              'skipped',
+              getElapsedMs(),
+            );
             return;
           }
 
@@ -110,6 +116,11 @@ export class ResultsProcessorService extends WorkerHost {
               { linesAdded: 0, linesUpdated: 0 },
             );
             importRun.finish('skipped');
+            this.captureImportOutcome(
+              job.data.playerCategory,
+              'skipped',
+              getElapsedMs(),
+            );
             return;
           }
 
@@ -164,17 +175,50 @@ export class ResultsProcessorService extends WorkerHost {
           importRun.record('updated', mergeStats.linesUpdated);
           importRun.record('dropped', mergeStats.dropped);
           importRun.finish('success');
+          this.captureImportOutcome(
+            job.data.playerCategory,
+            'success',
+            processingTimeMs,
+            {
+              processed_records: dataLines.length,
+              inserted_records: mergeStats.linesAdded,
+              updated_records: mergeStats.linesUpdated,
+              dropped_records: mergeStats.dropped,
+            },
+          );
 
           this.logger.log(
             `Results processing completed. Processed ${dataLines.length} lines in ${processingTimeMs}ms`,
           );
         } catch (e) {
           importRun.finish('failed');
+          this.posthog.captureException(e, 'data-aftt-importer', {
+            source: 'data-aftt-importer',
+            import_type: 'results',
+            player_category: String(job.data.playerCategory),
+            duration_ms: Date.now() - processingStartTime,
+          });
           this.logger.error('Failed to finish results job', e);
           throw e;
         }
       },
     );
+  }
+
+  private captureImportOutcome(
+    playerCategory: PlayerCategory,
+    outcome: 'success' | 'skipped',
+    durationMs: number,
+    properties: Record<string, unknown> = {},
+  ): void {
+    this.posthog.capture('import_run_completed', 'data-aftt-importer', {
+      source: 'data-aftt-importer',
+      import_type: 'results',
+      player_category: String(playerCategory),
+      outcome,
+      duration_ms: durationMs,
+      ...properties,
+    });
   }
 
   // ============================================================================
