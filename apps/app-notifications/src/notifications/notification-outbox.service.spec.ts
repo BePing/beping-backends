@@ -1,4 +1,4 @@
-import { PrismaService } from '@app/common';
+import { PostHogService, PrismaService } from '@app/common';
 import { FcmService } from './fcm.service';
 import { NotificationContentService } from './notification-content.service';
 import { NotificationOutboxService } from './notification-outbox.service';
@@ -32,16 +32,18 @@ describe('NotificationOutboxService', () => {
         .mockResolvedValue({ fr: ['device-token'] }),
       sendNotification,
     } as unknown as FcmService;
+    const posthog = { capture: jest.fn() };
     const service = new NotificationOutboxService(
       prisma,
       fcm,
       new NotificationContentService(),
+      posthog as unknown as PostHogService,
     );
-    return { service, updateMany, update, sendNotification };
+    return { service, updateMany, update, sendNotification, posthog };
   }
 
   it('marks a claimed event as processed after delivery', async () => {
-    const { service, updateMany, sendNotification } = setup();
+    const { service, updateMany, sendNotification, posthog } = setup();
 
     await service.processPendingEvents();
 
@@ -57,11 +59,21 @@ describe('NotificationOutboxService', () => {
         data: expect.objectContaining({ status: 'PROCESSED' }),
       }),
     );
+    expect(posthog.capture).toHaveBeenCalledWith(
+      'notification_outbox_group_completed',
+      'service:app-notifications',
+      expect.objectContaining({
+        outbox_event_type: 'PLAYER_RANKING_UPDATED',
+        outcome: 'processed',
+        event_count: 1,
+        max_attempt_count: 1,
+      }),
+    );
   });
 
   it('requeues an event with backoff when FCM fails', async () => {
     const failure = jest.fn().mockRejectedValue(new Error('FCM unavailable'));
-    const { service, update } = setup(failure);
+    const { service, update, posthog } = setup(failure);
 
     await service.processPendingEvents();
 
@@ -73,6 +85,11 @@ describe('NotificationOutboxService', () => {
           lastError: 'FCM unavailable',
         }),
       }),
+    );
+    expect(posthog.capture).toHaveBeenCalledWith(
+      'notification_outbox_group_completed',
+      'service:app-notifications',
+      expect.objectContaining({ outcome: 'retry_scheduled' }),
     );
   });
 });

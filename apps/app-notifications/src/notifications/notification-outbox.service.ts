@@ -1,6 +1,6 @@
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { Interval } from '@nestjs/schedule';
-import { NotificationType, PrismaService } from '@app/common';
+import { NotificationType, PostHogService, PrismaService } from '@app/common';
 import { FcmService } from './fcm.service';
 import {
   NotificationContentService,
@@ -41,6 +41,7 @@ export class NotificationOutboxService implements OnModuleInit {
     private readonly prisma: PrismaService,
     private readonly fcm: FcmService,
     private readonly content: NotificationContentService,
+    private readonly posthog: PostHogService,
   ) {}
 
   async onModuleInit(): Promise<void> {
@@ -63,6 +64,14 @@ export class NotificationOutboxService implements OnModuleInit {
 
     if (recovered.count > 0) {
       this.logger.warn(`Recovered ${recovered.count} stale outbox events`);
+      this.posthog.capture(
+        'notification_outbox_stale_events_recovered',
+        'service:app-notifications',
+        {
+          source: 'app-notifications',
+          recovered_count: recovered.count,
+        },
+      );
     }
   }
 
@@ -128,6 +137,8 @@ export class NotificationOutboxService implements OnModuleInit {
     events: OutboxEvent[],
     send: () => Promise<void>,
   ): Promise<void> {
+    const startedAt = performance.now();
+    const eventType = events[0]?.type ?? 'UNKNOWN';
     try {
       await send();
       await this.prisma.notificationOutbox.updateMany({
@@ -138,6 +149,7 @@ export class NotificationOutboxService implements OnModuleInit {
           lastError: null,
         },
       });
+      this.captureOutboxGroup(eventType, events, 'processed', startedAt);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       this.logger.error(
@@ -165,7 +177,35 @@ export class NotificationOutboxService implements OnModuleInit {
           });
         }),
       );
+      this.captureOutboxGroup(
+        eventType,
+        events,
+        events.every((event) => event.attempts >= 8)
+          ? 'failed_permanently'
+          : 'retry_scheduled',
+        startedAt,
+      );
     }
+  }
+
+  private captureOutboxGroup(
+    eventType: string,
+    events: OutboxEvent[],
+    outcome: 'processed' | 'retry_scheduled' | 'failed_permanently',
+    startedAt: number,
+  ): void {
+    this.posthog.capture(
+      'notification_outbox_group_completed',
+      'service:app-notifications',
+      {
+        source: 'app-notifications',
+        outbox_event_type: eventType,
+        outcome,
+        event_count: events.length,
+        max_attempt_count: Math.max(...events.map((event) => event.attempts)),
+        duration_ms: Math.round(performance.now() - startedAt),
+      },
+    );
   }
 
   private async sendRankingEvent(event: OutboxEvent): Promise<void> {

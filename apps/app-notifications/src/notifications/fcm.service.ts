@@ -10,7 +10,7 @@ import {
   MulticastMessage,
   BatchResponse,
 } from 'firebase-admin/messaging';
-import { PrismaService } from '@app/common';
+import { PostHogService, PrismaService } from '@app/common';
 import {
   DevicePlatform,
   NotificationStatus,
@@ -33,19 +33,27 @@ export interface NotificationDispatchResult {
   targeted: number;
   successCount: number;
   failureCount: number;
+  invalidTokenCount: number;
   skipped: boolean;
 }
 
 interface BatchDispatchResult {
   successCount: number;
   failureCount: number;
+  invalidTokenCount: number;
 }
+
+type NotificationDispatchOutcome =
+  'success' | 'partial_failure' | 'failed' | 'skipped';
 
 @Injectable()
 export class FcmService implements OnModuleInit {
   private readonly logger = new Logger(FcmService.name);
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly posthog: PostHogService,
+  ) {}
 
   async onModuleInit() {
     if (!getApps().length) {
@@ -368,12 +376,56 @@ export class FcmService implements OnModuleInit {
   async sendNotification(
     options: SendNotificationOptions,
   ): Promise<NotificationDispatchResult> {
+    const startedAt = performance.now();
     const finishDispatch = notificationMetrics.startDispatch(
       options.notificationType,
     );
+    let telemetryCaptured = false;
+    const captureDispatch = (
+      outcome: NotificationDispatchOutcome,
+      result: Omit<NotificationDispatchResult, 'skipped'>,
+      batchCount: number,
+      failureReason?:
+        'firebase_not_initialized' | 'all_targets_failed' | 'dispatch_error',
+    ) => {
+      if (telemetryCaptured) return;
+      telemetryCaptured = true;
+      this.posthog.capture(
+        'notification_dispatch_completed',
+        'service:app-notifications',
+        {
+          source: 'app-notifications',
+          notification_type: options.notificationType,
+          outcome,
+          target_mode: options.targetDeviceTokens
+            ? 'device_tokens'
+            : options.targetTopic
+              ? 'topic'
+              : 'subscriptions',
+          targeted_count: result.targeted,
+          success_count: result.successCount,
+          failure_count: result.failureCount,
+          invalid_token_count: result.invalidTokenCount,
+          batch_count: batchCount,
+          duration_ms: Math.round(performance.now() - startedAt),
+          ...(failureReason ? { failure_reason: failureReason } : {}),
+        },
+      );
+    };
 
     if (!getApps().length) {
       finishDispatch('failed');
+      captureDispatch(
+        'failed',
+        {
+          targeted: 0,
+          successCount: 0,
+          failureCount: 0,
+          invalidTokenCount: 0,
+        },
+        0,
+        'firebase_not_initialized',
+      );
       throw new ServiceUnavailableException('Firebase is not initialized');
     }
 
@@ -429,10 +481,21 @@ export class FcmService implements OnModuleInit {
           `No active subscriptions found for notification type: ${options.notificationType}`,
         );
         finishDispatch('skipped');
+        captureDispatch(
+          'skipped',
+          {
+            targeted: 0,
+            successCount: 0,
+            failureCount: 0,
+            invalidTokenCount: 0,
+          },
+          0,
+        );
         return {
           targeted: 0,
           successCount: 0,
           failureCount: 0,
+          invalidTokenCount: 0,
           skipped: true,
         };
       }
@@ -454,12 +517,28 @@ export class FcmService implements OnModuleInit {
           (total, batch) => total + batch.failureCount,
           0,
         ),
+        invalidTokenCount: results.reduce(
+          (total, batch) => total + batch.invalidTokenCount,
+          0,
+        ),
         skipped: false,
       };
 
       finishDispatch(result.failureCount > 0 ? 'failed' : 'success');
+      const outcome: NotificationDispatchOutcome =
+        result.failureCount === 0
+          ? 'success'
+          : result.failureCount === result.targeted
+            ? 'failed'
+            : 'partial_failure';
+      captureDispatch(
+        outcome,
+        result,
+        batches.length,
+        outcome === 'failed' ? 'all_targets_failed' : undefined,
+      );
       this.logger.log(
-        `Notification dispatch completed: targeted=${result.targeted}, sent=${result.successCount}, failed=${result.failureCount}`,
+        `Notification dispatch completed: targeted=${result.targeted}, sent=${result.successCount}, failed=${result.failureCount}, invalid_tokens=${result.invalidTokenCount}`,
       );
 
       if (result.failureCount === result.targeted) {
@@ -472,6 +551,17 @@ export class FcmService implements OnModuleInit {
       return result;
     } catch (error) {
       finishDispatch('failed');
+      captureDispatch(
+        'failed',
+        {
+          targeted: 0,
+          successCount: 0,
+          failureCount: 0,
+          invalidTokenCount: 0,
+        },
+        0,
+        'dispatch_error',
+      );
       this.logger.error('Failed to send notification', error);
       throw error;
     }
@@ -533,7 +623,11 @@ export class FcmService implements OnModuleInit {
         })),
         options,
       );
-      return { successCount: 0, failureCount: deviceTokens.length };
+      return {
+        successCount: 0,
+        failureCount: deviceTokens.length,
+        invalidTokenCount: 0,
+      };
     }
   }
 
@@ -606,6 +700,7 @@ export class FcmService implements OnModuleInit {
     return {
       successCount: response.successCount,
       failureCount: response.failureCount,
+      invalidTokenCount: invalidTokens.length,
     };
   }
 

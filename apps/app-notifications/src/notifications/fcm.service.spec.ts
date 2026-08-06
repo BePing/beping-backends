@@ -1,7 +1,7 @@
 import { ServiceUnavailableException } from '@nestjs/common';
 import { getApps } from 'firebase-admin/app';
 import { getMessaging } from 'firebase-admin/messaging';
-import { NotificationType, PrismaService } from '@app/common';
+import { NotificationType, PostHogService, PrismaService } from '@app/common';
 import { FcmService } from './fcm.service';
 import { notificationMetrics } from './notification-metrics';
 
@@ -22,6 +22,7 @@ describe('FcmService dispatch', () => {
     topicSubscription: { findMany: jest.fn() },
   };
   const sendEachForMulticast = jest.fn();
+  const posthog = { capture: jest.fn() };
   let service: FcmService;
 
   beforeEach(() => {
@@ -34,7 +35,10 @@ describe('FcmService dispatch', () => {
     ]);
     prisma.deviceSubscription.updateMany.mockResolvedValue({ count: 1 });
     prisma.notificationLog.createMany.mockResolvedValue({ count: 2 });
-    service = new FcmService(prisma as never);
+    service = new FcmService(
+      prisma as never,
+      posthog as unknown as PostHogService,
+    );
   });
 
   it('aggregates FCM results and persists logs in bulk', async () => {
@@ -67,6 +71,7 @@ describe('FcmService dispatch', () => {
       targeted: 2,
       successCount: 1,
       failureCount: 1,
+      invalidTokenCount: 1,
       skipped: false,
     });
 
@@ -78,6 +83,24 @@ describe('FcmService dispatch', () => {
       where: { deviceToken: { in: ['token-invalid-1234567890'] } },
       data: { active: false },
     });
+    expect(posthog.capture).toHaveBeenCalledWith(
+      'notification_dispatch_completed',
+      'service:app-notifications',
+      expect.objectContaining({
+        notification_type: NotificationType.MATCH,
+        outcome: 'partial_failure',
+        targeted_count: 2,
+        success_count: 1,
+        failure_count: 1,
+        invalid_token_count: 1,
+        batch_count: 1,
+      }),
+    );
+    expect(posthog.capture.mock.calls[0][2]).not.toHaveProperty('title');
+    expect(posthog.capture.mock.calls[0][2]).not.toHaveProperty('body');
+    expect(posthog.capture.mock.calls[0][2]).not.toHaveProperty(
+      'device_tokens',
+    );
   });
 
   it('returns a service error when every FCM target fails', async () => {
@@ -93,6 +116,17 @@ describe('FcmService dispatch', () => {
     ).rejects.toBeInstanceOf(ServiceUnavailableException);
 
     expect(prisma.notificationLog.createMany).toHaveBeenCalledTimes(1);
+    expect(posthog.capture).toHaveBeenCalledTimes(1);
+    expect(posthog.capture).toHaveBeenCalledWith(
+      'notification_dispatch_completed',
+      'service:app-notifications',
+      expect.objectContaining({
+        outcome: 'failed',
+        failure_reason: 'all_targets_failed',
+        targeted_count: 1,
+        failure_count: 1,
+      }),
+    );
   });
 
   it('keeps the FCM aggregate when invalid-token persistence fails', async () => {
@@ -144,6 +178,14 @@ describe('FcmService dispatch', () => {
         notificationType: NotificationType.MATCH,
       }),
     ).rejects.toBeInstanceOf(ServiceUnavailableException);
+    expect(posthog.capture).toHaveBeenCalledWith(
+      'notification_dispatch_completed',
+      'service:app-notifications',
+      expect.objectContaining({
+        outcome: 'failed',
+        failure_reason: 'firebase_not_initialized',
+      }),
+    );
   });
 });
 
@@ -163,7 +205,9 @@ describe('FcmService topic lookup', () => {
     const prisma = {
       topicSubscription: { findMany },
     } as unknown as PrismaService;
-    const service = new FcmService(prisma);
+    const service = new FcmService(prisma, {
+      capture: jest.fn(),
+    } as unknown as PostHogService);
 
     await expect(
       service.getDevicesByTopicsGroupedByLocale(
