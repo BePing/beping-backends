@@ -1,5 +1,17 @@
 # Changelog
 
+## [2.5.0](https://github.com/BePing/beping-backends/compare/tabt-rest-v2.4.0...tabt-rest-v2.5.0) (2026-08-06)
+
+
+### Features
+
+* **observability:** capture backend usage in PostHog [skip ci] ([#1303](https://github.com/BePing/beping-backends/issues/1303)) ([99ba709](https://github.com/BePing/beping-backends/commit/99ba709adba8d76f7928df253478a2ca8391c83f))
+
+
+### Bug Fixes
+
+* **tournament:** stop double-mapping tournament level to REGION_VTTL ([5994124](https://github.com/BePing/beping-backends/commit/599412442548177f9db6b6c8739fbf830e5707cb))
+
 ## [2.4.0](https://github.com/BePing/beping-backends/compare/tabt-rest-v2.3.0...tabt-rest-v2.4.0) (2026-08-02)
 
 
