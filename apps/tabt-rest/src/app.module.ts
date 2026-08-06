@@ -1,5 +1,5 @@
 import { Module } from '@nestjs/common';
-import { APP_FILTER, APP_GUARD } from '@nestjs/core';
+import { APP_FILTER, APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
 import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import { ServicesModule } from './services/services.module';
 import { CommonModule } from './common/common.module';
@@ -8,6 +8,7 @@ import { CaptainModule } from './captain/captain.module';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { AllExceptionsFilter } from './common/filter/all-exceptions.filter';
 import { validateApiEnvironment } from './configuration';
+import { PostHogRequestInterceptor, PostHogService } from '@app/common';
 
 @Module({
   imports: [
@@ -40,6 +41,12 @@ import { validateApiEnvironment } from './configuration';
     {
       provide: APP_GUARD,
       useClass: ThrottlerGuard,
+    },
+    {
+      provide: APP_INTERCEPTOR,
+      useFactory: (posthog: PostHogService) =>
+        new PostHogRequestInterceptor(posthog, 'tabt-rest'),
+      inject: [PostHogService],
     },
   ],
 })

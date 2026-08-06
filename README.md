@@ -1,4 +1,5 @@
-# TabT-Rest 
+# TabT-Rest
+
 ![Coverage:branches](./.badges/badge-branches.svg)
 ![Coverage:functions](./.badges/badge-functions.svg)
 ![Coverage:lines](./.badges/badge-lines.svg)
@@ -21,6 +22,13 @@ $ pnpm install
 ```
 
 Create your own environment file (`.env`) from the `.env.example`
+
+PostHog is optional in production (the services remain safe no-ops without a
+token) and required in development so missing instrumentation is visible:
+
+- `POSTHOG_API_KEY`: BePing project token shared with the mobile app
+- `POSTHOG_HOST`: `https://t.beping.be` (BePing reverse proxy; defaults to this
+  value when omitted). Use `https://eu.i.posthog.com` only as a direct fallback.
 
 ## Running the app
 
@@ -47,6 +55,7 @@ $ pnpm run test:e2e
 # test coverage
 $ pnpm run test:coverage
 ```
+
 ### Start with pm2
 
 ```sh
@@ -55,16 +64,16 @@ pm2 start tabt-rest-pm2.json
 
 ## Release History
 
-* 1.0.0
-    * First complete implementation with OpenApi specs.
-* 1.0.1
-    * OpenApi operationId.
-* 1.0.2
-    * Bug fixes 
-* 1.0.3
-    * Align with Tabt 0.7.24
-* 1.0.4
-    * Disable automatic conversation for DTOs
+- 1.0.0
+  - First complete implementation with OpenApi specs.
+- 1.0.1
+  - OpenApi operationId.
+- 1.0.2
+  - Bug fixes
+- 1.0.3
+  - Align with Tabt 0.7.24
+- 1.0.4
+  - Disable automatic conversation for DTOs
 
 ## Meta
 

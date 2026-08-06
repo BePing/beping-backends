@@ -1,6 +1,10 @@
 import { ArgumentsHost, Catch, HttpException } from '@nestjs/common';
 import { BaseExceptionFilter } from '@nestjs/core';
-import { PostHogService } from '@app/common';
+import {
+  getPostHogRequestContext,
+  PostHogHttpRequest,
+  PostHogService,
+} from '@app/common';
 
 /**
  * Global catch-all filter. Reports server-side failures (HTTP status >= 500
@@ -18,8 +22,11 @@ export class AllExceptionsFilter extends BaseExceptionFilter {
       exception instanceof HttpException ? exception.getStatus() : 500;
 
     if (status >= 500) {
-      this.posthog.captureException(exception, undefined, {
-        source: 'tabt-rest',
+      const request = host.switchToHttp().getRequest<PostHogHttpRequest>();
+      const context = getPostHogRequestContext(request, 'tabt-rest');
+      this.posthog.captureException(exception, context.distinctId, {
+        ...context.properties,
+        status_code: status,
       });
     }
 

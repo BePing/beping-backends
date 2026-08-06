@@ -1,10 +1,11 @@
 import { Injectable, Logger, OnApplicationShutdown } from '@nestjs/common';
 import { PostHog } from 'posthog-node';
 
-const DEFAULT_POSTHOG_HOST = 'https://eu.i.posthog.com';
+const DEFAULT_POSTHOG_HOST = 'https://t.beping.be';
 
 /**
- * Thin wrapper around the posthog-node client used for error tracking.
+ * Thin wrapper around the posthog-node client used for product analytics and
+ * error tracking.
  *
  * When POSTHOG_API_KEY is not configured the service stays a no-op: no client
  * is created and every method is safe to call, so local dev / CI / tests never
@@ -18,12 +19,38 @@ export class PostHogService implements OnApplicationShutdown {
   constructor() {
     const apiKey = process.env.POSTHOG_API_KEY;
     if (!apiKey) {
+      if (process.env.NODE_ENV === 'development') {
+        throw new Error(
+          'POSTHOG_API_KEY variable required by PostHog is missing or un-configured, this causes events to be silently missed. This error stops appearing once POSTHOG_API_KEY is configured',
+        );
+      }
       this.client = null;
       return;
     }
     this.client = new PostHog(apiKey, {
       host: process.env.POSTHOG_HOST || DEFAULT_POSTHOG_HOST,
     });
+  }
+
+  /** Capture a backend product event without creating person profiles. */
+  capture(
+    event: string,
+    distinctId: string,
+    properties?: Record<string | number, unknown>,
+  ): void {
+    if (!this.client) return;
+    try {
+      this.client.capture({
+        event,
+        distinctId,
+        properties: {
+          $process_person_profile: false,
+          ...properties,
+        },
+      });
+    } catch (err) {
+      this.logger.warn(`Failed to capture PostHog event: ${err}`);
+    }
   }
 
   /**
@@ -39,7 +66,15 @@ export class PostHogService implements OnApplicationShutdown {
       return;
     }
     try {
-      this.client.captureException(error, distinctId, extraProps);
+      const source = String(extraProps?.source ?? 'backend');
+      this.client.captureException(
+        error,
+        distinctId?.trim() || `${source}:anonymous`,
+        {
+          $process_person_profile: false,
+          ...extraProps,
+        },
+      );
     } catch (err) {
       this.logger.warn(`Failed to report exception to PostHog: ${err}`);
     }
