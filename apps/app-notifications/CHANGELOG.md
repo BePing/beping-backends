@@ -1,5 +1,13 @@
 # Changelog
 
+## [2.3.0](https://github.com/BePing/beping-backends/compare/app-notifications-v2.2.5...app-notifications-v2.3.0) (2026-08-11)
+
+
+### Features
+
+* **observability:** capture backend usage in PostHog [skip ci] ([#1303](https://github.com/BePing/beping-backends/issues/1303)) ([99ba709](https://github.com/BePing/beping-backends/commit/99ba709adba8d76f7928df253478a2ca8391c83f))
+* **observability:** track notification delivery health ([8631ab2](https://github.com/BePing/beping-backends/commit/8631ab2519a346b1452f9831db1349adec8e2137))
+
 ## [2.2.5](https://github.com/BePing/beping-backends/compare/app-notifications-v2.2.4...app-notifications-v2.2.5) (2026-07-23)
 
 
