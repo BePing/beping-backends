@@ -209,8 +209,6 @@ jobs:
 
           worker_configuration="$({
             jq -n '{
-              domains: null,
-              ports_exposes: null,
               is_auto_deploy_enabled: false,
               limits_cpus: "0.5",
               limits_memory: "768M",
