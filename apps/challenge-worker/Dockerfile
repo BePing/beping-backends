@@ -1,4 +1,8 @@
-FROM node:26-alpine AS builder
+# syntax=docker/dockerfile:1.4
+
+ARG NODE_VERSION=26.5.0-alpine
+
+FROM --platform=$BUILDPLATFORM node:${NODE_VERSION} AS builder
 WORKDIR /app
 RUN npm install -g pnpm@11.15.1
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
@@ -9,7 +13,7 @@ COPY libs ./libs
 COPY prisma ./prisma
 RUN pnpm prisma:generate && pnpm build:challenge-worker
 
-FROM node:26-alpine AS runner
+FROM node:${NODE_VERSION} AS runner
 WORKDIR /app
 ENV NODE_ENV=production \
     DB_POOL_MAX=1
