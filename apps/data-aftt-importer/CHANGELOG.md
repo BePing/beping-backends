@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.3.0](https://github.com/BePing/beping-backends/compare/data-aftt-importer-v2.2.5...data-aftt-importer-v2.3.0) (2026-08-11)
+
+
+### Features
+
+* **observability:** capture backend usage in PostHog [skip ci] ([#1303](https://github.com/BePing/beping-backends/issues/1303)) ([99ba709](https://github.com/BePing/beping-backends/commit/99ba709adba8d76f7928df253478a2ca8391c83f))
+
 ## [2.2.5](https://github.com/BePing/beping-backends/compare/data-aftt-importer-v2.2.4...data-aftt-importer-v2.2.5) (2026-07-23)
 
 
