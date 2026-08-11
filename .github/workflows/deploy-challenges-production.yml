@@ -85,6 +85,7 @@ jobs:
             local method="$1"
             local path="$2"
             local payload="${3:-}"
+            local response
             local args=(
               --fail-with-body --silent --show-error
               --connect-timeout 10 --max-time 30
@@ -95,7 +96,12 @@ jobs:
             if [[ -n "${payload}" ]]; then
               args+=(--data "${payload}")
             fi
-            curl "${args[@]}" "${api_base}${path}"
+            if ! response="$(curl "${args[@]}" "${api_base}${path}")"; then
+              echo "Coolify ${method} ${path} failed." >&2
+              jq -c '{message, errors}' <<<"${response}" >&2 2>/dev/null || true
+              return 1
+            fi
+            printf '%s' "${response}"
           }
 
           server="$(coolify GET "/servers/${SERVER_UUID}")"
