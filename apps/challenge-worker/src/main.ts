@@ -31,8 +31,15 @@ async function bootstrap(): Promise<void> {
     if (job === 'idle') {
       console.log('CHALLENGE_WORKER_READY');
       await new Promise<void>((resolve) => {
-        process.once('SIGINT', resolve);
-        process.once('SIGTERM', resolve);
+        const keepAlive = setInterval(() => undefined, 60_000);
+        const shutdown = (): void => {
+          clearInterval(keepAlive);
+          process.off('SIGINT', shutdown);
+          process.off('SIGTERM', shutdown);
+          resolve();
+        };
+        process.once('SIGINT', shutdown);
+        process.once('SIGTERM', shutdown);
       });
       return;
     }
