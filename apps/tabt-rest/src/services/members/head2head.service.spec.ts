@@ -114,6 +114,27 @@ describe('Head2headService', () => {
       );
     });
 
+    it('should parse player inputs regardless of attribute order and quotes', async () => {
+      mockHttpService.post.mockReturnValue(
+        of({
+          data: `
+            <input value='123/Player One' class='player' name='player_1' id='player_1'>
+            <input name='player_2' value='456/Player Two' id='player_2'>
+            <a href='?season=2023&sel=1&detail=123&week_name=1&div_id=1'>Match 01/23</a>
+          `,
+        }),
+      );
+
+      const result = await service.getHead2HeadResults(123, 456);
+
+      expect(result.playersInfo).toEqual({
+        playerUniqueIndex: 123,
+        opponentPlayerUniqueIndex: 456,
+        playerName: 'Player One',
+        opponentPlayerName: 'Player Two',
+      });
+    });
+
     it('should use the same stable cache key for both player orders', async () => {
       await service.getHead2HeadResults(123, 456);
       await service.getHead2HeadResults(456, 123);

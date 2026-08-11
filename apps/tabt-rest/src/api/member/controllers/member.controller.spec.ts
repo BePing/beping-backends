@@ -36,7 +36,7 @@ describe('MemberController', () => {
     expect(controller).toBeDefined();
   });
 
-  it('should call members service with correct param', async () => {
+  it('should return an empty list when the member search has no result', async () => {
     const input = {
       club: 'L360',
       uniqueIndex: 142453,
@@ -49,13 +49,10 @@ describe('MemberController', () => {
     };
     const spy = jest.spyOn(service, 'getMembersV1').mockResolvedValue([]);
 
-    try {
-      await controller.findAll(input as unknown as GetMemberV1);
-    } catch (error) {
-      expect(error).toBeDefined();
-      expect(error).toBeInstanceOf(NotFoundException);
-      expect(spy).toHaveBeenCalledWith(input);
-    }
+    await expect(
+      controller.findAll(input as unknown as GetMemberV1),
+    ).resolves.toEqual([]);
+    expect(spy).toHaveBeenCalledWith(input);
   });
 
   it('should call members service with correct param - 1 player', async () => {

@@ -9,6 +9,7 @@ import { HttpService } from '@nestjs/axios';
 import { firstValueFrom } from 'rxjs';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { ConfigService } from '@nestjs/config';
+import { DOMParser } from '@xmldom/xmldom';
 
 import { MatchService } from '../matches/match.service';
 import { TeamMatchesEntry } from '../../entity/tabt-soap/TabTAPI_Port';
@@ -446,57 +447,51 @@ export class Head2headService {
   private extractPlayerNames(htmlPage: string): PlayersInfo {
     this.logger.debug('Extracting player names from HTML');
 
-    // Match pattern: <INPUT ... id="player_1" name="player_1" value="130573/BAUDOUIN LOOS">
-    const regex =
-      /id="player_([12])"[^>]*name="player_\1"[^>]*value="([0-9]+)\/([^"]+)"/gm;
-    this.logger.debug(`Using regex pattern: ${regex.toString()}`);
+    const normalizedHtml = /<html(?:\s|>)/i.test(htmlPage)
+      ? htmlPage
+      : `<html><body>${htmlPage}</body></html>`;
+    const document = new DOMParser({
+      onError: () => undefined,
+    }).parseFromString(normalizedHtml, 'text/html');
+    const readPlayer = (index: 1 | 2): [string, string] | null => {
+      const value = document
+        .getElementById(`player_${index}`)
+        ?.getAttribute('value')
+        ?.trim();
+      if (!value) return null;
 
-    const players: Array<[string, string]> = [];
-    let matchCount = 0;
+      const separator = value.indexOf('/');
+      if (separator <= 0) return null;
 
-    let match: RegExpExecArray | null;
-    while ((match = regex.exec(htmlPage)) !== null) {
-      matchCount++;
-      const playerIndex = Number(match[1]);
-      const uniqueIndex = match[2];
-      const name = match[3].trim();
-      this.logger.debug(
-        `Found player ${playerIndex}: uniqueIndex=${uniqueIndex}, name="${name}"`,
-      );
-      players[playerIndex - 1] = [uniqueIndex, name];
-    }
+      const uniqueIndex = value.slice(0, separator).trim();
+      const name = value.slice(separator + 1).trim();
+      if (!/^\d+$/.test(uniqueIndex) || !name) return null;
+      return [uniqueIndex, name];
+    };
 
-    this.logger.debug(`Extracted ${matchCount} player matches`);
-
-    if (players.length !== 2 || !players[0] || !players[1]) {
+    const player = readPlayer(1);
+    const opponent = readPlayer(2);
+    if (!player || !opponent) {
+      const inputs = document.getElementsByTagName('input');
+      let playerInputCount = 0;
+      for (let index = 0; index < inputs.length; index++) {
+        if (inputs[index].getAttribute('id')?.startsWith('player_')) {
+          playerInputCount++;
+        }
+      }
       this.logger.error(
-        `Failed to extract player information. Found ${players.length} players: ${JSON.stringify(players)}`,
+        `Failed to extract player information. playerInputs=${playerInputCount}, htmlLength=${htmlPage.length}`,
       );
-      // Try alternative patterns
-      const altPattern1 = htmlPage.match(/id="player_1"[^>]*value="([^"]+)"/i);
-      const altPattern2 = htmlPage.match(/id="player_2"[^>]*value="([^"]+)"/i);
-      if (altPattern1) {
-        this.logger.debug(
-          `Alternative pattern found player_1: ${altPattern1[1]}`,
-        );
-      }
-      if (altPattern2) {
-        this.logger.debug(
-          `Alternative pattern found player_2: ${altPattern2[1]}`,
-        );
-      }
       throw new Error('Failed to extract player information');
     }
 
     const result = {
-      playerName: players[0][1],
-      playerUniqueIndex: Number(players[0][0]),
-      opponentPlayerName: players[1][1],
-      opponentPlayerUniqueIndex: Number(players[1][0]),
+      playerName: player[1],
+      playerUniqueIndex: Number(player[0]),
+      opponentPlayerName: opponent[1],
+      opponentPlayerUniqueIndex: Number(opponent[0]),
     };
-    this.logger.debug(
-      `Successfully extracted players: ${result.playerName} (${result.playerUniqueIndex}) vs ${result.opponentPlayerName} (${result.opponentPlayerUniqueIndex})`,
-    );
+    this.logger.debug('Successfully extracted both players');
 
     return result;
   }

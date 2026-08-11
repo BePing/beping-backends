@@ -103,7 +103,9 @@ export class TournamentController {
       WithRegistrations: true,
     });
     if (result.length) {
-      return result[0].SerieEntries.map(TournamentSerieEntryDTOV1.fromTabT);
+      return (result[0].SerieEntries ?? []).map(
+        TournamentSerieEntryDTOV1.fromTabT,
+      );
     }
     throw new NotFoundException();
   }
