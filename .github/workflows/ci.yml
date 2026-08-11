@@ -76,7 +76,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        app: [tabt-rest, data-aftt-importer, app-notifications]
+        app:
+          [tabt-rest, data-aftt-importer, app-notifications, challenge-worker]
     steps:
       - uses: actions/checkout@v7
 

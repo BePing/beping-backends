@@ -28,15 +28,15 @@ infrastructure inventory and as GitHub repository variables.
 
 All application image tags must be full 40-character git SHAs.
 
-| Setting       | API                     | Notifications                     | Importer                     |
-| ------------- | ----------------------- | --------------------------------- | ---------------------------- |
-| Image         | `escape-key/beping-api` | `escape-key/beping-notifications` | `escape-key/beping-importer` |
-| Port          | 3050                    | 3000                              | none                         |
-| Domain        | `api-v2.beping.be`      | `notifications.beping.be`         | none                         |
-| Health path   | `/v1/health/live`       | `/health/live`                    | Docker process healthcheck   |
-| Memory limit  | 768 MB                  | 384 MB                            | 768 MB                       |
-| CPU limit     | 1.0                     | 0.35                              | 0.35                         |
-| Graceful stop | 30 seconds              | 30 seconds                        | 60 seconds                   |
+| Setting       | API                     | Notifications                     | Importer                     | Challenge worker                     |
+| ------------- | ----------------------- | --------------------------------- | ---------------------------- | ------------------------------------ |
+| Image         | `escape-key/beping-api` | `escape-key/beping-notifications` | `escape-key/beping-importer` | `escape-key/beping-challenge-worker` |
+| Port          | 3050                    | 3000                              | none                         | none                                 |
+| Domain        | `api-v2.beping.be`      | `notifications.beping.be`         | none                         | none                                 |
+| Health path   | `/v1/health/live`       | `/health/live`                    | Docker process healthcheck   | scheduled-task exit status           |
+| Memory limit  | 768 MB                  | 384 MB                            | 768 MB                       | 768 MB                               |
+| CPU limit     | 1.0                     | 0.35                              | 0.35                         | 0.5                                  |
+| Graceful stop | 30 seconds              | 30 seconds                        | 60 seconds                   | 60 seconds                           |
 
 For API and notifications:
 
@@ -55,6 +55,13 @@ reverse proxy must be bypassed during diagnostics.
 
 For the importer, disable auto-deploy. Production promotion updates it only
 after the schema and public applications are healthy.
+
+For the challenge worker, set `DB_POOL_MAX=1` and timezone
+`Europe/Brussels`. Configure scheduled commands `sunday` at `0 18 * * 0`,
+`monday` at `0 20 * * 1` and `thursday` at `0 8 * * 4`. Store Mailjet and TABT
+values only in Coolify; PostgreSQL contains their environment-variable names.
+See `apps/challenge-worker/README.md` and `docs/challenge-cutover.md` before
+activation.
 
 The importer deliberately trades duration for API availability:
 

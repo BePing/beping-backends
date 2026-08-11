@@ -7,14 +7,15 @@ Kuma.
 
 ## Runtime topology
 
-| Resource      | Image or control plane                                   |                    Public | Deployment model                                        |
-| ------------- | -------------------------------------------------------- | ------------------------: | ------------------------------------------------------- |
-| API           | `registry.escapekey.app/escape-key/beping-api`           |        `api-v2.beping.be` | Individual Coolify Docker Image application             |
-| Notifications | `registry.escapekey.app/escape-key/beping-notifications` | `notifications.beping.be` | Individual Coolify Docker Image application             |
-| Importer      | `registry.escapekey.app/escape-key/beping-importer`      |                        No | Individual Coolify worker application                   |
-| Migrations    | `registry.escapekey.app/escape-key/beping-migrate`       |                        No | Run once from the protected deployment workflow         |
-| PostgreSQL    | `postgres:18.4` Coolify database resource                |                        No | Persistent; data checksums enabled                      |
-| Redis         | `redis:8.8.0-alpine` Coolify database resource            |                        No | AOF + RDB; shared by cache, BullMQ and Nest transports  |
+| Resource      | Image or control plane                                      |                    Public | Deployment model                                       |
+| ------------- | ----------------------------------------------------------- | ------------------------: | ------------------------------------------------------ |
+| API           | `registry.escapekey.app/escape-key/beping-api`              |        `api-v2.beping.be` | Individual Coolify Docker Image application            |
+| Notifications | `registry.escapekey.app/escape-key/beping-notifications`    | `notifications.beping.be` | Individual Coolify Docker Image application            |
+| Importer      | `registry.escapekey.app/escape-key/beping-importer`         |                        No | Individual Coolify worker application                  |
+| Challenges    | `registry.escapekey.app/escape-key/beping-challenge-worker` |                        No | Three Coolify scheduled tasks                          |
+| Migrations    | `registry.escapekey.app/escape-key/beping-migrate`          |                        No | Run once from the protected deployment workflow        |
+| PostgreSQL    | `postgres:18.4` Coolify database resource                   |                        No | Persistent; data checksums enabled                     |
+| Redis         | `redis:8.8.0-alpine` Coolify database resource              |                        No | AOF + RDB; shared by cache, BullMQ and Nest transports |
 
 Do not deploy the public applications as a Docker Compose stack. Coolify cannot
 perform rolling updates for Compose applications. The root
@@ -70,6 +71,7 @@ Required production environment configuration:
 | -------- | --------------------------------------------- |
 | Variable | `COOLIFY_URL`                                 |
 | Variable | `COOLIFY_BEPING_API_UUID`                     |
+| Variable | `COOLIFY_BEPING_SERVER_UUID`                  |
 | Variable | `COOLIFY_BEPING_NOTIFICATIONS_UUID`           |
 | Variable | `COOLIFY_BEPING_IMPORTER_UUID`                |
 | Variable | `COOLIFY_BEPING_POSTGRES18_UUID`              |
@@ -116,6 +118,7 @@ Prisma pool limits are configured per process:
 | API           |                     5 |
 | Notifications |                     2 |
 | Importer      |                     2 |
+| Challenges    |                     1 |
 
 Adjust these only after checking PostgreSQL connection use and query latency.
 Redis authentication is mandatory in production. `REDIS_URL` is preferred;

@@ -53,4 +53,19 @@ describe('NotificationContentService', () => {
   ])('renders result updates in %s', (locale, body) => {
     expect(service.results(locale, 'PANTH01/003').body).toBe(body);
   });
+
+  it.each([
+    ['fr', 'Nouveau classement communautaire', 'semaine 4'],
+    ['nl', 'Nieuw communityklassement', 'week 4'],
+    ['en', 'New community ranking', 'week 4'],
+    ['de', 'Neue Community-Rangliste', 'Woche 4'],
+  ])('renders challenge publications in %s', (locale, title, fragment) => {
+    const content = service.challengePublished(locale, {
+      challengeName: 'Challenge provincial',
+      week: 4,
+    });
+    expect(content.title).toBe(title);
+    expect(content.body).toContain(fragment);
+    expect(content.body).toContain('Challenge provincial');
+  });
 });

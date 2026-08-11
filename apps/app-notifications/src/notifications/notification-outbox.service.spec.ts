@@ -18,18 +18,37 @@ const rankingEvent = {
   },
 };
 
+const challengeEvent = {
+  id: 'challenge_event',
+  type: 'CHALLENGE_PUBLISHED',
+  attempts: 1,
+  payload: {
+    challengeSlug: 'challenge-provincial',
+    challengeName: 'Challenge provincial',
+    season: 27,
+    week: 4,
+    publishedAt: '2026-10-08T06:00:00.000Z',
+  },
+};
+
 describe('NotificationOutboxService', () => {
-  function setup(sendNotification = jest.fn().mockResolvedValue(undefined)) {
+  function setup(
+    sendNotification = jest.fn().mockResolvedValue(undefined),
+    events: Array<typeof rankingEvent | typeof challengeEvent> = [rankingEvent],
+  ) {
     const updateMany = jest.fn().mockResolvedValue({ count: 0 });
     const update = jest.fn().mockResolvedValue({});
     const prisma = {
-      $queryRaw: jest.fn().mockResolvedValue([rankingEvent]),
+      $queryRaw: jest.fn().mockResolvedValue(events),
       notificationOutbox: { updateMany, update },
     } as unknown as PrismaService;
     const fcm = {
       getDevicesByTopicsGroupedByLocale: jest
         .fn()
         .mockResolvedValue({ fr: ['device-token'] }),
+      getDevicesGroupedByLocale: jest
+        .fn()
+        .mockResolvedValue({ fr: ['challenge-device'] }),
       sendNotification,
     } as unknown as FcmService;
     const posthog = { capture: jest.fn() };
@@ -90,6 +109,30 @@ describe('NotificationOutboxService', () => {
       'notification_outbox_group_completed',
       'service:app-notifications',
       expect.objectContaining({ outcome: 'retry_scheduled' }),
+    );
+  });
+
+  it('delivers a published challenge to ranking-opted-in devices', async () => {
+    const sendNotification = jest.fn().mockResolvedValue(undefined);
+    const { service, updateMany } = setup(sendNotification, [challengeEvent]);
+
+    await service.processPendingEvents();
+
+    expect(sendNotification).toHaveBeenCalledWith(
+      expect.objectContaining({
+        title: 'Nouveau classement communautaire',
+        targetDeviceTokens: ['challenge-device'],
+        data: expect.objectContaining({
+          eventType: 'challengePublished',
+          challengeSlug: 'challenge-provincial',
+          week: '4',
+        }),
+      }),
+    );
+    expect(updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: { in: ['challenge_event'] } },
+      }),
     );
   });
 });

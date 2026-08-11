@@ -40,6 +40,7 @@ import {
 import { PointsEstimationService } from '../../../services/members/points-estimation.service';
 import { PrismaService } from '@app/common';
 import { PlayerCategory as PrismaPlayerCategory } from '@app/common';
+import { ChallengeService } from '../../challenges/challenge.service';
 
 @Injectable()
 export class MemberDashboardService implements DashboardServiceInterface<MemberDashboardDTOV1> {
@@ -53,6 +54,7 @@ export class MemberDashboardService implements DashboardServiceInterface<MemberD
     private readonly matchesMembersRankerService: MatchesMembersRankerService,
     private readonly pointsEstimationService: PointsEstimationService,
     private readonly prismaService: PrismaService,
+    private readonly challengeService: ChallengeService,
   ) {}
 
   /**
@@ -187,6 +189,11 @@ export class MemberDashboardService implements DashboardServiceInterface<MemberD
       response.SENIOR_WOMEN = dashboards[PrismaPlayerCategory.SENIOR_WOMEN];
       response.availableCategories.push('SENIOR_WOMEN');
     }
+
+    // Challenge publications are deliberately resolved outside the cached
+    // federation dashboard so Thursday publications are visible immediately.
+    response.challengeRankings =
+      await this.challengeService.getMemberChallengeRankings(memberUniqueIndex);
 
     return response;
   }

@@ -1,4 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { ChallengePlayerRankingDto } from '../../challenges/dto/challenge.dto';
 import {
   MemberEntry,
   MemberEntryResultEntry,
@@ -360,8 +361,12 @@ export class MultiCategoryMemberDashboardDTOV1 {
   })
   public availableCategories: string[];
 
+  @ApiProperty({ type: ChallengePlayerRankingDto, isArray: true })
+  public challengeRankings: ChallengePlayerRankingDto[];
+
   constructor(status: ResponseDTO<string>) {
     this.status = status;
     this.availableCategories = [];
+    this.challengeRankings = [];
   }
 }

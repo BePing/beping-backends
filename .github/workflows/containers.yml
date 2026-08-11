@@ -38,19 +38,49 @@ jobs:
           - title: BePing API
             image_name: beping-api
             dockerfile: apps/tabt-rest/Dockerfile
+            context: .
           - title: BePing notifications
             image_name: beping-notifications
             dockerfile: apps/app-notifications/Dockerfile
+            context: .
           - title: BePing importer
             image_name: beping-importer
             dockerfile: apps/data-aftt-importer/Dockerfile
+            context: .
+          - title: BePing challenge worker
+            image_name: beping-challenge-worker
+            dockerfile: apps/challenge-worker/Dockerfile
+            context: .
+          - title: BePing challenge web
+            image_name: beping-challenge-web
+            dockerfile: challenge-frontend/Dockerfile
+            context: challenge-frontend
           - title: BePing migrations
             image_name: beping-migrate
             dockerfile: Dockerfile.migrate
+            context: .
 
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Checkout pinned challenge frontend
+        if: matrix.image_name == 'beping-challenge-web'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: BePing/challenge-frontend
+          ref: 9f449707a1c162f06d29a7b7697f76f536d00eac
+          path: challenge-frontend
+
+      - name: Set image source metadata
+        run: |
+          if [[ '${{ matrix.image_name }}' == 'beping-challenge-web' ]]; then
+            echo 'SOURCE_URL=https://github.com/BePing/challenge-frontend' >>"${GITHUB_ENV}"
+            echo 'SOURCE_REVISION=9f449707a1c162f06d29a7b7697f76f536d00eac' >>"${GITHUB_ENV}"
+          else
+            echo 'SOURCE_URL=${{ github.server_url }}/${{ github.repository }}' >>"${GITHUB_ENV}"
+            echo 'SOURCE_REVISION=${{ github.sha }}' >>"${GITHUB_ENV}"
+          fi
 
       # Recent QEMU: node under emulated arm64 SIGILLs with the runner's
       # stock binfmt (pnpm install then hangs forever).
@@ -83,7 +113,7 @@ jobs:
         env:
           IMAGE: ${{ env.REGISTRY_HOST }}/escape-key/${{ matrix.image_name }}
         with:
-          context: .
+          context: ${{ matrix.context }}
           file: ${{ matrix.dockerfile }}
           # BePing currently runs on a Hetzner ARM host while other Escape Key
           # nodes use x86_64. Publish one immutable tag that works on both.
@@ -93,8 +123,8 @@ jobs:
             ${{ env.IMAGE }}:${{ github.sha }}
             ${{ env.IMAGE }}:main
           labels: |
-            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
-            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.source=${{ env.SOURCE_URL }}
+            org.opencontainers.image.revision=${{ env.SOURCE_REVISION }}
             org.opencontainers.image.title=${{ matrix.title }}
           cache-from: type=gha,scope=${{ matrix.image_name }}
           cache-to: type=gha,mode=max,scope=${{ matrix.image_name }}

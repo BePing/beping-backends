@@ -16,6 +16,11 @@ export interface NotificationContent {
   body: string;
 }
 
+export interface ChallengePublishedNotificationPayload {
+  challengeName: string;
+  week: number;
+}
+
 export function normalizeNotificationLocale(
   locale?: string,
 ): NotificationLocale {
@@ -104,6 +109,27 @@ export class NotificationContentService {
         nl: `Er zijn nieuwe resultaten beschikbaar voor ${name}.`,
         en: `New results are available for ${name}.`,
         de: `Für ${name} sind neue Ergebnisse verfügbar.`,
+      }[language],
+    };
+  }
+
+  challengePublished(
+    locale: string,
+    payload: ChallengePublishedNotificationPayload,
+  ): NotificationContent {
+    const language = normalizeNotificationLocale(locale);
+    return {
+      title: {
+        fr: 'Nouveau classement communautaire',
+        nl: 'Nieuw communityklassement',
+        en: 'New community ranking',
+        de: 'Neue Community-Rangliste',
+      }[language],
+      body: {
+        fr: `${payload.challengeName} — le classement non officiel de la semaine ${payload.week} est disponible.`,
+        nl: `${payload.challengeName} — het onofficiële klassement van week ${payload.week} is beschikbaar.`,
+        en: `${payload.challengeName} — the unofficial ranking for week ${payload.week} is available.`,
+        de: `${payload.challengeName} — die inoffizielle Rangliste für Woche ${payload.week} ist verfügbar.`,
       }[language],
     };
   }

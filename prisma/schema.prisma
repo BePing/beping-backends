@@ -224,6 +224,7 @@ enum NotificationStatus {
 enum NotificationOutboxType {
   PLAYER_RANKING_UPDATED
   RESULT_UPDATED
+  CHALLENGE_PUBLISHED
 }
 
 enum NotificationOutboxStatus {
@@ -399,4 +400,329 @@ model ConvocationResponse {
 
   @@unique([convocationId, uniqueIndex])
   @@index([uniqueIndex])
+}
+
+// ---------------------------------------------------------------------------
+// Community challenges
+// Unofficial, configurable ranking competitions published on a delayed cycle.
+// Draft and press-final runs stay private until a ChallengePublication points
+// at the validated Monday run on the following Thursday.
+// ---------------------------------------------------------------------------
+
+enum ChallengeRunType {
+  SUNDAY_PRESS_DRAFT
+  MONDAY_PRESS_FINAL
+}
+
+enum ChallengeRunStatus {
+  RUNNING
+  COMPUTED
+  PRESS_SENT
+  READY_FOR_PUBLICATION
+  PUBLISHED
+  FAILED
+  DELIVERY_UNKNOWN
+}
+
+enum ChallengePressDeliveryStatus {
+  PENDING
+  SENT
+  FAILED
+  UNKNOWN
+}
+
+model Challenge {
+  id                String                     @id @default(cuid())
+  slug              String                     @unique
+  name              String
+  shortName         String?
+  description       String?
+  unofficial        Boolean                    @default(true)
+  unofficialLabel   String                     @default("Classement non officiel")
+  active            Boolean                    @default(false)
+  displayOrder      Int                        @default(0)
+  pressEmailSubject String?
+  pressEmailBody    String?
+  integrationConfig Json?
+  createdAt         DateTime                   @default(now())
+  updatedAt         DateTime                   @updatedAt
+  seasons           ChallengeSeason[]
+  secretReferences  ChallengeSecretReference[]
+}
+
+model ChallengeSecretReference {
+  id          String    @id @default(cuid())
+  challengeId String
+  challenge   Challenge @relation(fields: [challengeId], references: [id], onDelete: Cascade)
+  key         String
+  envVarName  String
+  required    Boolean   @default(true)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@unique([challengeId, key])
+}
+
+model ChallengeSeason {
+  id                  String                      @id @default(cuid())
+  challengeId         String
+  challenge           Challenge                   @relation(fields: [challengeId], references: [id], onDelete: Cascade)
+  season              Int
+  rulesVersion        String
+  timezone            String                      @default("Europe/Brussels")
+  sundayRunTime       String                      @default("18:00")
+  mondayRunTime       String                      @default("20:00")
+  thursdayPublishTime String                      @default("08:00")
+  pressRankingLimit   Int?
+  active              Boolean                     @default(false)
+  startsOn            DateTime                    @db.Date
+  endsOn              DateTime                    @db.Date
+  regions             ChallengeRegion[]
+  clubs               ChallengeClub[]
+  levels              ChallengeLevel[]
+  divisions           ChallengeDivision[]
+  pointOverrides      ChallengePointOverride[]
+  excludedPlayers     ChallengeExcludedPlayer[]
+  pressRecipients     ChallengePressRecipient[]
+  rules               ChallengeRule[]
+  championshipWeeks   ChallengeChampionshipWeek[]
+  publications        ChallengePublication[]
+  createdAt           DateTime                    @default(now())
+  updatedAt           DateTime                    @updatedAt
+
+  @@unique([challengeId, season])
+  @@index([season, active])
+}
+
+model ChallengeRule {
+  id          String          @id @default(cuid())
+  seasonId    String
+  season      ChallengeSeason @relation(fields: [seasonId], references: [id], onDelete: Cascade)
+  key         String
+  value       Json
+  description String?
+
+  @@unique([seasonId, key])
+}
+
+model ChallengeRegion {
+  id           String          @id @default(cuid())
+  seasonId     String
+  season       ChallengeSeason @relation(fields: [seasonId], references: [id], onDelete: Cascade)
+  code         String
+  label        String
+  displayOrder Int             @default(0)
+  clubs        ChallengeClub[]
+
+  @@unique([seasonId, code])
+}
+
+model ChallengeClub {
+  id        String          @id @default(cuid())
+  seasonId  String
+  season    ChallengeSeason @relation(fields: [seasonId], references: [id], onDelete: Cascade)
+  regionId  String
+  region    ChallengeRegion @relation(fields: [regionId], references: [id], onDelete: Cascade)
+  clubIndex String
+  clubName  String?
+
+  @@unique([seasonId, clubIndex])
+  @@index([regionId])
+}
+
+model ChallengeLevel {
+  id           String              @id @default(cuid())
+  seasonId     String
+  season       ChallengeSeason     @relation(fields: [seasonId], references: [id], onDelete: Cascade)
+  code         String
+  label        String
+  displayOrder Int                 @default(0)
+  divisions    ChallengeDivision[]
+
+  @@unique([seasonId, code])
+}
+
+model ChallengeDivision {
+  id         String          @id @default(cuid())
+  seasonId   String
+  season     ChallengeSeason @relation(fields: [seasonId], references: [id], onDelete: Cascade)
+  levelId    String
+  level      ChallengeLevel  @relation(fields: [levelId], references: [id], onDelete: Cascade)
+  divisionId Int
+
+  @@unique([seasonId, divisionId])
+  @@index([levelId])
+}
+
+model ChallengePointOverride {
+  id                String          @id @default(cuid())
+  seasonId          String
+  season            ChallengeSeason @relation(fields: [seasonId], references: [id], onDelete: Cascade)
+  playerUniqueIndex Int
+  week              Int
+  victoryCount      Int?
+  forfeit           Int?
+  reason            String?
+
+  @@unique([seasonId, playerUniqueIndex, week])
+}
+
+model ChallengeExcludedPlayer {
+  id                String          @id @default(cuid())
+  seasonId          String
+  season            ChallengeSeason @relation(fields: [seasonId], references: [id], onDelete: Cascade)
+  playerUniqueIndex Int
+  reason            String?
+
+  @@unique([seasonId, playerUniqueIndex])
+}
+
+model ChallengePressRecipient {
+  id       String          @id @default(cuid())
+  seasonId String
+  season   ChallengeSeason @relation(fields: [seasonId], references: [id], onDelete: Cascade)
+  email    String
+  name     String?
+  active   Boolean         @default(true)
+
+  @@unique([seasonId, email])
+}
+
+model ChallengeChampionshipWeek {
+  id                  String                @id @default(cuid())
+  seasonId            String
+  season              ChallengeSeason       @relation(fields: [seasonId], references: [id], onDelete: Cascade)
+  week                Int
+  championshipSunday  DateTime              @db.Date
+  mondayRunDate       DateTime              @db.Date
+  thursdayPublishDate DateTime              @db.Date
+  source              String?
+  active              Boolean               @default(true)
+  runs                ChallengeRun[]
+  publication         ChallengePublication?
+  createdAt           DateTime              @default(now())
+  updatedAt           DateTime              @updatedAt
+
+  @@unique([seasonId, week])
+  @@unique([seasonId, championshipSunday])
+  @@unique([seasonId, mondayRunDate])
+  @@unique([seasonId, thursdayPublishDate])
+}
+
+model ChallengeRun {
+  id                 String                    @id @default(cuid())
+  championshipWeekId String
+  championshipWeek   ChallengeChampionshipWeek @relation(fields: [championshipWeekId], references: [id], onDelete: Cascade)
+  type               ChallengeRunType
+  status             ChallengeRunStatus        @default(RUNNING)
+  attempt            Int                       @default(1)
+  sourceVersion      String
+  checksum           String?
+  totalPlayers       Int                       @default(0)
+  totalRankings      Int                       @default(0)
+  startedAt          DateTime                  @default(now())
+  computedAt         DateTime?
+  pressSentAt        DateTime?
+  publishedAt        DateTime?
+  completedAt        DateTime?
+  failureReason      String?
+  rankings           ChallengeRanking[]
+  playerPoints       ChallengePlayerPoint[]
+  regionSummaries    ChallengeRegionSummary[]
+  pressDelivery      ChallengePressDelivery?
+  publication        ChallengePublication?
+  createdAt          DateTime                  @default(now())
+  updatedAt          DateTime                  @updatedAt
+
+  @@unique([championshipWeekId, type, attempt])
+  @@index([championshipWeekId, type, status])
+}
+
+model ChallengeRanking {
+  id                String       @id @default(cuid())
+  runId             String
+  run               ChallengeRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+  playerUniqueIndex Int
+  playerName        String
+  clubIndex         String
+  clubName          String
+  regionCode        String
+  regionLabel       String
+  levelCode         String
+  levelLabel        String
+  position          Int
+  totalParticipants Int
+  points            Int
+  count5Pts         Int          @default(0)
+  count3Pts         Int          @default(0)
+  count2Pts         Int          @default(0)
+  count1Pts         Int          @default(0)
+  count0Pts         Int          @default(0)
+  createdAt         DateTime     @default(now())
+
+  @@unique([runId, playerUniqueIndex])
+  @@unique([runId, regionCode, levelCode, position])
+  @@index([runId, regionCode, levelCode, position])
+  @@index([playerUniqueIndex, runId])
+}
+
+model ChallengePlayerPoint {
+  id                String       @id @default(cuid())
+  runId             String
+  run               ChallengeRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+  playerUniqueIndex Int
+  matchUniqueId     Int
+  matchId           String
+  divisionId        Int
+  week              Int
+  levelCode         String
+  victoryCount      Int
+  forfeit           Int
+  pointsWon         Int
+  createdAt         DateTime     @default(now())
+
+  @@unique([runId, playerUniqueIndex, matchUniqueId])
+  @@index([playerUniqueIndex, runId, week])
+}
+
+model ChallengeRegionSummary {
+  id             String       @id @default(cuid())
+  runId          String
+  run            ChallengeRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+  regionCode     String
+  regionLabel    String
+  totalPlayers   Int
+  playersByLevel Json
+  clubs          String[]
+  aiSummary      Json?
+  createdAt      DateTime     @default(now())
+
+  @@unique([runId, regionCode])
+}
+
+model ChallengePressDelivery {
+  id                String                       @id @default(cuid())
+  runId             String                       @unique
+  run               ChallengeRun                 @relation(fields: [runId], references: [id], onDelete: Cascade)
+  status            ChallengePressDeliveryStatus @default(PENDING)
+  providerMessageId String?
+  attemptCount      Int                          @default(0)
+  sentAt            DateTime?
+  lastError         String?
+  createdAt         DateTime                     @default(now())
+  updatedAt         DateTime                     @updatedAt
+}
+
+model ChallengePublication {
+  id                 String                    @id @default(cuid())
+  seasonId           String
+  season             ChallengeSeason           @relation(fields: [seasonId], references: [id], onDelete: Cascade)
+  championshipWeekId String                    @unique
+  championshipWeek   ChallengeChampionshipWeek @relation(fields: [championshipWeekId], references: [id], onDelete: Cascade)
+  runId              String                    @unique
+  run                ChallengeRun              @relation(fields: [runId], references: [id], onDelete: Restrict)
+  publishedAt        DateTime                  @default(now())
+
+  @@unique([seasonId, championshipWeekId])
+  @@index([seasonId, publishedAt])
 }
