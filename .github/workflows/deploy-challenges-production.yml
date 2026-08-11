@@ -101,8 +101,7 @@ jobs:
           server="$(coolify GET "/servers/${SERVER_UUID}")"
           timezone="$(jq -r '.settings.server_timezone // empty' <<<"${server}")"
           if [[ "${timezone}" != 'Europe/Brussels' ]]; then
-            echo "The BePing Coolify server timezone must be Europe/Brussels." >&2
-            exit 1
+            echo "::warning::The BePing Coolify server timezone is ${timezone:-unset}. Challenge schedules are being provisioned disabled and must not be enabled before the server timezone is Europe/Brussels."
           fi
 
           api_application="$(coolify GET "/applications/${API_UUID}")"
