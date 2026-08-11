@@ -10,6 +10,7 @@ import { InternalIdentifiersModule } from './internal-identifiers/internal-ident
 import { UserAgentModule } from './user-agent/user-agent.module';
 import { DashboardModule } from './dashboard/dashboard.module';
 import { SearchModule } from './search/search.module';
+import { ChallengesModule } from './challenges/challenges.module';
 @Module({
   imports: [
     DivisionsModule,
@@ -23,6 +24,7 @@ import { SearchModule } from './search/search.module';
     UserAgentModule,
     InternalIdentifiersModule,
     DashboardModule,
+    ChallengesModule,
   ],
 })
 export class ApiModule {}

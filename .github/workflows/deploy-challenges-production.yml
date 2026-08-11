@@ -1,0 +1,322 @@
+name: Deploy challenges production
+
+on:
+  workflow_dispatch:
+    inputs:
+      backend_sha:
+        description: Immutable backend SHA containing the challenge worker
+        required: true
+        type: string
+      web_sha:
+        description: Immutable challenge frontend SHA
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: beping-challenges-production
+  cancel-in-progress: false
+
+env:
+  REGISTRY_HOST: ${{ vars.HETZNER_REGISTRY_HOST }}
+  COOLIFY_URL: ${{ vars.COOLIFY_URL }}
+  SERVER_UUID: ${{ vars.COOLIFY_BEPING_SERVER_UUID }}
+  API_UUID: ${{ vars.COOLIFY_BEPING_API_UUID }}
+
+jobs:
+  deploy:
+    name: Provision and deploy challenge applications
+    runs-on: [self-hosted, linux, x64, escape-key-ci]
+    environment: Production
+    timeout-minutes: 35
+    env:
+      DATABASE_URL: ${{ format('postgresql://beping:{0}@{1}:5432/beping', secrets.BEPING_PG18_PASSWORD, vars.COOLIFY_BEPING_POSTGRES18_UUID) }}
+      DIRECT_URL: ${{ format('postgresql://beping:{0}@{1}:5432/beping', secrets.BEPING_PG18_PASSWORD, vars.COOLIFY_BEPING_POSTGRES18_UUID) }}
+
+    steps:
+      - name: Checkout deployment tooling
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Validate immutable inputs and credentials
+        env:
+          COOLIFY_TOKEN: ${{ secrets.COOLIFY_TOKEN }}
+          REGISTRY_USERNAME: ${{ secrets.HETZNER_REGISTRY_USERNAME }}
+          REGISTRY_PASSWORD: ${{ secrets.HETZNER_REGISTRY_PASSWORD }}
+        run: |
+          [[ "${{ inputs.backend_sha }}" =~ ^[0-9a-f]{40}$ ]]
+          [[ "${{ inputs.web_sha }}" =~ ^[0-9a-f]{40}$ ]]
+          test -n "${REGISTRY_HOST}"
+          test -n "${REGISTRY_USERNAME}"
+          test -n "${REGISTRY_PASSWORD}"
+          test -n "${COOLIFY_URL}"
+          test -n "${COOLIFY_TOKEN}"
+          test -n "${SERVER_UUID}"
+          test -n "${API_UUID}"
+          test -n "${DATABASE_URL}"
+          test -n "${DIRECT_URL}"
+
+      - name: Log in to Escape Key registry
+        uses: docker/login-action@af1e73f918a031802d376d3c8bbc3fe56130a9b0 # v4.4.0
+        with:
+          registry: ${{ env.REGISTRY_HOST }}
+          username: ${{ secrets.HETZNER_REGISTRY_USERNAME }}
+          password: ${{ secrets.HETZNER_REGISTRY_PASSWORD }}
+
+      - name: Verify immutable images
+        run: |
+          docker manifest inspect \
+            "${REGISTRY_HOST}/escape-key/beping-challenge-worker:${{ inputs.backend_sha }}" \
+            >/dev/null
+          docker manifest inspect \
+            "${REGISTRY_HOST}/escape-key/beping-challenge-web:${{ inputs.web_sha }}" \
+            >/dev/null
+
+      - name: Provision private worker, public web and disabled schedules
+        id: resources
+        env:
+          COOLIFY_TOKEN: ${{ secrets.COOLIFY_TOKEN }}
+        run: |
+          set -euo pipefail
+          api_base="${COOLIFY_URL%/}/api/v1"
+
+          coolify() {
+            local method="$1"
+            local path="$2"
+            local payload="${3:-}"
+            local args=(
+              --fail-with-body --silent --show-error
+              --connect-timeout 10 --max-time 30
+              -X "${method}"
+              -H "Authorization: Bearer ${COOLIFY_TOKEN}"
+              -H 'Content-Type: application/json'
+            )
+            if [[ -n "${payload}" ]]; then
+              args+=(--data "${payload}")
+            fi
+            curl "${args[@]}" "${api_base}${path}"
+          }
+
+          server="$(coolify GET "/servers/${SERVER_UUID}")"
+          timezone="$(jq -r '.settings.server_timezone // empty' <<<"${server}")"
+          if [[ "${timezone}" != 'Europe/Brussels' ]]; then
+            echo "The BePing Coolify server timezone must be Europe/Brussels." >&2
+            exit 1
+          fi
+
+          api_application="$(coolify GET "/applications/${API_UUID}")"
+          environment_id="$(jq -er '.environment_id' <<<"${api_application}")"
+          destination_id="$(jq -er '.destination_id' <<<"${api_application}")"
+
+          destinations="$(coolify GET "/servers/${SERVER_UUID}/destinations")"
+          destination_uuid="$({
+            jq -er --argjson id "${destination_id}" \
+              '.[] | select(.id == $id) | .uuid' <<<"${destinations}"
+          })"
+
+          project_uuid=''
+          environment_uuid=''
+          projects="$(coolify GET '/projects')"
+          while IFS= read -r candidate_project; do
+            environments="$(coolify GET "/projects/${candidate_project}/environments")"
+            candidate_environment="$({
+              jq -r --argjson id "${environment_id}" \
+                '.[] | select(.id == $id) | .uuid' <<<"${environments}"
+            })"
+            if [[ -n "${candidate_environment}" ]]; then
+              project_uuid="${candidate_project}"
+              environment_uuid="${candidate_environment}"
+              break
+            fi
+          done < <(jq -r '.[].uuid' <<<"${projects}")
+
+          test -n "${project_uuid}"
+          test -n "${environment_uuid}"
+
+          applications="$(coolify GET '/applications')"
+          application_uuid() {
+            local name="$1"
+            local matches
+            matches="$(jq -r --arg name "${name}" \
+              '[.[] | select(.name == $name) | .uuid] | unique | .[]' \
+              <<<"${applications}")"
+            if [[ "$(wc -l <<<"${matches}" | tr -d ' ')" -gt 1 ]]; then
+              echo "Multiple Coolify applications named ${name}." >&2
+              exit 1
+            fi
+            printf '%s' "${matches}"
+          }
+
+          create_application() {
+            local name="$1"
+            local image="$2"
+            local tag="$3"
+            local domains="$4"
+            local ports="$5"
+            local memory="$6"
+            local payload
+            payload="$({
+              jq -n \
+                --arg project_uuid "${project_uuid}" \
+                --arg environment_uuid "${environment_uuid}" \
+                --arg server_uuid "${SERVER_UUID}" \
+                --arg destination_uuid "${destination_uuid}" \
+                --arg name "${name}" \
+                --arg image "${image}" \
+                --arg tag "${tag}" \
+                --arg domains "${domains}" \
+                --arg ports "${ports}" \
+                --arg memory "${memory}" \
+                '{
+                  project_uuid: $project_uuid,
+                  environment_uuid: $environment_uuid,
+                  server_uuid: $server_uuid,
+                  destination_uuid: $destination_uuid,
+                  name: $name,
+                  description: "BePing community challenges",
+                  docker_registry_image_name: $image,
+                  docker_registry_image_tag: $tag,
+                  domains: (if $domains == "" then null else $domains end),
+                  ports_exposes: (if $ports == "" then null else $ports end),
+                  autogenerate_domain: false,
+                  instant_deploy: false,
+                  is_auto_deploy_enabled: false,
+                  connect_to_docker_network: true,
+                  limits_cpus: "0.5",
+                  limits_memory: $memory,
+                  limits_memory_swap: $memory
+                }'
+            })"
+            coolify POST '/applications/dockerimage' "${payload}" | jq -er '.uuid'
+          }
+
+          worker_uuid="$(application_uuid 'beping-challenge-worker')"
+          if [[ -z "${worker_uuid}" ]]; then
+            worker_uuid="$(create_application \
+              'beping-challenge-worker' \
+              "${REGISTRY_HOST}/escape-key/beping-challenge-worker" \
+              '${{ inputs.backend_sha }}' '' '' '768M')"
+          fi
+
+          web_uuid="$(application_uuid 'beping-challenge-web')"
+          if [[ -z "${web_uuid}" ]]; then
+            web_uuid="$(create_application \
+              'beping-challenge-web' \
+              "${REGISTRY_HOST}/escape-key/beping-challenge-web" \
+              '${{ inputs.web_sha }}' \
+              'https://challenges.beping.be' '3000' '512M')"
+          fi
+
+          worker_configuration="$({
+            jq -n '{
+              domains: null,
+              ports_exposes: null,
+              is_auto_deploy_enabled: false,
+              limits_cpus: "0.5",
+              limits_memory: "768M",
+              limits_memory_swap: "768M",
+              custom_docker_run_options: "--dns 185.12.64.1 --dns 185.12.64.2"
+            }'
+          })"
+          coolify PATCH "/applications/${worker_uuid}" "${worker_configuration}" >/dev/null
+
+          web_configuration="$({
+            jq -n '{
+              domains: "https://challenges.beping.be",
+              ports_exposes: "3000",
+              is_force_https_enabled: true,
+              is_auto_deploy_enabled: false,
+              health_check_enabled: true,
+              health_check_type: "http",
+              health_check_path: "/",
+              health_check_port: "3000",
+              health_check_method: "GET",
+              health_check_return_code: 200,
+              limits_cpus: "0.5",
+              limits_memory: "512M",
+              limits_memory_swap: "512M",
+              custom_docker_run_options: "--dns 185.12.64.1 --dns 185.12.64.2"
+            }'
+          })"
+          coolify PATCH "/applications/${web_uuid}" "${web_configuration}" >/dev/null
+
+          worker_envs="$({
+            jq -n \
+              --arg database_url "${DATABASE_URL}" \
+              --arg direct_url "${DIRECT_URL}" \
+              --arg image_sha '${{ inputs.backend_sha }}' \
+              '{data: [
+                {key: "DATABASE_URL", value: $database_url, is_literal: true, is_runtime: true, is_buildtime: false},
+                {key: "DIRECT_URL", value: $direct_url, is_literal: true, is_runtime: true, is_buildtime: false},
+                {key: "DB_POOL_MAX", value: "1", is_literal: true, is_runtime: true, is_buildtime: false},
+                {key: "BEPING_API_BASE_URL", value: "https://api-v2.beping.be", is_literal: true, is_runtime: true, is_buildtime: false},
+                {key: "CHALLENGE_WORKER_IMAGE_SHA", value: $image_sha, is_literal: true, is_runtime: true, is_buildtime: false},
+                {key: "TZ", value: "Europe/Brussels", is_literal: true, is_runtime: true, is_buildtime: false}
+              ]}'
+          })"
+          coolify PATCH "/applications/${worker_uuid}/envs/bulk" "${worker_envs}" >/dev/null
+
+          web_envs='{"data":[{"key":"NUXT_PUBLIC_BEPING_API_BASE_URL","value":"https://api-v2.beping.be","is_literal":true,"is_runtime":true,"is_buildtime":false}]}'
+          coolify PATCH "/applications/${web_uuid}/envs/bulk" "${web_envs}" >/dev/null
+
+          sync_task() {
+            local name="$1"
+            local command="$2"
+            local frequency="$3"
+            local tasks task_uuid payload
+            tasks="$(coolify GET "/applications/${worker_uuid}/scheduled-tasks")"
+            task_uuid="$(jq -r --arg name "${name}" \
+              '[.[] | select(.name == $name) | .uuid] | unique | .[]' \
+              <<<"${tasks}")"
+            payload="$({
+              jq -n \
+                --arg name "${name}" \
+                --arg command "${command}" \
+                --arg frequency "${frequency}" \
+                '{name: $name, command: $command, frequency: $frequency, timeout: 1800, enabled: false}'
+            })"
+            if [[ -n "${task_uuid}" ]]; then
+              coolify PATCH "/applications/${worker_uuid}/scheduled-tasks/${task_uuid}" "${payload}" >/dev/null
+            else
+              coolify POST "/applications/${worker_uuid}/scheduled-tasks" "${payload}" >/dev/null
+            fi
+          }
+
+          sync_task 'challenge-sunday-press-draft' \
+            'node dist/apps/challenge-worker/main.js sunday' '0 18 * * 0'
+          sync_task 'challenge-monday-press-final' \
+            'node dist/apps/challenge-worker/main.js monday' '0 20 * * 1'
+          sync_task 'challenge-thursday-publication' \
+            'node dist/apps/challenge-worker/main.js thursday' '0 8 * * 4'
+
+          echo "worker_uuid=${worker_uuid}" >>"${GITHUB_OUTPUT}"
+          echo "web_uuid=${web_uuid}" >>"${GITHUB_OUTPUT}"
+
+      - name: Deploy private challenge worker
+        env:
+          COOLIFY_TOKEN: ${{ secrets.COOLIFY_TOKEN }}
+        run: |
+          bash scripts/coolify-deploy-image.sh \
+            '${{ steps.resources.outputs.worker_uuid }}' \
+            "${REGISTRY_HOST}/escape-key/beping-challenge-worker" \
+            '${{ inputs.backend_sha }}'
+
+      - name: Deploy challenge website
+        env:
+          COOLIFY_TOKEN: ${{ secrets.COOLIFY_TOKEN }}
+        run: |
+          bash scripts/coolify-deploy-image.sh \
+            '${{ steps.resources.outputs.web_uuid }}' \
+            "${REGISTRY_HOST}/escape-key/beping-challenge-web" \
+            '${{ inputs.web_sha }}' \
+            'https://challenges.beping.be/'
+
+      - name: Verify schedules remain disabled until activation
+        env:
+          COOLIFY_TOKEN: ${{ secrets.COOLIFY_TOKEN }}
+        run: |
+          tasks="$(curl --fail-with-body --silent --show-error \
+            -H "Authorization: Bearer ${COOLIFY_TOKEN}" \
+            "${COOLIFY_URL%/}/api/v1/applications/${{ steps.resources.outputs.worker_uuid }}/scheduled-tasks")"
+          [[ "$(jq '[.[] | select(.enabled == false)] | length' <<<"${tasks}")" -eq 3 ]]

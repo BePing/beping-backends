@@ -20,6 +20,7 @@ describe('MemberDashboardService', () => {
     {} as never,
     {} as never,
     {} as never,
+    { getMemberChallengeRankings: jest.fn().mockResolvedValue([]) } as never,
   );
 
   beforeEach(() => jest.clearAllMocks());

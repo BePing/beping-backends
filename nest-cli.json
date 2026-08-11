@@ -35,6 +35,15 @@
         "tsConfigPath": "apps/app-notifications/tsconfig.app.json"
       }
     },
+    "challenge-worker": {
+      "type": "application",
+      "root": "apps/challenge-worker",
+      "entryFile": "main",
+      "sourceRoot": "apps/challenge-worker/src",
+      "compilerOptions": {
+        "tsConfigPath": "apps/challenge-worker/tsconfig.app.json"
+      }
+    },
     "common": {
       "type": "library",
       "root": "libs/common",

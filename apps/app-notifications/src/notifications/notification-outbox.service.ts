@@ -9,9 +9,17 @@ import {
 
 interface OutboxEvent {
   id: string;
-  type: 'PLAYER_RANKING_UPDATED' | 'RESULT_UPDATED';
+  type: 'PLAYER_RANKING_UPDATED' | 'RESULT_UPDATED' | 'CHALLENGE_PUBLISHED';
   payload: unknown;
   attempts: number;
+}
+
+interface ChallengePublishedPayload {
+  challengeSlug: string;
+  challengeName: string;
+  season: number;
+  week: number;
+  publishedAt: string;
 }
 
 interface PlayerRankingUpdatedPayload extends RankingNotificationPayload {
@@ -105,6 +113,14 @@ export class NotificationOutboxService implements OnModuleInit {
 
       for (const group of resultGroups.values()) {
         await this.processGroup(group, () => this.sendResultEvents(group));
+      }
+
+      for (const event of events.filter(
+        (candidate) => candidate.type === 'CHALLENGE_PUBLISHED',
+      )) {
+        await this.processGroup([event], () =>
+          this.sendChallengePublishedEvent(event),
+        );
       }
     } finally {
       this.processing = false;
@@ -272,6 +288,28 @@ export class NotificationOutboxService implements OnModuleInit {
           competitionId: first.competitionId,
           resultIds: payloads.map((payload) => payload.resultId).join(','),
         },
+      });
+    }
+  }
+
+  private async sendChallengePublishedEvent(event: OutboxEvent): Promise<void> {
+    const payload = event.payload as ChallengePublishedPayload;
+    const devicesByLocale = await this.fcm.getDevicesGroupedByLocale(
+      NotificationType.RANKING,
+    );
+    for (const [locale, tokens] of Object.entries(devicesByLocale)) {
+      const content = this.content.challengePublished(locale, payload);
+      await this.fcm.sendNotification({
+        ...content,
+        notificationType: NotificationType.RANKING,
+        targetDeviceTokens: tokens,
+        data: this.toStringData({
+          eventType: 'challengePublished',
+          challengeSlug: payload.challengeSlug,
+          season: payload.season,
+          week: payload.week,
+          publishedAt: payload.publishedAt,
+        }),
       });
     }
   }

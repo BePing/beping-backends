@@ -373,6 +373,24 @@ export class FcmService implements OnModuleInit {
     );
   }
 
+  async getDevicesGroupedByLocale(
+    notificationType: NotificationType,
+  ): Promise<Record<string, string[]>> {
+    const devices = await this.prisma.deviceSubscription.findMany({
+      where: {
+        active: true,
+        notificationTypes: { has: notificationType },
+      },
+      select: { deviceToken: true, locale: true },
+    });
+    const grouped: Record<string, string[]> = {};
+    for (const device of devices) {
+      const locale = device.locale || 'fr';
+      grouped[locale] = [...(grouped[locale] ?? []), device.deviceToken];
+    }
+    return grouped;
+  }
+
   async sendNotification(
     options: SendNotificationOptions,
   ): Promise<NotificationDispatchResult> {

@@ -5,9 +5,10 @@ import { CommonModule } from '../../common/common.module';
 import { ServicesModule } from '../../services/services.module';
 import { DivisionDashboardService } from './services/division-dashboard.service';
 import { ClubDashboardService } from './services/club-dashboard.service';
+import { ChallengesModule } from '../challenges/challenges.module';
 
 @Module({
-  imports: [CommonModule, ServicesModule],
+  imports: [CommonModule, ServicesModule, ChallengesModule],
   controllers: [MemberDashboardController],
   providers: [
     MemberDashboardService,
