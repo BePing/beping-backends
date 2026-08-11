@@ -106,13 +106,6 @@ jobs:
 
           api_application="$(coolify GET "/applications/${API_UUID}")"
           environment_id="$(jq -er '.environment_id' <<<"${api_application}")"
-          destination_id="$(jq -er '.destination_id' <<<"${api_application}")"
-
-          destinations="$(coolify GET "/servers/${SERVER_UUID}/destinations")"
-          destination_uuid="$({
-            jq -er --argjson id "${destination_id}" \
-              '.[] | select(.id == $id) | .uuid' <<<"${destinations}"
-          })"
 
           project_uuid=''
           environment_uuid=''
@@ -155,12 +148,14 @@ jobs:
             local ports="$5"
             local memory="$6"
             local payload
+            # The BePing server has one destination. Omitting destination_uuid
+            # keeps provisioning compatible with Coolify releases predating
+            # the destinations API and lets Coolify select that destination.
             payload="$({
               jq -n \
                 --arg project_uuid "${project_uuid}" \
                 --arg environment_uuid "${environment_uuid}" \
                 --arg server_uuid "${SERVER_UUID}" \
-                --arg destination_uuid "${destination_uuid}" \
                 --arg name "${name}" \
                 --arg image "${image}" \
                 --arg tag "${tag}" \
@@ -171,7 +166,6 @@ jobs:
                   project_uuid: $project_uuid,
                   environment_uuid: $environment_uuid,
                   server_uuid: $server_uuid,
-                  destination_uuid: $destination_uuid,
                   name: $name,
                   description: "BePing community challenges",
                   docker_registry_image_name: $image,
