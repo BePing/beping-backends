@@ -23,7 +23,6 @@ import {
   MemberEntryDTOV1,
   PlayerCategoryEntriesDTOV1,
   WeeklyNumericPointsInputV1,
-  WeeklyNumericPointsV1,
 } from '../dto/member.dto';
 import { MemberCategoryService } from '../../../services/members/member-category.service';
 import {
@@ -54,9 +53,6 @@ export class MemberController {
   @TabtHeadersDecorator()
   async findAll(@Query() input: GetMembersV1): Promise<MemberEntryDTOV1[]> {
     const members = await this.memberService.getMembersV1(input);
-    if (members.length === 0) {
-      throw new NotFoundException('No members found');
-    }
     return members.map(MemberEntryDTOV1.fromTabT);
   }
 
@@ -109,8 +105,8 @@ export class MemberController {
 
   @Get(':uniqueIndex/numeric-rankings')
   @ApiOkResponse({
-    type: WeeklyNumericPointsV1,
-    description: 'The list of ELO points for a player in a season',
+    type: WeeklyRankingV1Response,
+    description: 'The numeric ranking history for a player in a season',
   })
   @ApiOperation({
     operationId: 'findMemberNumericRankingsHistoryV1',

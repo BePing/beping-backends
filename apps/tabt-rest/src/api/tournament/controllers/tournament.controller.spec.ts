@@ -78,6 +78,14 @@ describe('TournamentController', () => {
         new NotFoundException(),
       );
     });
+
+    it('should return an empty list when TabT omits series entries', async () => {
+      jest
+        .spyOn(tournamentService, 'getTournaments')
+        .mockResolvedValue([{}] as never);
+
+      await expect(controller.getSeriesV1(123)).resolves.toEqual([]);
+    });
   });
 
   describe('Tournament registration', () => {
