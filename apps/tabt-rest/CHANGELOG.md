@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.6.0](https://github.com/BePing/beping-backends/compare/tabt-rest-v2.5.0...tabt-rest-v2.6.0) (2026-08-11)
+
+
+### Features
+
+* add community challenge platform ([6399a78](https://github.com/BePing/beping-backends/commit/6399a78cf314f4f4185cb6273f8d3396b6f9e192))
+
 ## [2.5.0](https://github.com/BePing/beping-backends/compare/tabt-rest-v2.4.0...tabt-rest-v2.5.0) (2026-08-11)
 
 
