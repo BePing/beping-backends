@@ -447,9 +447,13 @@ export class Head2headService {
   private extractPlayerNames(htmlPage: string): PlayersInfo {
     this.logger.debug('Extracting player names from HTML');
 
-    const normalizedHtml = /<html(?:\s|>)/i.test(htmlPage)
-      ? htmlPage
-      : `<html><body>${htmlPage}</body></html>`;
+    // AFTT sometimes returns a doctype followed by an HTML fragment without an
+    // <html> root. Wrapping that verbatim puts the doctype inside <body>, which
+    // @xmldom rejects before we can inspect the player inputs.
+    const htmlWithoutDoctype = htmlPage.replace(/<!doctype[^>]*>/gi, '');
+    const normalizedHtml = /<html(?:\s|>)/i.test(htmlWithoutDoctype)
+      ? htmlWithoutDoctype
+      : `<html><body>${htmlWithoutDoctype}</body></html>`;
     const document = new DOMParser({
       onError: () => undefined,
     }).parseFromString(normalizedHtml, 'text/html');
