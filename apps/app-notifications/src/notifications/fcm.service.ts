@@ -137,7 +137,9 @@ export class FcmService implements OnModuleInit {
 
   async unregisterDevice(deviceToken: string): Promise<void> {
     try {
-      await this.prisma.deviceSubscription.update({
+      // Unregistration is idempotent: clients can retry it after their local
+      // token has already been removed or replaced.
+      await this.prisma.deviceSubscription.updateMany({
         where: { deviceToken },
         data: { active: false },
       });
