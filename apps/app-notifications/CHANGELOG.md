@@ -1,5 +1,17 @@
 # Changelog
 
+## [2.5.0](https://github.com/BePing/beping-backends/compare/app-notifications-v2.4.0...app-notifications-v2.5.0) (2026-08-12)
+
+
+### Features
+
+* finalize community challenges and federation data ([b808e75](https://github.com/BePing/beping-backends/commit/b808e7564299d0ef1c9cc26f09576b045d5817c8))
+
+
+### Bug Fixes
+
+* make device unregistration idempotent ([ff505ef](https://github.com/BePing/beping-backends/commit/ff505eff965ecd03e76d8f2faeb0e878a6dd3497))
+
 ## [2.4.0](https://github.com/BePing/beping-backends/compare/app-notifications-v2.3.0...app-notifications-v2.4.0) (2026-08-11)
 
 

@@ -1,5 +1,17 @@
 # Changelog
 
+## [2.7.0](https://github.com/BePing/beping-backends/compare/tabt-rest-v2.6.0...tabt-rest-v2.7.0) (2026-08-12)
+
+
+### Features
+
+* finalize community challenges and federation data ([b808e75](https://github.com/BePing/beping-backends/commit/b808e7564299d0ef1c9cc26f09576b045d5817c8))
+
+
+### Bug Fixes
+
+* parse doctype-prefixed head-to-head fragments ([d8b1968](https://github.com/BePing/beping-backends/commit/d8b19686f2a32d613e70c7b4cd18a2a9cdd198b5))
+
 ## [2.6.0](https://github.com/BePing/beping-backends/compare/tabt-rest-v2.5.0...tabt-rest-v2.6.0) (2026-08-11)
 
 
