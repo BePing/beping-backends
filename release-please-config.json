@@ -11,6 +11,11 @@
     "apps/app-notifications": {
       "package-name": "app-notifications",
       "component": "app-notifications"
+    },
+    "apps/challenge-worker": {
+      "package-name": "challenge-worker",
+      "component": "challenge-worker",
+      "initial-version": "1.0.0"
     }
   },
   "plugins": [

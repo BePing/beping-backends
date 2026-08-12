@@ -63,6 +63,12 @@ values only in Coolify; PostgreSQL contains their environment-variable names.
 See `apps/challenge-worker/README.md` and `docs/challenge-cutover.md` before
 activation.
 
+`challenge-worker` is a Release Please component. Merging its release PR builds
+the semantic-version and immutable SHA tags, runs the shared migration and
+backend promotion first, then automatically promotes only the worker through
+the protected Production environment. The challenge website remains on its
+independent, explicitly selected frontend revision.
+
 The importer deliberately trades duration for API availability:
 
 - set its CPU shares below the API and cap it at `0.35` CPU;
