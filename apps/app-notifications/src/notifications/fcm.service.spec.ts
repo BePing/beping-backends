@@ -189,6 +189,27 @@ describe('FcmService dispatch', () => {
   });
 });
 
+describe('FcmService device unregistration', () => {
+  it('succeeds when the device subscription no longer exists', async () => {
+    const updateMany = jest.fn().mockResolvedValue({ count: 0 });
+    const prisma = {
+      deviceSubscription: { updateMany },
+    } as unknown as PrismaService;
+    const service = new FcmService(prisma, {
+      capture: jest.fn(),
+    } as unknown as PostHogService);
+
+    await expect(
+      service.unregisterDevice('missing-token'),
+    ).resolves.toBeUndefined();
+
+    expect(updateMany).toHaveBeenCalledWith({
+      where: { deviceToken: 'missing-token' },
+      data: { active: false },
+    });
+  });
+});
+
 describe('FcmService topic lookup', () => {
   it('deduplicates devices subscribed through several matching topics', async () => {
     const findMany = jest.fn().mockResolvedValue([
