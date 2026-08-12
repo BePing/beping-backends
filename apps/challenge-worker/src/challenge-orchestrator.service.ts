@@ -382,6 +382,14 @@ export class ChallengeOrchestratorService {
       throw new Error('Monday run checksum mismatch; publication blocked');
     }
     const now = new Date();
+    const integrationConfig = (week.season.challenge.integrationConfig ??
+      {}) as Record<string, unknown>;
+    const publicWebBaseUrl = String(
+      integrationConfig.publicWebBaseUrl ??
+        process.env.CHALLENGE_PUBLIC_BASE_URL ??
+        'https://challenges.beping.be',
+    ).replace(/\/$/, '');
+    const publicationUrl = `${publicWebBaseUrl}/challenges/${encodeURIComponent(week.season.challenge.slug)}`;
     await this.prisma.$transaction(async (tx) => {
       await tx.challengePublication.upsert({
         where: { championshipWeekId },
@@ -410,6 +418,7 @@ export class ChallengeOrchestratorService {
             season: week.season.season,
             week: week.week,
             publishedAt: now.toISOString(),
+            publicationUrl,
           },
         },
         update: {},

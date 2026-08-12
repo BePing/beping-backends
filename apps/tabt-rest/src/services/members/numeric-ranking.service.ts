@@ -22,7 +22,8 @@ export class WeeklyNumericRankingHistoryEntryV1 {
   @ApiProperty({
     type: Number,
     nullable: true,
-    description: 'The numeric ranking value',
+    description:
+      'Numeric ranking among active players, falling back to the ranking including inactive players when unavailable',
   })
   numericRanking: number | null;
 
@@ -71,6 +72,11 @@ const CACHE_KEYS = {
     `member:match-results:${licence}:${category}`,
 };
 
+/** AFTT `Pos N` (without inactive players), with legacy `Pos` fallback. */
+export const activeNumericRanking = (
+  point: Pick<NumericPoints, 'ranking' | 'rankingWI'>,
+): number | null => point.ranking ?? point.rankingWI;
+
 @Injectable()
 export class NumericRankingService {
   private readonly POINTS_PRECISION = 100; // For rounding to 2 decimal places
@@ -104,7 +110,7 @@ export class NumericRankingService {
         // from the numeric position so old and new histories use one rule.
         const numericRankingHistory = actualPoints.map((p) => {
           const points = p?.points ?? 0;
-          const rankingPosition = p.ranking ?? p.rankingWI;
+          const rankingPosition = activeNumericRanking(p);
           const rankingLetter =
             p.rankingLetterEstimation ??
             estimateLetterRanking(
@@ -116,7 +122,11 @@ export class NumericRankingService {
             ) ??
             '-';
           return {
-            numericRanking: p.rankingWI,
+            // AFTT exports both Pos N (without inactive players) and Pos
+            // (including inactive players). The active-only position is the
+            // one used by the official ranking pyramid and by the letter
+            // estimate above, so expose the same value to clients.
+            numericRanking: rankingPosition,
             rankingLetterEstimation: rankingLetter,
             numericPoints: points,
             date: p.date.toISOString(),

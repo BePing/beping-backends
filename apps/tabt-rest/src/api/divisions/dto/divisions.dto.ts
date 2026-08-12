@@ -1,5 +1,12 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsEnum, IsOptional } from 'class-validator';
+import { Transform } from 'class-transformer';
+import {
+  IsBoolean,
+  IsEnum,
+  IsOptional,
+  IsString,
+  Matches,
+} from 'class-validator';
 import { LevelDTO, mapLevelToLevelDTO } from '../../../common/dto/levels.dto';
 import {
   mapPlayerCategoryToPlayerCategoryDTO,
@@ -78,15 +85,28 @@ export class DivisionEntryDtoV1 {
 
 export class GetDivisionMatchesV1 {
   @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
   weekName: string;
 
   @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  @Matches(/^[0-9]{4}-[0-9]{2}-[0-9]{2}$/i)
   yearDateFrom: string;
 
   @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  @Matches(/^[0-9]{4}-[0-9]{2}-[0-9]{2}$/i)
   yearDateTo: string;
 
   @ApiPropertyOptional()
+  @IsOptional()
+  @IsBoolean()
+  @Transform(({ value }) => value === 'true' || value === true, {
+    toClassOnly: true,
+  })
   withDetails: boolean;
 }
 

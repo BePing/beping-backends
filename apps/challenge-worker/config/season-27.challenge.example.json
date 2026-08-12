@@ -9,7 +9,10 @@
     "pressEmailSubject": "{status} — Challenge provincial — semaine {week}",
     "pressEmailBody": "Veuillez trouver en pièce jointe le classement {status} de la semaine {week}. Ce classement est communautaire et non officiel.",
     "integrationConfig": {
-      "bepingApiBaseUrl": "https://api-v2.beping.be"
+      "bepingApiBaseUrl": "https://api-v2.beping.be",
+      "publicWebBaseUrl": "https://challenges.beping.be",
+      "facebookPageId": "144181319524102",
+      "alertRecipients": ["f.cardoen@me.com"]
     }
   },
   "season": {
@@ -143,7 +146,14 @@
   },
   "excludedPlayers": [],
   "pointsOverrides": {},
-  "pressRecipients": [],
+  "pressRecipients": [
+    "f.cardoen@me.com",
+    "ttdolhain@hotmail.com",
+    "thomasbastin5@gmail.com",
+    "brunosmets37@gmail.com",
+    "raphael.castillejos@hotmail.com",
+    "richard.vdg@skynet.be"
+  ],
   "rules": {
     "points": {
       "pointsPerWin": 1,
@@ -194,6 +204,11 @@
     { "key": "MAILJET_API_SECRET", "envVarName": "MAILJET_API_SECRET" },
     { "key": "PRESS_SENDER_EMAIL", "envVarName": "PRESS_SENDER_EMAIL" },
     { "key": "TABT_ACCOUNT", "envVarName": "TABT_ACCOUNT" },
-    { "key": "TABT_PASSWORD", "envVarName": "TABT_PASSWORD" }
+    { "key": "TABT_PASSWORD", "envVarName": "TABT_PASSWORD" },
+    {
+      "key": "FACEBOOK_ACCESS_TOKEN",
+      "envVarName": "FACEBOOK_ACCESS_TOKEN",
+      "required": false
+    }
   ]
 }

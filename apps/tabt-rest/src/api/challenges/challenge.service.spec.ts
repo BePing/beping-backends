@@ -29,6 +29,7 @@ describe('ChallengeService', () => {
             thursdayPublishTime: '08:00',
             regions: [],
             levels: [],
+            clubs: [{ clubIndex: 'L293' }],
             championshipWeeks: [
               { thursdayPublishDate: new Date('2026-10-08T00:00:00Z') },
               { thursdayPublishDate: new Date('2026-10-15T00:00:00Z') },
@@ -51,6 +52,7 @@ describe('ChallengeService', () => {
     expect(after[0].nextPublicationAt).toEqual(
       new Date('2026-10-15T06:00:00Z'),
     );
+    expect(after[0].clubs).toEqual(['L293']);
   });
 
   it('returns an empty page when no Thursday publication exists', async () => {

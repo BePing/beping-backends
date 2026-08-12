@@ -43,6 +43,7 @@ export class ChallengeService {
           include: {
             regions: { orderBy: { displayOrder: 'asc' } },
             levels: { orderBy: { displayOrder: 'asc' } },
+            clubs: { orderBy: { clubIndex: 'asc' } },
             championshipWeeks: {
               where: { active: true, thursdayPublishDate: { gte: today } },
               orderBy: { thursdayPublishDate: 'asc' },
@@ -83,6 +84,7 @@ export class ChallengeService {
             code: level.code,
             label: level.label,
           })) ?? [],
+        clubs: season?.clubs.map((club) => club.clubIndex) ?? [],
       };
     });
   }

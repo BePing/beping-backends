@@ -51,7 +51,7 @@ export class ChallengeCalculatorService {
       season.excludedPlayers.map((player) => player.playerUniqueIndex),
     );
     const players = new Map<number, PlayerAccumulator>();
-    const seenPlayerWeek = new Map<string, string>();
+    const seenPlayerMatch = new Set<string>();
 
     for (const division of season.divisions) {
       const matches = await this.fetchMatches(
@@ -68,7 +68,7 @@ export class ChallengeCalculatorService {
           'home',
           week,
           players,
-          seenPlayerWeek,
+          seenPlayerMatch,
           excluded,
           clubByIndex,
           division.level.code,
@@ -79,7 +79,7 @@ export class ChallengeCalculatorService {
           'away',
           week,
           players,
-          seenPlayerWeek,
+          seenPlayerMatch,
           excluded,
           clubByIndex,
           division.level.code,
@@ -216,8 +216,7 @@ export class ChallengeCalculatorService {
   ): Promise<ChallengeMatch[]> {
     const baseUrl =
       process.env.BEPING_API_BASE_URL ?? 'https://api-v2.beping.be';
-    const url = new URL('/v1/matches', baseUrl);
-    url.searchParams.set('divisionId', String(divisionId));
+    const url = new URL(`/v1/divisions/${divisionId}/matches`, baseUrl);
     url.searchParams.set('withDetails', 'true');
     const headers: Record<string, string> = {
       'X-Tabt-Season': String(season),
@@ -230,16 +229,28 @@ export class ChallengeCalculatorService {
       if (reference.key === 'TABT_ACCOUNT') headers['X-Tabt-Account'] = value;
       if (reference.key === 'TABT_PASSWORD') headers['X-Tabt-Password'] = value;
     }
-    const response = await fetch(url, {
-      headers,
-      signal: AbortSignal.timeout(120_000),
-    });
-    if (!response.ok) {
-      throw new Error(
-        `Beping matches API returned ${response.status} for division ${divisionId}`,
-      );
+    for (let attempt = 1; attempt <= 4; attempt += 1) {
+      const response = await fetch(url, {
+        headers,
+        signal: AbortSignal.timeout(120_000),
+      });
+      if (response.ok) return (await response.json()) as ChallengeMatch[];
+
+      const retryable = response.status === 429 || response.status >= 500;
+      if (!retryable || attempt === 4) {
+        throw new Error(
+          `Beping matches API returned ${response.status} for division ${divisionId}`,
+        );
+      }
+      const retryAfterHeader = response.headers.get('retry-after');
+      const retryAfterSeconds = Number(retryAfterHeader);
+      const delayMs =
+        retryAfterHeader !== null && Number.isFinite(retryAfterSeconds)
+          ? Math.max(0, retryAfterSeconds * 1_000)
+          : attempt * 5_000;
+      await new Promise((resolve) => setTimeout(resolve, delayMs));
     }
-    return (await response.json()) as ChallengeMatch[];
+    throw new Error(`Unable to load matches for division ${divisionId}`);
   }
 
   private consumeTeam(
@@ -247,7 +258,7 @@ export class ChallengeCalculatorService {
     side: 'home' | 'away',
     week: number,
     players: Map<number, PlayerAccumulator>,
-    seenPlayerWeek: Map<string, string>,
+    seenPlayerMatch: Set<string>,
     excluded: Set<number>,
     clubByIndex: Map<string, unknown>,
     levelCode: string,
@@ -261,6 +272,12 @@ export class ChallengeCalculatorService {
         ? match.matchDetails.homePlayers?.players
         : match.matchDetails.awayPlayers?.players;
     for (const member of teamPlayers ?? []) {
+      const isEmptyRosterSlot =
+        member.uniqueIndex === 0 &&
+        ![member.firstName, member.lastName].some(
+          (name) => typeof name === 'string' && name.trim().length > 0,
+        );
+      if (isEmptyRosterSlot) continue;
       if (
         !Number.isSafeInteger(member.uniqueIndex) ||
         member.uniqueIndex <= 0
@@ -270,15 +287,9 @@ export class ChallengeCalculatorService {
         );
       }
       if (excluded.has(member.uniqueIndex)) continue;
-      const participationKey = `${member.uniqueIndex}:${week}`;
-      const priorMatch = seenPlayerWeek.get(participationKey);
-      if (priorMatch && priorMatch !== match.matchId) {
-        throw new Error(
-          `Player ${member.uniqueIndex} appears in two matches during week ${week}`,
-        );
-      }
-      if (priorMatch) continue;
-      seenPlayerWeek.set(participationKey, match.matchId);
+      const participationKey = `${member.uniqueIndex}:${match.matchUniqueId}`;
+      if (seenPlayerMatch.has(participationKey)) continue;
+      seenPlayerMatch.add(participationKey);
       const player = players.get(member.uniqueIndex) ?? {
         uniqueIndex: member.uniqueIndex,
         name: `${member.lastName} ${member.firstName}`.trim(),

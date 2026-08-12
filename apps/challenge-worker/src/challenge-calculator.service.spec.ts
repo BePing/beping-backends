@@ -17,11 +17,20 @@ describe('ChallengeCalculatorService', () => {
         match([
           { uniqueIndex: 101, firstName: 'Alice', lastName: 'Zéro' },
           { uniqueIndex: 999, firstName: 'Exclu', lastName: 'Manuel' },
+          { uniqueIndex: 0, firstName: '', lastName: '' },
         ]),
       ]),
     );
 
     const result = await service.calculate('season-27', 4);
+
+    expect(fetch).toHaveBeenCalledWith(
+      expect.objectContaining({
+        pathname: '/v1/divisions/1234/matches',
+        search: '?withDetails=true',
+      }),
+      expect.any(Object),
+    );
 
     expect(result.rankings).toEqual([
       expect.objectContaining({
@@ -54,6 +63,39 @@ describe('ChallengeCalculatorService', () => {
       'Unnormalizable player identity',
     );
   });
+
+  it('retries a rate-limited division request', async () => {
+    jest
+      .spyOn(global, 'fetch')
+      .mockResolvedValueOnce(errorResponse(429, '0'))
+      .mockResolvedValueOnce(response([]));
+
+    const result = await service.calculate('season-27', 4);
+
+    expect(fetch).toHaveBeenCalledTimes(2);
+    expect(result.rankings).toEqual([]);
+  });
+
+  it('counts distinct rescheduled matches sharing the same week number', async () => {
+    jest
+      .spyOn(global, 'fetch')
+      .mockResolvedValue(
+        response([
+          match([{ uniqueIndex: 101, firstName: 'Alice', lastName: 'Zéro' }]),
+          match(
+            [{ uniqueIndex: 101, firstName: 'Alice', lastName: 'Zéro' }],
+            5002,
+          ),
+        ]),
+      );
+
+    const result = await service.calculate('season-27', 4);
+
+    expect(result.points).toHaveLength(2);
+    expect(result.rankings).toEqual([
+      expect.objectContaining({ playerUniqueIndex: 101, count0Pts: 2 }),
+    ]);
+  });
 });
 
 function seasonConfig() {
@@ -81,10 +123,10 @@ function seasonConfig() {
   };
 }
 
-function match(players: Array<Record<string, unknown>>) {
+function match(players: Array<Record<string, unknown>>, matchUniqueId = 5001) {
   return {
-    matchId: 'L001-1',
-    matchUniqueId: 5001,
+    matchId: `L001-${matchUniqueId}`,
+    matchUniqueId,
     weekName: '4',
     divisionId: 1234,
     homeClub: 'L001',
@@ -106,5 +148,13 @@ function response(payload: unknown): Response {
   return {
     ok: true,
     json: jest.fn().mockResolvedValue(payload),
+  } as unknown as Response;
+}
+
+function errorResponse(status: number, retryAfter: string): Response {
+  return {
+    ok: false,
+    status,
+    headers: new Headers({ 'retry-after': retryAfter }),
   } as unknown as Response;
 }

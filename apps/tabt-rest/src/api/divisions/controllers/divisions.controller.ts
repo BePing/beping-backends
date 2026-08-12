@@ -141,11 +141,14 @@ export class DivisionsController {
   @Version('1')
   async findMatchesDivisionV1(
     @Param('divisionId', ParseIntPipe) id: number,
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars -- documents query params for OpenAPI; not yet wired into the service
     @Query() query: GetDivisionMatchesV1,
   ): Promise<TeamMatchesEntryDTO[]> {
     const matches = await this.matchesService.getMatches({
       DivisionId: id,
+      WeekName: query.weekName,
+      YearDateFrom: query.yearDateFrom,
+      YearDateTo: query.yearDateTo,
+      WithDetails: query.withDetails,
     });
     return matches.map(TeamMatchesEntryDTO.fromTabT);
   }

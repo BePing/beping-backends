@@ -7,7 +7,8 @@ export type ChallengeJob =
   | 'thursday'
   | 'validate-config'
   | 'import-config'
-  | 'activate';
+  | 'activate'
+  | 'dry-run';
 
 export interface ChallengeMatchPlayer {
   uniqueIndex: number;

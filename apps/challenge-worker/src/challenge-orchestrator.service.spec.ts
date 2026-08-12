@@ -113,7 +113,13 @@ describe('ChallengeOrchestratorService', () => {
       week: 4,
       season: {
         season: 27,
-        challenge: { slug: 'provincial', name: 'Challenge provincial' },
+        challenge: {
+          slug: 'provincial',
+          name: 'Challenge provincial',
+          integrationConfig: {
+            publicWebBaseUrl: 'https://challenges.beping.be',
+          },
+        },
       },
     });
     prisma.challengeRun.findFirst.mockResolvedValue({
@@ -157,6 +163,12 @@ describe('ChallengeOrchestratorService', () => {
         where: {
           deduplicationKey: 'challenge-published:provincial:27:4',
         },
+        create: expect.objectContaining({
+          payload: expect.objectContaining({
+            publicationUrl:
+              'https://challenges.beping.be/challenges/provincial',
+          }),
+        }),
       }),
     );
   });

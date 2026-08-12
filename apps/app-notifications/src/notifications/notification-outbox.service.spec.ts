@@ -28,6 +28,8 @@ const challengeEvent = {
     season: 27,
     week: 4,
     publishedAt: '2026-10-08T06:00:00.000Z',
+    publicationUrl:
+      'https://challenges.beping.be/challenges/challenge-provincial',
   },
 };
 
@@ -58,7 +60,7 @@ describe('NotificationOutboxService', () => {
       new NotificationContentService(),
       posthog as unknown as PostHogService,
     );
-    return { service, updateMany, update, sendNotification, posthog };
+    return { service, updateMany, update, sendNotification, posthog, fcm };
   }
 
   it('marks a claimed event as processed after delivery', async () => {
@@ -112,20 +114,26 @@ describe('NotificationOutboxService', () => {
     );
   });
 
-  it('delivers a published challenge to ranking-opted-in devices', async () => {
+  it('delivers a published challenge only to challenge-opted-in devices', async () => {
     const sendNotification = jest.fn().mockResolvedValue(undefined);
-    const { service, updateMany } = setup(sendNotification, [challengeEvent]);
+    const { service, updateMany, fcm } = setup(sendNotification, [
+      challengeEvent,
+    ]);
 
     await service.processPendingEvents();
 
+    expect(fcm.getDevicesGroupedByLocale).toHaveBeenCalledWith('CHALLENGE');
     expect(sendNotification).toHaveBeenCalledWith(
       expect.objectContaining({
         title: 'Nouveau classement communautaire',
+        notificationType: 'CHALLENGE',
         targetDeviceTokens: ['challenge-device'],
         data: expect.objectContaining({
           eventType: 'challengePublished',
           challengeSlug: 'challenge-provincial',
           week: '4',
+          publicationUrl:
+            'https://challenges.beping.be/challenges/challenge-provincial',
         }),
       }),
     );

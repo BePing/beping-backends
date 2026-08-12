@@ -93,6 +93,10 @@ describe('DivisionsController', () => {
       expect(result[0]).toBeDefined();
       expect(spy).toHaveBeenCalledWith({
         DivisionId: 4755,
+        WeekName: '1',
+        YearDateFrom: '1995-12-13',
+        YearDateTo: '1995-12-14',
+        WithDetails: true,
       });
     });
   });

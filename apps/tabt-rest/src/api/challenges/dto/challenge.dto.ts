@@ -35,6 +35,13 @@ export class ChallengeSummaryDto {
 
   @ApiProperty({ type: () => ChallengeOptionDto, isArray: true })
   levels: ChallengeOptionDto[];
+
+  @ApiProperty({
+    type: String,
+    isArray: true,
+    description: 'Codes des clubs éligibles aux réglages de ce challenge',
+  })
+  clubs: string[];
 }
 
 export class ChallengeOptionDto {

@@ -20,6 +20,7 @@ interface ChallengePublishedPayload {
   season: number;
   week: number;
   publishedAt: string;
+  publicationUrl: string;
 }
 
 interface PlayerRankingUpdatedPayload extends RankingNotificationPayload {
@@ -295,13 +296,13 @@ export class NotificationOutboxService implements OnModuleInit {
   private async sendChallengePublishedEvent(event: OutboxEvent): Promise<void> {
     const payload = event.payload as ChallengePublishedPayload;
     const devicesByLocale = await this.fcm.getDevicesGroupedByLocale(
-      NotificationType.RANKING,
+      NotificationType.CHALLENGE,
     );
     for (const [locale, tokens] of Object.entries(devicesByLocale)) {
       const content = this.content.challengePublished(locale, payload);
       await this.fcm.sendNotification({
         ...content,
-        notificationType: NotificationType.RANKING,
+        notificationType: NotificationType.CHALLENGE,
         targetDeviceTokens: tokens,
         data: this.toStringData({
           eventType: 'challengePublished',
@@ -309,6 +310,7 @@ export class NotificationOutboxService implements OnModuleInit {
           season: payload.season,
           week: payload.week,
           publishedAt: payload.publishedAt,
+          publicationUrl: payload.publicationUrl,
         }),
       });
     }
