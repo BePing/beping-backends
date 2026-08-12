@@ -1,0 +1,6 @@
+{
+  "name": "challenge-worker",
+  "version": "0.0.0",
+  "description": "Community challenge calculation and publication worker",
+  "private": true
+}

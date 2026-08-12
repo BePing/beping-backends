@@ -1,0 +1,164 @@
+name: Deploy challenge worker production
+
+on:
+  workflow_call:
+    inputs:
+      image_sha:
+        description: Immutable backend SHA containing the released challenge worker
+        required: true
+        type: string
+  workflow_dispatch:
+    inputs:
+      image_sha:
+        description: Immutable backend SHA containing the released challenge worker
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: beping-challenges-production
+  cancel-in-progress: false
+
+env:
+  REGISTRY_HOST: ${{ vars.HETZNER_REGISTRY_HOST }}
+  COOLIFY_URL: ${{ vars.COOLIFY_URL }}
+  BEPING_DOCKER_HOST: ${{ vars.BEPING_DOCKER_HOST }}
+  WORKER_UUID: ${{ vars.COOLIFY_BEPING_CHALLENGE_WORKER_UUID }}
+  IMAGE_SHA: ${{ inputs.image_sha }}
+  BEPING_BACKUP_DIRECTORY: /data/coolify/backups/databases/escape-key-team-0/beping-postgresql-18-${{ vars.COOLIFY_BEPING_POSTGRES18_UUID }}
+  BEPING_BACKUP_MAX_AGE_MINUTES: 1560
+
+jobs:
+  deploy:
+    name: Promote released challenge worker
+    runs-on: [self-hosted, linux, x64, escape-key-ci]
+    environment: Production
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout deployment tooling
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Validate deployment configuration
+        env:
+          COOLIFY_TOKEN: ${{ secrets.COOLIFY_TOKEN }}
+          REGISTRY_USERNAME: ${{ secrets.HETZNER_REGISTRY_USERNAME }}
+          REGISTRY_PASSWORD: ${{ secrets.HETZNER_REGISTRY_PASSWORD }}
+        run: |
+          [[ "${IMAGE_SHA}" =~ ^[0-9a-f]{40}$ ]]
+          test -n "${REGISTRY_HOST}"
+          test -n "${REGISTRY_USERNAME}"
+          test -n "${REGISTRY_PASSWORD}"
+          test -n "${COOLIFY_URL}"
+          test -n "${COOLIFY_TOKEN}"
+          test -n "${BEPING_DOCKER_HOST}"
+          test -n "${WORKER_UUID}"
+
+      - name: Log in to Escape Key registry
+        uses: docker/login-action@af1e73f918a031802d376d3c8bbc3fe56130a9b0 # v4.4.0
+        with:
+          registry: ${{ env.REGISTRY_HOST }}
+          username: ${{ secrets.HETZNER_REGISTRY_USERNAME }}
+          password: ${{ secrets.HETZNER_REGISTRY_PASSWORD }}
+
+      - name: Verify immutable worker image
+        run: |
+          docker manifest inspect \
+            "${REGISTRY_HOST}/escape-key/beping-challenge-worker:${IMAGE_SHA}" \
+            >/dev/null
+
+      - name: Verify recent PostgreSQL backup and API readiness
+        run: |
+          docker_ssh_target="${BEPING_DOCKER_HOST#ssh://}"
+          [[ "${BEPING_DOCKER_HOST}" == "ssh://${docker_ssh_target}" ]]
+          [[ "${docker_ssh_target}" =~ ^root@[a-zA-Z0-9.-]+$ ]]
+
+          ssh \
+            -o BatchMode=yes \
+            -o ConnectTimeout=10 \
+            "${docker_ssh_target}" \
+            "find '${BEPING_BACKUP_DIRECTORY}' -maxdepth 1 -type f -name '*.dmp' -size +1048576c -mmin -${BEPING_BACKUP_MAX_AGE_MINUTES} -print -quit" \
+            | grep -q .
+
+          curl \
+            --fail \
+            --silent \
+            --show-error \
+            --connect-timeout 10 \
+            --max-time 30 \
+            https://api-v2.beping.be/v1/health/ready \
+            >/dev/null
+
+      - name: Deploy released challenge worker
+        env:
+          COOLIFY_TOKEN: ${{ secrets.COOLIFY_TOKEN }}
+        run: |
+          update_provenance() {
+            local image_sha="$1"
+            jq -n \
+              --arg image_sha "${image_sha}" \
+              '{data: [
+                {key: "CHALLENGE_WORKER_IMAGE_SHA", value: $image_sha, is_literal: true, is_runtime: true, is_buildtime: false}
+              ]}' | curl \
+                --fail-with-body \
+                --silent \
+                --show-error \
+                --output /dev/null \
+                -X PATCH \
+                -H "Authorization: Bearer ${COOLIFY_TOKEN}" \
+                -H 'Content-Type: application/json' \
+                --data-binary @- \
+                "${COOLIFY_URL%/}/api/v1/applications/${WORKER_UUID}/envs/bulk"
+          }
+
+          current="$(curl \
+            --fail-with-body \
+            --silent \
+            --show-error \
+            -H "Authorization: Bearer ${COOLIFY_TOKEN}" \
+            "${COOLIFY_URL%/}/api/v1/applications/${WORKER_UUID}")"
+          previous_image="$(jq -er '.docker_registry_image_name' <<<"${current}")"
+          previous_tag="$(jq -er '.docker_registry_image_tag' <<<"${current}")"
+
+          update_provenance "${IMAGE_SHA}"
+          if ! bash scripts/coolify-deploy-image.sh \
+              "${WORKER_UUID}" \
+              "${REGISTRY_HOST}/escape-key/beping-challenge-worker" \
+              "${IMAGE_SHA}"; then
+            update_provenance "${previous_tag}" || true
+            exit 1
+          fi
+
+          expected_image="${REGISTRY_HOST}/escape-key/beping-challenge-worker:${IMAGE_SHA}"
+          for _ in $(seq 1 30); do
+            if docker --host "${BEPING_DOCKER_HOST}" ps \
+              --filter "name=${WORKER_UUID}" \
+              --filter "ancestor=${expected_image}" \
+              --format '{{.ID}}' | grep -q .; then
+              echo "Released challenge worker ${IMAGE_SHA} is running."
+              exit 0
+            fi
+            sleep 2
+          done
+
+          echo "The released challenge worker did not remain running; restoring ${previous_tag}." >&2
+          update_provenance "${previous_tag}" || true
+          bash scripts/coolify-deploy-image.sh \
+            "${WORKER_UUID}" \
+            "${previous_image}" \
+            "${previous_tag}" || true
+          exit 1
+
+      - name: Verify schedules remain disabled until activation
+        env:
+          COOLIFY_TOKEN: ${{ secrets.COOLIFY_TOKEN }}
+        run: |
+          tasks="$(curl \
+            --fail-with-body \
+            --silent \
+            --show-error \
+            -H "Authorization: Bearer ${COOLIFY_TOKEN}" \
+            "${COOLIFY_URL%/}/api/v1/applications/${WORKER_UUID}/scheduled-tasks")"
+          [[ "$(jq '[.[] | select(.enabled == false)] | length' <<<"${tasks}")" -eq 3 ]]

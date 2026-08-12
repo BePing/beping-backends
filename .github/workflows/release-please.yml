@@ -29,6 +29,8 @@ jobs:
       data-aftt-importer--tag_name: ${{ steps.release.outputs['apps/data-aftt-importer--tag_name'] }}
       app-notifications--release_created: ${{ steps.release.outputs['apps/app-notifications--release_created'] }}
       app-notifications--tag_name: ${{ steps.release.outputs['apps/app-notifications--tag_name'] }}
+      challenge-worker--release_created: ${{ steps.release.outputs['apps/challenge-worker--release_created'] }}
+      challenge-worker--tag_name: ${{ steps.release.outputs['apps/challenge-worker--tag_name'] }}
     steps:
       - uses: actions/checkout@v7
 
@@ -62,6 +64,10 @@ jobs:
             release_created: ${{ needs.release-please.outputs.app-notifications--release_created }}
             tag_name: ${{ needs.release-please.outputs.app-notifications--tag_name }}
             image_name: ${{ vars.HETZNER_REGISTRY_HOST }}/escape-key/beping-notifications
+          - app: challenge-worker
+            release_created: ${{ needs.release-please.outputs.challenge-worker--release_created }}
+            tag_name: ${{ needs.release-please.outputs.challenge-worker--tag_name }}
+            image_name: ${{ vars.HETZNER_REGISTRY_HOST }}/escape-key/beping-challenge-worker
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v7
@@ -166,6 +172,26 @@ jobs:
         needs.build-and-push-migrate.result == 'success'
       }}
     uses: ./.github/workflows/deploy-production.yml
+    with:
+      image_sha: ${{ github.sha }}
+    secrets: inherit
+
+  deploy-challenge-worker-production:
+    needs:
+      - release-please
+      - build-and-push
+      - build-and-push-migrate
+      - deploy-production
+    if: >-
+      ${{
+        always() &&
+        github.ref == 'refs/heads/main' &&
+        needs.release-please.outputs.challenge-worker--release_created == 'true' &&
+        needs.build-and-push.result == 'success' &&
+        needs.build-and-push-migrate.result == 'success' &&
+        needs.deploy-production.result == 'success'
+      }}
+    uses: ./.github/workflows/deploy-challenge-worker-production.yml
     with:
       image_sha: ${{ github.sha }}
     secrets: inherit
