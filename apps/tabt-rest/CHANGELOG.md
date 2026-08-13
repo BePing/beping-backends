@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.7.1](https://github.com/BePing/beping-backends/compare/tabt-rest-v2.7.0...tabt-rest-v2.7.1) (2026-08-13)
+
+
+### Bug Fixes
+
+* parse malformed AFTT head-to-head HTML ([76ca275](https://github.com/BePing/beping-backends/commit/76ca2751c1ebce1fb320719f84269188ee7877aa))
+
 ## [2.7.0](https://github.com/BePing/beping-backends/compare/tabt-rest-v2.6.0...tabt-rest-v2.7.0) (2026-08-12)
 
 
