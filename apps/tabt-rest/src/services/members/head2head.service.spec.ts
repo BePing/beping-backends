@@ -156,6 +156,27 @@ describe('Head2headService', () => {
       });
     });
 
+    it('should parse player inputs inside malformed surrounding HTML', async () => {
+      mockHttpService.post.mockReturnValue(
+        of({
+          data: `
+            <div><p>Malformed AFTT markup</div>
+            <input id="player_1" value="123/Player One">
+            <input value="456/Player Two" id="player_2">
+          `,
+        }),
+      );
+
+      const result = await service.getHead2HeadResults(123, 456);
+
+      expect(result.playersInfo).toEqual({
+        playerUniqueIndex: 123,
+        opponentPlayerUniqueIndex: 456,
+        playerName: 'Player One',
+        opponentPlayerName: 'Player Two',
+      });
+    });
+
     it('should use the same stable cache key for both player orders', async () => {
       await service.getHead2HeadResults(123, 456);
       await service.getHead2HeadResults(456, 123);

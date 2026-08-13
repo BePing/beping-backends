@@ -454,14 +454,23 @@ export class Head2headService {
     const normalizedHtml = /<html(?:\s|>)/i.test(htmlWithoutDoctype)
       ? htmlWithoutDoctype
       : `<html><body>${htmlWithoutDoctype}</body></html>`;
-    const document = new DOMParser({
-      onError: () => undefined,
-    }).parseFromString(normalizedHtml, 'text/html');
+    const parser = new DOMParser({ onError: () => undefined });
+    const inputTags = normalizedHtml.match(/<input\b[^>]*>/gi) ?? [];
+    const playerInputs = new Map<string, string>();
+    for (const inputTag of inputTags) {
+      // Parse each input independently. The surrounding AFTT fragment can
+      // contain mismatched tags, but the two player inputs are self-contained.
+      const inputDocument = parser.parseFromString(
+        `<html><body>${inputTag}</body></html>`,
+        'text/html',
+      );
+      const input = inputDocument.getElementsByTagName('input')[0];
+      const id = input?.getAttribute('id');
+      const value = input?.getAttribute('value')?.trim();
+      if (id && value) playerInputs.set(id, value);
+    }
     const readPlayer = (index: 1 | 2): [string, string] | null => {
-      const value = document
-        .getElementById(`player_${index}`)
-        ?.getAttribute('value')
-        ?.trim();
+      const value = playerInputs.get(`player_${index}`);
       if (!value) return null;
 
       const separator = value.indexOf('/');
@@ -476,13 +485,9 @@ export class Head2headService {
     const player = readPlayer(1);
     const opponent = readPlayer(2);
     if (!player || !opponent) {
-      const inputs = document.getElementsByTagName('input');
-      let playerInputCount = 0;
-      for (let index = 0; index < inputs.length; index++) {
-        if (inputs[index].getAttribute('id')?.startsWith('player_')) {
-          playerInputCount++;
-        }
-      }
+      const playerInputCount = [...playerInputs.keys()].filter((id) =>
+        id.startsWith('player_'),
+      ).length;
       this.logger.error(
         `Failed to extract player information. playerInputs=${playerInputCount}, htmlLength=${htmlPage.length}`,
       );
