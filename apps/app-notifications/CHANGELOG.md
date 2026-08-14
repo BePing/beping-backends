@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.5.1](https://github.com/BePing/beping-backends/compare/app-notifications-v2.5.0...app-notifications-v2.5.1) (2026-08-14)
+
+
+### Bug Fixes
+
+* make device locale updates idempotent ([5f57a90](https://github.com/BePing/beping-backends/commit/5f57a903195a79aea1cb8636908c2887a8eaea14))
+
 ## [2.5.0](https://github.com/BePing/beping-backends/compare/app-notifications-v2.4.0...app-notifications-v2.5.0) (2026-08-12)
 
 
