@@ -122,7 +122,9 @@ export class FcmService implements OnModuleInit {
 
   async updateDeviceLocale(deviceToken: string, locale: string): Promise<void> {
     try {
-      await this.prisma.deviceSubscription.update({
+      // A device can have an FCM token without a backend subscription when
+      // notifications are disabled. Locale updates are therefore idempotent.
+      await this.prisma.deviceSubscription.updateMany({
         where: { deviceToken },
         data: { locale: normalizeNotificationLocale(locale) },
       });

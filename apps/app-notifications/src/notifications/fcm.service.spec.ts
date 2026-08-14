@@ -210,6 +210,27 @@ describe('FcmService device unregistration', () => {
   });
 });
 
+describe('FcmService device locale updates', () => {
+  it('succeeds when the device subscription does not exist', async () => {
+    const updateMany = jest.fn().mockResolvedValue({ count: 0 });
+    const prisma = {
+      deviceSubscription: { updateMany },
+    } as unknown as PrismaService;
+    const service = new FcmService(prisma, {
+      capture: jest.fn(),
+    } as unknown as PostHogService);
+
+    await expect(
+      service.updateDeviceLocale('missing-token', 'nl-BE'),
+    ).resolves.toBeUndefined();
+
+    expect(updateMany).toHaveBeenCalledWith({
+      where: { deviceToken: 'missing-token' },
+      data: { locale: 'nl' },
+    });
+  });
+});
+
 describe('FcmService topic lookup', () => {
   it('deduplicates devices subscribed through several matching topics', async () => {
     const findMany = jest.fn().mockResolvedValue([
