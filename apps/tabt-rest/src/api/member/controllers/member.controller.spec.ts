@@ -6,15 +6,18 @@ import { NotFoundException } from '@nestjs/common';
 import { SeasonService } from '../../../services/seasons/season.service';
 import { NumericRankingService } from '../../../services/members/numeric-ranking.service';
 import { MemberCategoryService } from '../../../services/members/member-category.service';
+import { MemberLookupService } from '../../../services/members/member-lookup.service';
 
 jest.mock('../../../services/members/member.service');
 jest.mock('../../../services/seasons/season.service');
 jest.mock('../../../services/members/member-category.service');
 jest.mock('../../../services/members/numeric-ranking.service');
+jest.mock('../../../services/members/member-lookup.service');
 
 describe('MemberController', () => {
   let controller: MemberController;
   let service: MemberService;
+  let lookupService: MemberLookupService;
 
   beforeEach(async () => {
     jest.clearAllMocks();
@@ -22,6 +25,7 @@ describe('MemberController', () => {
       controllers: [MemberController],
       providers: [
         MemberService,
+        MemberLookupService,
         MemberCategoryService,
         SeasonService,
         NumericRankingService,
@@ -30,10 +34,34 @@ describe('MemberController', () => {
 
     controller = module.get<MemberController>(MemberController);
     service = module.get<MemberService>(MemberService);
+    lookupService = module.get<MemberLookupService>(MemberLookupService);
   });
 
   it('should be defined', () => {
     expect(controller).toBeDefined();
+  });
+
+  it('should use the resilient member lookup endpoint', async () => {
+    const members = [
+      {
+        Position: 87,
+        UniqueIndex: 142453,
+        RankingIndex: 87,
+        FirstName: 'Florent',
+        LastName: 'Cardoen',
+        Ranking: 'B4',
+        Status: '',
+        Club: 'L360',
+      },
+    ];
+    const spy = jest
+      .spyOn(lookupService, 'lookupByName')
+      .mockResolvedValue(members);
+
+    await expect(
+      controller.lookup({ nameSearch: 'Florent Cardoen' }),
+    ).resolves.toEqual(members);
+    expect(spy).toHaveBeenCalledWith('Florent Cardoen');
   });
 
   it('should return an empty list when the member search has no result', async () => {

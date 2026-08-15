@@ -20,6 +20,7 @@ import {
   GetMembersV1,
   GetMemberV1,
   GetPlayerCategoriesInputV1,
+  LookupMembersV1,
   MemberEntryDTOV1,
   PlayerCategoryEntriesDTOV1,
   WeeklyNumericPointsInputV1,
@@ -29,6 +30,7 @@ import {
   NumericRankingService,
   WeeklyRankingV1Response,
 } from '../../../services/members/numeric-ranking.service';
+import { MemberLookupService } from '../../../services/members/member-lookup.service';
 
 @ApiTags('Members')
 @Controller({
@@ -38,6 +40,7 @@ import {
 export class MemberController {
   constructor(
     private readonly memberService: MemberService,
+    private readonly memberLookupService: MemberLookupService,
     private readonly memberCategoryService: MemberCategoryService,
     private readonly numericRankingService: NumericRankingService,
   ) {}
@@ -54,6 +57,21 @@ export class MemberController {
   async findAll(@Query() input: GetMembersV1): Promise<MemberEntryDTOV1[]> {
     const members = await this.memberService.getMembersV1(input);
     return members.map(MemberEntryDTOV1.fromTabT);
+  }
+
+  @Get('lookup')
+  @ApiOperation({
+    operationId: 'lookupMembersV1',
+    summary: 'Look up members across TABT and numeric ranking data',
+  })
+  @ApiOkResponse({
+    type: [MemberEntryDTOV1],
+    description:
+      'Members merged from TABT and the complete numeric ranking member list',
+  })
+  @TabtHeadersDecorator()
+  async lookup(@Query() input: LookupMembersV1): Promise<MemberEntryDTOV1[]> {
+    return this.memberLookupService.lookupByName(input.nameSearch);
   }
 
   @Get('categories')
