@@ -8,6 +8,7 @@ import { CacheModuleOptsFactory } from '@app/common';
 import { ConfigModule } from '@nestjs/config';
 import { CommonModule } from '../../common/common.module';
 import { ServicesModule } from '../../services/services.module';
+import { MemberLookupService } from '../../services/members/member-lookup.service';
 
 @Module({
   imports: [
@@ -19,7 +20,7 @@ import { ServicesModule } from '../../services/services.module';
     }),
   ],
   controllers: [MemberController, MemberRankingController],
-  providers: [MemberService, RankingDistributionService],
+  providers: [MemberService, MemberLookupService, RankingDistributionService],
   exports: [MemberService, RankingDistributionService],
 })
 export class MemberModule {}

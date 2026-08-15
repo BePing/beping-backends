@@ -1,5 +1,12 @@
 import { ApiProperty, ApiPropertyOptional, OmitType } from '@nestjs/swagger';
-import { IsBoolean, IsEnum, IsOptional, IsString } from 'class-validator';
+import {
+  IsBoolean,
+  IsEnum,
+  IsOptional,
+  IsString,
+  MaxLength,
+  MinLength,
+} from 'class-validator';
 import { Transform } from 'class-transformer';
 import {
   MemberEntry,
@@ -61,6 +68,21 @@ export class GetMembersV1 extends BaseGetMembersV1 {
 }
 
 export class GetMemberV1 extends OmitType(GetMembersV1, ['uniqueIndex']) {}
+
+export class LookupMembersV1 {
+  @ApiProperty({
+    description: 'Name, or part of a name, to look up across member sources',
+    minLength: 3,
+    maxLength: 100,
+  })
+  @Transform(({ value }) =>
+    typeof value === 'string' ? value.trim().replace(/\s+/g, ' ') : value,
+  )
+  @IsString()
+  @MinLength(3)
+  @MaxLength(100)
+  nameSearch: string;
+}
 
 export class RankingPointsEntryDTOV1 {
   @ApiProperty()
