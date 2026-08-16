@@ -1,5 +1,13 @@
 # Changelog
 
+## [2.8.1](https://github.com/BePing/beping-backends/compare/tabt-rest-v2.8.0...tabt-rest-v2.8.1) (2026-08-16)
+
+
+### Bug Fixes
+
+* bypass AFTT head-to-head anti-bot interstitial ([440d52f](https://github.com/BePing/beping-backends/commit/440d52fd911272bd4dd6f85fa9fd1528893d8a01))
+* parse uppercase AFTT player inputs ([b2e3626](https://github.com/BePing/beping-backends/commit/b2e362672a8dfa62d19e295c62cfce67ff2b1797))
+
 ## [2.8.0](https://github.com/BePing/beping-backends/compare/tabt-rest-v2.7.1...tabt-rest-v2.8.0) (2026-08-16)
 
 
