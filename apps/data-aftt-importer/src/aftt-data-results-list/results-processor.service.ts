@@ -11,7 +11,6 @@ import { OnWorkerEvent, Processor, WorkerHost } from '@nestjs/bullmq';
 import { Job } from 'bullmq';
 import { PrismaService } from '@app/common';
 import { CacheService } from '@app/common';
-import { createHash } from 'crypto';
 import { PERFORMANCE_CONFIG } from '../constants';
 import { ImportExecutionCoordinatorService } from '../common/import-execution-coordinator.service';
 import { PostgresCopyService } from '../common/postgres-copy.service';
@@ -25,12 +24,31 @@ import { Client } from 'pg';
 import { ImportThrottleService } from '../common/import-throttle.service';
 import { parseResultLine } from './result-line.parser';
 import { importMetrics } from '../import-metrics';
+import {
+  inspectResultLines,
+  LinesHashAccumulator,
+  readNonEmptyLines,
+} from './result-lines.utils';
+import { createReadStream, createWriteStream } from 'node:fs';
+import { mkdtemp, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { Readable, Transform } from 'node:stream';
+import { pipeline } from 'node:stream/promises';
 
 interface BatchMergeStats {
   stagedCount: number;
   validCount: number;
   insertedCount: number;
   updatedCount: number;
+}
+
+interface PreparedResultFile {
+  directoryPath: string;
+  filePath: string;
+  fileDate: Date | null;
+  dataLineCount: number;
+  contentHash: string;
 }
 
 @Processor('results', {
@@ -71,11 +89,14 @@ export class ResultsProcessorService extends WorkerHost {
         );
         this.logger.log('Processing results...');
         const processingStartTime = Date.now();
+        let temporaryDirectory: string | undefined;
 
         try {
-          const lines = await this.downloadMemberLines(job.data.playerCategory);
-
-          const fileDate = this.extractFileDate(lines);
+          const preparedFile = await this.prepareResultFile(
+            job.data.playerCategory,
+          );
+          temporaryDirectory = preparedFile.directoryPath;
+          const { fileDate, dataLineCount, contentHash } = preparedFile;
           this.logger.log(
             `Parsed file date: ${fileDate ? fileDate.toISOString() : 'unknown'}`,
           );
@@ -85,8 +106,6 @@ export class ResultsProcessorService extends WorkerHost {
               fileDate,
               job.data.playerCategory,
             );
-          const dataLines = lines.slice(1);
-          const contentHash = this.computeContentHash(dataLines);
           const getElapsedMs = () => Date.now() - processingStartTime;
 
           if (!shouldProcess) {
@@ -130,24 +149,27 @@ export class ResultsProcessorService extends WorkerHost {
           }
 
           const appendInfo = await this.checkIfRecordsAppendedAtEnd(
-            dataLines,
+            preparedFile.filePath,
+            dataLineCount,
             job.data.playerCategory,
             lastImport,
           );
 
-          const linesToProcess = appendInfo.isAppend
-            ? dataLines.slice(appendInfo.previousLineCount)
-            : dataLines;
+          const linesToSkip = appendInfo.isAppend
+            ? appendInfo.previousLineCount
+            : 0;
 
           if (appendInfo.isAppend) {
             this.logger.log(
-              `APPEND MODE: Processing only ${linesToProcess.length} new lines (skipping ${appendInfo.previousLineCount} existing)`,
+              `APPEND MODE: Processing only ${dataLineCount - linesToSkip} new lines (skipping ${appendInfo.previousLineCount} existing)`,
             );
           }
 
           const mergeStart = Date.now();
           const mergeStats = await this.mergeResultsInChunks(
-            linesToProcess,
+            preparedFile.filePath,
+            linesToSkip,
+            dataLineCount,
             job.data.playerCategory,
             fileDate ?? new Date(),
           );
@@ -167,7 +189,7 @@ export class ResultsProcessorService extends WorkerHost {
             contentHash,
             job.data.playerCategory,
             fileDate,
-            dataLines.length,
+            dataLineCount,
             processingTimeMs,
             {
               linesAdded: mergeStats.linesAdded,
@@ -175,7 +197,7 @@ export class ResultsProcessorService extends WorkerHost {
             },
           );
 
-          importRun.record('processed', dataLines.length);
+          importRun.record('processed', dataLineCount);
           importRun.record('inserted', mergeStats.linesAdded);
           importRun.record('updated', mergeStats.linesUpdated);
           importRun.record('dropped', mergeStats.dropped);
@@ -185,7 +207,7 @@ export class ResultsProcessorService extends WorkerHost {
             'success',
             processingTimeMs,
             {
-              processed_records: dataLines.length,
+              processed_records: dataLineCount,
               inserted_records: mergeStats.linesAdded,
               updated_records: mergeStats.linesUpdated,
               dropped_records: mergeStats.dropped,
@@ -193,7 +215,7 @@ export class ResultsProcessorService extends WorkerHost {
           );
 
           this.logger.log(
-            `Results processing completed. Processed ${dataLines.length} lines in ${processingTimeMs}ms`,
+            `Results processing completed. Processed ${dataLineCount} lines in ${processingTimeMs}ms`,
           );
         } catch (e) {
           importRun.finish('failed');
@@ -215,6 +237,10 @@ export class ResultsProcessorService extends WorkerHost {
           });
           this.logger.error('Failed to finish results job', e);
           throw e;
+        } finally {
+          if (temporaryDirectory) {
+            await this.cleanupTemporaryDirectory(temporaryDirectory);
+          }
         }
       },
     );
@@ -249,34 +275,82 @@ export class ResultsProcessorService extends WorkerHost {
   // DOWNLOAD / PARSE
   // ============================================================================
 
-  private async downloadMemberLines(
+  private async prepareResultFile(
     playerCategory: PlayerCategory,
-  ): Promise<string[]> {
+  ): Promise<PreparedResultFile> {
     this.logger.debug(
       `Downloading ${playerCategory} results file from data.aftt.be`,
     );
 
-    const file = await firstValueFrom(
-      this.httpService.get<string>(
-        `export/liste_result_${playerCategory == PlayerCategory.SENIOR_MEN ? 1 : 2}.txt`,
-        { timeout: PERFORMANCE_CONFIG.DOWNLOAD_TIMEOUT_MS },
-      ),
-    );
-    const lines = file.data
-      .split('\n')
-      .filter((line) => line.trim().length > 0);
-    this.logger.debug(
-      `File downloaded, start processing ${lines.length} lines...`,
-    );
-    return lines;
+    const directoryPath = await mkdtemp(join(tmpdir(), 'beping-results-'));
+    const filePath = join(directoryPath, 'results-export.txt');
+
+    try {
+      const response = await firstValueFrom(
+        this.httpService.get<Readable>(
+          `export/liste_result_${playerCategory == PlayerCategory.SENIOR_MEN ? 1 : 2}.txt`,
+          {
+            responseType: 'stream',
+            timeout: PERFORMANCE_CONFIG.DOWNLOAD_TIMEOUT_MS,
+            signal: AbortSignal.timeout(PERFORMANCE_CONFIG.DOWNLOAD_TIMEOUT_MS),
+          },
+        ),
+      );
+      let downloadedBytes = 0;
+      const sizeGuard = new Transform({
+        transform: (chunk: Buffer, _encoding, callback) => {
+          downloadedBytes += chunk.length;
+          if (downloadedBytes > PERFORMANCE_CONFIG.RESULTS_MAX_DOWNLOAD_BYTES) {
+            callback(
+              new Error(
+                `Results export exceeds ${PERFORMANCE_CONFIG.RESULTS_MAX_DOWNLOAD_BYTES} bytes`,
+              ),
+            );
+            return;
+          }
+          callback(null, chunk);
+        },
+      });
+
+      await pipeline(
+        response.data,
+        sizeGuard,
+        createWriteStream(filePath, { flags: 'wx' }),
+      );
+
+      const metadata = await this.inspectResultFile(filePath);
+      this.logger.debug(
+        `File downloaded to temporary storage (${downloadedBytes} bytes, ${metadata.dataLineCount} data lines)`,
+      );
+      return { directoryPath, filePath, ...metadata };
+    } catch (error) {
+      await this.cleanupTemporaryDirectory(directoryPath);
+      throw error;
+    }
   }
 
-  private extractFileDate(lines: string[]): Date | null {
-    if (lines.length === 0) {
+  private async inspectResultFile(filePath: string): Promise<{
+    fileDate: Date | null;
+    dataLineCount: number;
+    contentHash: string;
+  }> {
+    const { header, dataLineCount, contentHash } = await inspectResultLines(
+      createReadStream(filePath),
+    );
+
+    return {
+      fileDate: this.extractFileDate(header),
+      dataLineCount,
+      contentHash,
+    };
+  }
+
+  private extractFileDate(header: string | undefined): Date | null {
+    if (!header) {
       return null;
     }
 
-    const firstLine = lines[0].trim();
+    const firstLine = header.trim();
 
     try {
       const date = new Date(firstLine);
@@ -291,6 +365,56 @@ export class ResultsProcessorService extends WorkerHost {
         error,
       );
       return null;
+    }
+  }
+
+  private async *readDataLines(filePath: string): AsyncGenerator<string> {
+    let headerSeen = false;
+    for await (const line of readNonEmptyLines(createReadStream(filePath))) {
+      if (!headerSeen) {
+        headerSeen = true;
+        continue;
+      }
+
+      yield line;
+    }
+  }
+
+  private async computeDataPrefixHash(
+    filePath: string,
+    lineCount: number,
+  ): Promise<string> {
+    const hash = new LinesHashAccumulator();
+    let hashedLines = 0;
+
+    for await (const line of this.readDataLines(filePath)) {
+      if (hashedLines >= lineCount) {
+        break;
+      }
+
+      hash.update(line);
+      hashedLines++;
+    }
+
+    if (hashedLines !== lineCount) {
+      throw new Error(
+        `Results export ended after ${hashedLines} lines while hashing a ${lineCount}-line prefix`,
+      );
+    }
+
+    return hash.digest();
+  }
+
+  private async cleanupTemporaryDirectory(
+    directoryPath: string,
+  ): Promise<void> {
+    try {
+      await rm(directoryPath, { recursive: true, force: true, maxRetries: 2 });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'unknown error';
+      this.logger.warn(
+        `Failed to clean temporary results directory: ${message}`,
+      );
     }
   }
 
@@ -334,7 +458,8 @@ export class ResultsProcessorService extends WorkerHost {
   }
 
   private async checkIfRecordsAppendedAtEnd(
-    dataLines: string[],
+    filePath: string,
+    currentLineCount: number,
     playerCategory: PlayerCategory,
     lastImport: LastImportInfo | null,
   ): Promise<AppendCheckResult> {
@@ -346,7 +471,6 @@ export class ResultsProcessorService extends WorkerHost {
     }
 
     const previousLineCount = lastImport.linesProcessed;
-    const currentLineCount = dataLines.length;
 
     if (currentLineCount <= previousLineCount) {
       this.logger.log(
@@ -355,8 +479,10 @@ export class ResultsProcessorService extends WorkerHost {
       return { isAppend: false, previousLineCount };
     }
 
-    const knownLines = dataLines.slice(0, previousLineCount);
-    const knownHash = this.computeContentHash(knownLines);
+    const knownHash = await this.computeDataPrefixHash(
+      filePath,
+      previousLineCount,
+    );
 
     if (knownHash === lastImport.hash) {
       const newLinesCount = currentLineCount - previousLineCount;
@@ -364,9 +490,9 @@ export class ResultsProcessorService extends WorkerHost {
         `APPEND CHECK: File structure intact, checking ${newLinesCount} new lines against database`,
       );
 
-      const newLines = dataLines.slice(previousLineCount);
       const isAppendConfirmed = await this.checkNewLinesAgainstDatabase(
-        newLines,
+        filePath,
+        previousLineCount,
         playerCategory,
       );
 
@@ -390,37 +516,66 @@ export class ResultsProcessorService extends WorkerHost {
   }
 
   private async checkNewLinesAgainstDatabase(
-    newLines: string[],
+    filePath: string,
+    startIndex: number,
     playerCategory: PlayerCategory,
   ): Promise<boolean> {
-    if (newLines.length === 0) {
-      return true;
+    const lookupBatchSize = Math.max(
+      1,
+      PERFORMANCE_CONFIG.RESULTS_BATCH_SIZE * 5,
+    );
+    let dataIndex = 0;
+    let validIdCount = 0;
+    let newResultIds: number[] = [];
+
+    for await (const line of this.readDataLines(filePath)) {
+      if (dataIndex++ < startIndex) {
+        continue;
+      }
+
+      const separator = line.indexOf(';');
+      const id = parseInt(
+        separator === -1 ? line : line.slice(0, separator),
+        10,
+      );
+
+      if (Number.isFinite(id)) {
+        newResultIds.push(id);
+        validIdCount++;
+      } else {
+        this.logger.warn(
+          `Failed to parse result ID from line: ${line.substring(0, 50)}...`,
+        );
+      }
+
+      if (newResultIds.length >= lookupBatchSize) {
+        const existingIds = await this.findExistingResultIds(
+          newResultIds,
+          playerCategory,
+        );
+        if (existingIds.length > 0) {
+          return false;
+        }
+        newResultIds = [];
+      }
     }
 
-    const newResultIds = newLines
-      .map((line) => {
-        try {
-          const cols = line.split(';');
-          return parseInt(cols[0], 10);
-        } catch (e) {
-          this.logger.warn(
-            `Failed to parse result ID from line: ${line.substring(0, 50)}...`,
-          );
-          return null;
-        }
-      })
-      .filter((id): id is number => id !== null);
-
-    if (newResultIds.length === 0) {
+    if (validIdCount === 0) {
       this.logger.warn('No valid result IDs found in new lines');
       return false;
     }
 
-    const existingIds = await this.findExistingResultIds(
-      newResultIds,
-      playerCategory,
-    );
-    return existingIds.length === 0;
+    if (newResultIds.length > 0) {
+      const existingIds = await this.findExistingResultIds(
+        newResultIds,
+        playerCategory,
+      );
+      if (existingIds.length > 0) {
+        return false;
+      }
+    }
+
+    return true;
   }
 
   // ============================================================================
@@ -428,41 +583,83 @@ export class ResultsProcessorService extends WorkerHost {
   // ============================================================================
 
   private async mergeResultsInChunks(
-    linesToProcess: string[],
+    filePath: string,
+    linesToSkip: number,
+    dataLineCount: number,
     playerCategory: PlayerCategory,
     effectiveDate: Date,
   ): Promise<{ linesAdded: number; linesUpdated: number; dropped: number }> {
     const chunkSize = Math.max(1, PERFORMANCE_CONFIG.RESULTS_STAGE_CHUNK_SIZE);
     const totals = { linesAdded: 0, linesUpdated: 0, dropped: 0 };
+    const totalLines = Math.max(0, dataLineCount - linesToSkip);
+    const chunkCount = Math.ceil(totalLines / chunkSize);
+    let dataIndex = 0;
+    let chunkNumber = 0;
+    let chunk: string[] = [];
 
-    for (let start = 0; start < linesToProcess.length; start += chunkSize) {
-      const chunk = linesToProcess.slice(start, start + chunkSize);
-      const chunkNumber = Math.floor(start / chunkSize) + 1;
-      const chunkCount = Math.ceil(linesToProcess.length / chunkSize);
+    for await (const line of this.readDataLines(filePath)) {
+      if (dataIndex++ < linesToSkip) {
+        continue;
+      }
 
-      await this.importThrottleService.waitForCapacity(
-        `results stage ${chunkNumber}/${chunkCount}`,
+      chunk.push(line);
+      if (chunk.length < chunkSize) {
+        continue;
+      }
+
+      chunkNumber++;
+      await this.mergeResultsChunk(
+        chunk,
+        chunkNumber,
+        chunkCount,
+        playerCategory,
+        effectiveDate,
+        totals,
       );
+      chunk = [];
+    }
 
-      const stats = await this.postgresCopyService.withClient(
-        async (client) => {
-          await this.createResultsStageTable(client);
-          await this.copyResultsStageRows(client, chunk, playerCategory);
-          await this.prepareDedupedResultsStage(client);
-          await this.upsertCompetitionsFromStage(client);
-          return this.mergeResultBatches(client, effectiveDate);
-        },
-      );
-
-      totals.linesAdded += stats.linesAdded;
-      totals.linesUpdated += stats.linesUpdated;
-      totals.dropped += stats.dropped;
-      this.logger.log(
-        `Completed results stage ${chunkNumber}/${chunkCount} (${chunk.length} rows)`,
+    if (chunk.length > 0) {
+      chunkNumber++;
+      await this.mergeResultsChunk(
+        chunk,
+        chunkNumber,
+        chunkCount,
+        playerCategory,
+        effectiveDate,
+        totals,
       );
     }
 
     return totals;
+  }
+
+  private async mergeResultsChunk(
+    chunk: string[],
+    chunkNumber: number,
+    chunkCount: number,
+    playerCategory: PlayerCategory,
+    effectiveDate: Date,
+    totals: { linesAdded: number; linesUpdated: number; dropped: number },
+  ): Promise<void> {
+    await this.importThrottleService.waitForCapacity(
+      `results stage ${chunkNumber}/${chunkCount}`,
+    );
+
+    const stats = await this.postgresCopyService.withClient(async (client) => {
+      await this.createResultsStageTable(client);
+      await this.copyResultsStageRows(client, chunk, playerCategory);
+      await this.prepareDedupedResultsStage(client);
+      await this.upsertCompetitionsFromStage(client);
+      return this.mergeResultBatches(client, effectiveDate);
+    });
+
+    totals.linesAdded += stats.linesAdded;
+    totals.linesUpdated += stats.linesUpdated;
+    totals.dropped += stats.dropped;
+    this.logger.log(
+      `Completed results stage ${chunkNumber}/${chunkCount} (${chunk.length} rows)`,
+    );
   }
 
   private async createResultsStageTable(client: Client): Promise<void> {
@@ -982,14 +1179,6 @@ export class ResultsProcessorService extends WorkerHost {
         processingTimeMs,
       },
     });
-  }
-
-  // ============================================================================
-  // UTILITIES
-  // ============================================================================
-
-  private computeContentHash(lines: string[]): string {
-    return createHash('sha256').update(lines.join('')).digest('hex');
   }
 
   private toPgDate(value: Date): string {

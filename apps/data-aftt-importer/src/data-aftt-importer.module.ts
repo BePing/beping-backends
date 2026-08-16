@@ -5,9 +5,11 @@ import { MembersListSyncModule } from './aftt-data-members-list/members-list-syn
 import { ResultsSyncModule } from './aftt-data-results-list/results-sync.module';
 import { CommonModule } from './common.module';
 import { getRedisConnectionOptions } from '@app/common';
+import { ScheduleModule } from '@nestjs/schedule';
 
 @Module({
   imports: [
+    ScheduleModule.forRoot(),
     ConfigModule.forRoot({
       isGlobal: true,
     }),
