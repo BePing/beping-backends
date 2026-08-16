@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.3.1](https://github.com/BePing/beping-backends/compare/data-aftt-importer-v2.3.0...data-aftt-importer-v2.3.1) (2026-08-16)
+
+
+### Bug Fixes
+
+* **importer:** stream large results exports ([9d133fe](https://github.com/BePing/beping-backends/commit/9d133febebe9137f5fb7e0778e3ce67cfee50651))
+
 ## [2.3.0](https://github.com/BePing/beping-backends/compare/data-aftt-importer-v2.2.5...data-aftt-importer-v2.3.0) (2026-08-11)
 
 

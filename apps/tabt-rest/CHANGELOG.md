@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.8.0](https://github.com/BePing/beping-backends/compare/tabt-rest-v2.7.1...tabt-rest-v2.8.0) (2026-08-16)
+
+
+### Features
+
+* **api:** add resilient member lookup ([c36317c](https://github.com/BePing/beping-backends/commit/c36317c8682427dc770dffc1c74e4392178d5792))
+
 ## [2.7.1](https://github.com/BePing/beping-backends/compare/tabt-rest-v2.7.0...tabt-rest-v2.7.1) (2026-08-13)
 
 
