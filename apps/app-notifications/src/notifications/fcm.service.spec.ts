@@ -231,6 +231,32 @@ describe('FcmService device locale updates', () => {
   });
 });
 
+describe('FcmService device notification type updates', () => {
+  it('succeeds when the device subscription does not exist', async () => {
+    const updateMany = jest.fn().mockResolvedValue({ count: 0 });
+    const prisma = {
+      deviceSubscription: { updateMany },
+    } as unknown as PrismaService;
+    const service = new FcmService(prisma, {
+      capture: jest.fn(),
+    } as unknown as PostHogService);
+
+    await expect(
+      service.updateDeviceNotificationTypes('missing-token', [
+        NotificationType.MATCH,
+      ]),
+    ).resolves.toBeUndefined();
+
+    expect(updateMany).toHaveBeenCalledWith({
+      where: { deviceToken: 'missing-token' },
+      data: {
+        notificationTypes: [NotificationType.MATCH],
+        lastUsed: expect.any(Date),
+      },
+    });
+  });
+});
+
 describe('FcmService topic lookup', () => {
   it('deduplicates devices subscribed through several matching topics', async () => {
     const findMany = jest.fn().mockResolvedValue([

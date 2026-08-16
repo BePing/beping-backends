@@ -160,7 +160,10 @@ export class FcmService implements OnModuleInit {
     notificationTypes: NotificationType[],
   ): Promise<void> {
     try {
-      await this.prisma.deviceSubscription.update({
+      // The client can persist preferences while device registration is still
+      // pending or after the backend row was removed. Treat that race as an
+      // idempotent no-op; a later registration carries the persisted types.
+      await this.prisma.deviceSubscription.updateMany({
         where: { deviceToken },
         data: {
           notificationTypes,
