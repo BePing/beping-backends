@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.5.2](https://github.com/BePing/beping-backends/compare/app-notifications-v2.5.1...app-notifications-v2.5.2) (2026-08-16)
+
+
+### Bug Fixes
+
+* make notification type updates idempotent ([f8211ce](https://github.com/BePing/beping-backends/commit/f8211ce6073b1a8e48040bf7253773d6679d0d85))
+
 ## [2.5.1](https://github.com/BePing/beping-backends/compare/app-notifications-v2.5.0...app-notifications-v2.5.1) (2026-08-14)
 
 
