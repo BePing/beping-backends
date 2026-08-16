@@ -465,8 +465,11 @@ export class Head2headService {
     for (const inputTag of inputTags) {
       // Parse each input independently. The surrounding AFTT fragment can
       // contain mismatched tags, but the two player inputs are self-contained.
+      // Normalize the element name because xmldom preserves AFTT's uppercase
+      // <INPUT> tag while getElementsByTagName is case-sensitive.
+      const normalizedInputTag = inputTag.replace(/^<input\b/i, '<input');
       const inputDocument = parser.parseFromString(
-        `<html><body>${inputTag}</body></html>`,
+        `<html><body>${normalizedInputTag}</body></html>`,
         'text/html',
       );
       const input = inputDocument.getElementsByTagName('input')[0];
