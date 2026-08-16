@@ -19,6 +19,7 @@ import { UserAgentsUtil } from '../../common/utils/user-agents.util';
 
 // Constants
 const AFTT_BASE_URL = 'https://resultats.aftt.be/index.php';
+const AFTT_ANTIBOT_COOKIE = 'readytohelp=ofcourse';
 const CACHE_PREFIX = 'head2head';
 
 // Interfaces
@@ -243,6 +244,10 @@ export class Head2headService {
           timeout,
           headers: {
             'user-agent': UserAgentsUtil.random,
+            // AFTT's anti-bot interstitial sets this cookie in the browser via
+            // JavaScript. API clients cannot execute that script, so send the
+            // consent cookie up front to receive the actual results page.
+            cookie: AFTT_ANTIBOT_COOKIE,
           },
           httpsAgent:
             this.configService.get('USE_SOCKS_PROXY') === 'true'

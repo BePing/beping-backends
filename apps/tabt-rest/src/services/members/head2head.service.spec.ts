@@ -215,6 +215,20 @@ describe('Head2headService', () => {
       );
     });
 
+    it('should bypass the AFTT anti-bot interstitial', async () => {
+      await service.getHead2HeadResults(123, 456);
+
+      expect(mockHttpService.post).toHaveBeenCalledWith(
+        expect.any(String),
+        null,
+        expect.objectContaining({
+          headers: expect.objectContaining({
+            cookie: 'readytohelp=ofcourse',
+          }),
+        }),
+      );
+    });
+
     it('should return empty results when no matches are found', async () => {
       mockMatchService.getMatches.mockResolvedValue([]);
 
