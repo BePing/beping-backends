@@ -1,7 +1,12 @@
 import { HttpService } from '@nestjs/axios';
 import { firstValueFrom } from 'rxjs';
 import { Logger } from '@nestjs/common';
-import { ImportType, PlayerCategory, PostHogService } from '@app/common';
+import {
+  ImportType,
+  PlayerCategory,
+  PostHogLogAttributes,
+  PostHogService,
+} from '@app/common';
 import { OnWorkerEvent, Processor, WorkerHost } from '@nestjs/bullmq';
 import { Job } from 'bullmq';
 import { PrismaService } from '@app/common';
@@ -198,6 +203,16 @@ export class ResultsProcessorService extends WorkerHost {
             player_category: String(job.data.playerCategory),
             duration_ms: Date.now() - processingStartTime,
           });
+          this.posthog.log('data import completed', 'error', {
+            event: 'data.import.completed',
+            source: 'data-aftt-importer',
+            import_type: 'results',
+            player_category: String(job.data.playerCategory),
+            outcome: 'failure',
+            duration_ms: Date.now() - processingStartTime,
+            error_type:
+              e instanceof Error ? e.constructor.name : 'UnknownError',
+          });
           this.logger.error('Failed to finish results job', e);
           throw e;
         }
@@ -209,9 +224,18 @@ export class ResultsProcessorService extends WorkerHost {
     playerCategory: PlayerCategory,
     outcome: 'success' | 'skipped',
     durationMs: number,
-    properties: Record<string, unknown> = {},
+    properties: PostHogLogAttributes = {},
   ): void {
     this.posthog.capture('import_run_completed', 'data-aftt-importer', {
+      source: 'data-aftt-importer',
+      import_type: 'results',
+      player_category: String(playerCategory),
+      outcome,
+      duration_ms: durationMs,
+      ...properties,
+    });
+    this.posthog.log('data import completed', 'info', {
+      event: 'data.import.completed',
       source: 'data-aftt-importer',
       import_type: 'results',
       player_category: String(playerCategory),

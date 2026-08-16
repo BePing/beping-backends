@@ -5,6 +5,8 @@ import { MicroserviceOptions, Transport } from '@nestjs/microservices';
 import { ValidationPipe } from '@nestjs/common';
 import { getRedisConnectionOptions, getServiceMetrics } from '@app/common';
 
+process.env.POSTHOG_SERVICE_NAME ??= 'beping-notifications';
+
 async function bootstrap() {
   // Create HTTP application for external API access
   const app = await NestFactory.create<NestExpressApplication>(AppModule, {

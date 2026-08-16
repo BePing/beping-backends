@@ -37,7 +37,11 @@ describe('ChallengeOrchestratorService', () => {
   const calculator = { calculate: jest.fn() };
   const press = { send: jest.fn() };
   const validator = { assertSeasonValid: jest.fn() };
-  const posthog = { capture: jest.fn(), captureException: jest.fn() };
+  const posthog = {
+    capture: jest.fn(),
+    captureException: jest.fn(),
+    log: jest.fn(),
+  };
 
   let service: ChallengeOrchestratorService;
 

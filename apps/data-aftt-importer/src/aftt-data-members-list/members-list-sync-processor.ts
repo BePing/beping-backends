@@ -93,6 +93,14 @@ export class MembersListProcessingService extends WorkerHost {
               outcome: 'skipped',
               duration_ms: Date.now() - startTime,
             });
+            this.posthog.log('data import completed', 'info', {
+              event: 'data.import.completed',
+              source: 'data-aftt-importer',
+              import_type: 'members',
+              player_category: String(playerCategory),
+              outcome: 'skipped',
+              duration_ms: Date.now() - startTime,
+            });
             return;
           }
 
@@ -159,6 +167,16 @@ export class MembersListProcessingService extends WorkerHost {
             processed_records: linesProcessed,
             affected_records: importStats.memberStats.affected,
           });
+          this.posthog.log('data import completed', 'info', {
+            event: 'data.import.completed',
+            source: 'data-aftt-importer',
+            import_type: 'members',
+            player_category: String(playerCategory),
+            outcome: 'success',
+            duration_ms: totalTime,
+            processed_records: linesProcessed,
+            affected_records: importStats.memberStats.affected,
+          });
 
           this.logger.log(
             `Import completed in ${Math.round(totalTime / 1000)}s (download: ${Date.now() - downloadStart}ms, merge: ${Date.now() - upsertStart}ms)`,
@@ -170,6 +188,16 @@ export class MembersListProcessingService extends WorkerHost {
             import_type: 'members',
             player_category: String(playerCategory),
             duration_ms: Date.now() - startTime,
+          });
+          this.posthog.log('data import completed', 'error', {
+            event: 'data.import.completed',
+            source: 'data-aftt-importer',
+            import_type: 'members',
+            player_category: String(playerCategory),
+            outcome: 'failure',
+            duration_ms: Date.now() - startTime,
+            error_type:
+              e instanceof Error ? e.constructor.name : 'UnknownError',
           });
           this.logger.error('Failed to finish job', e.message);
           throw e;

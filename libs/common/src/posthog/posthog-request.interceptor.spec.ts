@@ -1,6 +1,7 @@
 import { CallHandler, ExecutionContext, HttpException } from '@nestjs/common';
 import { lastValueFrom, of, throwError } from 'rxjs';
 import {
+  getPostHogDomainEvent,
   getPostHogRequestContext,
   PostHogRequestInterceptor,
 } from './posthog-request.interceptor';
@@ -57,7 +58,7 @@ describe('PostHog request analytics', () => {
   });
 
   it('captures a completed request with duration and status', async () => {
-    const posthog = { capture: jest.fn() };
+    const posthog = { capture: jest.fn(), log: jest.fn() };
     const interceptor = new PostHogRequestInterceptor(
       posthog as unknown as PostHogService,
       'tabt-rest',
@@ -81,7 +82,7 @@ describe('PostHog request analytics', () => {
   });
 
   it('captures failed requests with the exception status', async () => {
-    const posthog = { capture: jest.fn() };
+    const posthog = { capture: jest.fn(), log: jest.fn() };
     const interceptor = new PostHogRequestInterceptor(
       posthog as unknown as PostHogService,
       'tabt-rest',
@@ -99,6 +100,87 @@ describe('PostHog request analytics', () => {
       'api_request_completed',
       'mobile-user-1',
       expect.objectContaining({ status_code: 503, success: false }),
+    );
+    expect(posthog.capture).toHaveBeenCalledTimes(1);
+    expect(posthog.log).toHaveBeenCalledWith(
+      'backend http request completed',
+      'error',
+      expect.objectContaining({
+        posthogDistinctId: 'mobile-user-1',
+        sessionId: 'session-1',
+        outcome: 'failure',
+        'http.response.status_code': 503,
+      }),
+    );
+  });
+
+  it('maps successful Captain writes without copying sensitive fields', () => {
+    expect(
+      getPostHogDomainEvent(
+        {
+          method: 'POST',
+          baseUrl: '/v1/captain',
+          route: { path: '/matches/:matchUniqueId/convocation/respond' },
+          params: { matchUniqueId: '123' },
+          body: {
+            uniqueIndex: 456,
+            status: 'CONFIRMED',
+            responseToken: 'secret-token',
+          },
+        },
+        200,
+      ),
+    ).toEqual({
+      eventName: 'captain_convocation_response_confirmed',
+      properties: { match_id: '123', status: 'CONFIRMED' },
+    });
+  });
+
+  it('does not confirm failed Captain writes', () => {
+    expect(
+      getPostHogDomainEvent(
+        {
+          method: 'POST',
+          path: '/v1/captain/auth/login',
+          body: { account: 'user', password: 'secret' },
+        },
+        401,
+      ),
+    ).toBeUndefined();
+  });
+
+  it('captures a second server-confirmed business event', async () => {
+    const posthog = { capture: jest.fn(), log: jest.fn() };
+    const interceptor = new PostHogRequestInterceptor(
+      posthog as unknown as PostHogService,
+      'tabt-rest',
+    );
+    const context = httpContext(
+      {
+        ...request,
+        method: 'PUT',
+        baseUrl: '/v1/captain',
+        route: { path: '/matches/:matchUniqueId/lineup' },
+        params: { matchUniqueId: '123' },
+        body: { slots: [{ uniqueIndex: 1 }, { uniqueIndex: 2 }] },
+      },
+      { statusCode: 200 },
+    );
+
+    await lastValueFrom(
+      interceptor.intercept(context, { handle: () => of({ ok: true }) }),
+    );
+
+    expect(posthog.capture).toHaveBeenNthCalledWith(
+      2,
+      'captain_lineup_saved_confirmed',
+      'mobile-user-1',
+      expect.objectContaining({
+        source: 'tabt-rest',
+        match_id: '123',
+        slot_count: 2,
+        status_code: 200,
+      }),
     );
   });
 });

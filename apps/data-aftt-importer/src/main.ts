@@ -3,6 +3,8 @@ import { DataAFTTImporterModule } from './data-aftt-importer.module';
 import { MicroserviceOptions, Transport } from '@nestjs/microservices';
 import { getRedisConnectionOptions, getServiceMetrics } from '@app/common';
 
+process.env.POSTHOG_SERVICE_NAME ??= 'beping-data-importer';
+
 async function bootstrap() {
   const metrics = getServiceMetrics('beping-importer');
   const app = await NestFactory.createMicroservice<MicroserviceOptions>(

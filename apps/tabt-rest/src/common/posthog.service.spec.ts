@@ -21,6 +21,7 @@ describe('PostHogService', () => {
     process.env = { ...OLD_ENV };
     delete process.env.POSTHOG_API_KEY;
     delete process.env.POSTHOG_HOST;
+    delete process.env.POSTHOG_LOGS_ENABLED;
   });
 
   afterAll(() => {
@@ -44,6 +45,13 @@ describe('PostHogService', () => {
       const service = new PostHogService();
       expect(() =>
         service.capture('api_request_completed', 'user-1'),
+      ).not.toThrow();
+    });
+
+    it('log is a safe no-op', () => {
+      const service = new PostHogService();
+      expect(() =>
+        service.log('request completed', 'info', { status_code: 200 }),
       ).not.toThrow();
     });
 

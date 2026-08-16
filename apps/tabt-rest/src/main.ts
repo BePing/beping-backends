@@ -11,6 +11,8 @@ import { Logger } from 'nestjs-pino';
 import { getServiceMetrics } from '@app/common';
 import { configureSwagger } from './swagger';
 
+process.env.POSTHOG_SERVICE_NAME ??= 'beping-api';
+
 async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule, {
     cors: true,

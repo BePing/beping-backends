@@ -30,6 +30,27 @@ token) and required in development so missing instrumentation is visible:
 - `POSTHOG_HOST`: `https://t.beping.be` (BePing reverse proxy; defaults to this
   value when omitted). Use `https://eu.i.posthog.com` only as a direct fallback.
 
+### PostHog observability
+
+Backend product events, error tracking and OTLP Logs use `POSTHOG_API_KEY`.
+Logs are enabled automatically in production and are sent to
+`<POSTHOG_HOST>/i/v1/logs`; set `POSTHOG_LOGS_ENDPOINT` only when the ingestion
+proxy needs a different route.
+
+Each entrypoint sets a distinct `service.name` (`beping-api`,
+`beping-notifications`, `beping-challenge-worker`, or `beping-data-importer`).
+Optional controls:
+
+- `POSTHOG_LOGS_ENABLED=true|false`
+- `POSTHOG_LOG_SUCCESS_SAMPLE_RATE=0.02` (API success logs only)
+- `POSTHOG_SLOW_REQUEST_MS=2000`
+- `APP_VERSION` or `GIT_SHA` for `service.version`
+
+Request logs contain one structured completion record with normalized route,
+method, status and latency. Mobile correlation headers become
+`posthogDistinctId` and `sessionId`; bodies, credentials and raw URLs are never
+included. Workers emit one completion log per import/challenge run.
+
 ## Running the app
 
 ```bash

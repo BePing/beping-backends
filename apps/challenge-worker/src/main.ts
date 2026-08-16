@@ -7,6 +7,8 @@ import { ChallengeConfigImporterService } from './challenge-config-importer.serv
 import { ChallengeCalculatorService } from './challenge-calculator.service';
 import { PrismaService } from '@app/common';
 
+process.env.POSTHOG_SERVICE_NAME ??= 'beping-challenge-worker';
+
 const JOBS = new Set<ChallengeJob>([
   'idle',
   'sunday',

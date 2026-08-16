@@ -12,10 +12,17 @@ export interface PostHogHttpRequest {
   url?: string;
   baseUrl?: string;
   route?: { path?: string };
+  params?: Record<string, string | undefined>;
+  body?: unknown;
 }
 
 export interface PostHogRequestContext {
   distinctId: string;
+  properties: Record<string, unknown>;
+}
+
+export interface PostHogDomainEvent {
+  eventName: string;
   properties: Record<string, unknown>;
 }
 
@@ -36,6 +43,123 @@ function sanitizedPath(request: PostHogHttpRequest): string {
       '/:id',
     )
     .replace(/\/\d+(?=\/|$)/g, '/:id');
+}
+
+function record(value: unknown): Record<string, unknown> {
+  return value !== null && typeof value === 'object' && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : {};
+}
+
+/**
+ * Converts successful Captain write endpoints into low-cardinality business
+ * confirmations. Only an allowlist of non-sensitive body fields is copied:
+ * credentials, response tokens, notes, messages and player ids never leave
+ * the request process through this instrumentation.
+ */
+export function getPostHogDomainEvent(
+  request: PostHogHttpRequest,
+  statusCode: number,
+): PostHogDomainEvent | undefined {
+  if (statusCode < 200 || statusCode >= 300) return undefined;
+
+  const method = request.method?.toUpperCase();
+  const route = sanitizedPath(request).replace(/\/+/g, '/');
+  const body = record(request.body);
+  const matchId = request.params?.matchUniqueId;
+  const matchProperties = matchId ? { match_id: matchId } : {};
+  const status = typeof body.status === 'string' ? body.status : undefined;
+
+  if (method === 'POST' && route.endsWith('/captain/auth/login')) {
+    return { eventName: 'captain_auth_confirmed', properties: {} };
+  }
+  if (
+    method === 'POST' &&
+    /\/captain\/matches\/:[^/]+\/availability-poll$/.test(route)
+  ) {
+    return {
+      eventName: 'captain_availability_poll_created',
+      properties: {
+        ...matchProperties,
+        roster_size: Array.isArray(body.rosterUniqueIndexes)
+          ? body.rosterUniqueIndexes.length
+          : undefined,
+      },
+    };
+  }
+  if (
+    method === 'POST' &&
+    /\/captain\/matches\/:[^/]+\/availability\/response$/.test(route)
+  ) {
+    return {
+      eventName: 'captain_availability_response_confirmed',
+      properties: { ...matchProperties, status },
+    };
+  }
+  if (
+    method === 'PATCH' &&
+    /\/captain\/matches\/:[^/]+\/availability\/:[^/]+$/.test(route)
+  ) {
+    return {
+      eventName: 'captain_availability_override_confirmed',
+      properties: { ...matchProperties, status },
+    };
+  }
+  if (
+    method === 'POST' &&
+    /\/captain\/matches\/:[^/]+\/availability\/remind$/.test(route)
+  ) {
+    return {
+      eventName: 'captain_availability_reminder_confirmed',
+      properties: matchProperties,
+    };
+  }
+  if (method === 'PUT' && /\/captain\/matches\/:[^/]+\/lineup$/.test(route)) {
+    return {
+      eventName: 'captain_lineup_saved_confirmed',
+      properties: {
+        ...matchProperties,
+        slot_count: Array.isArray(body.slots) ? body.slots.length : undefined,
+      },
+    };
+  }
+  if (
+    method === 'POST' &&
+    /\/captain\/matches\/:[^/]+\/lineup\/validate$/.test(route)
+  ) {
+    return {
+      eventName: 'captain_lineup_validated_confirmed',
+      properties: {
+        ...matchProperties,
+        override_warnings: body.overrideWarnings === true,
+      },
+    };
+  }
+  if (
+    method === 'POST' &&
+    /\/captain\/matches\/:[^/]+\/convocation$/.test(route)
+  ) {
+    return {
+      eventName: 'captain_convocation_sent_confirmed',
+      properties: {
+        ...matchProperties,
+        has_meeting_time:
+          typeof body.meetingTime === 'string' && body.meetingTime.length > 0,
+        has_venue: typeof body.venue === 'string' && body.venue.length > 0,
+      },
+    };
+  }
+  if (
+    method === 'POST' &&
+    /\/captain\/matches\/:[^/]+\/convocation\/respond$/.test(route)
+  ) {
+    return {
+      eventName: 'captain_convocation_response_confirmed',
+      properties: { ...matchProperties, status },
+    };
+  }
+
+  return undefined;
 }
 
 export function getPostHogRequestContext(
@@ -72,8 +196,33 @@ function errorStatus(error: unknown): number | undefined {
   return undefined;
 }
 
-/** Captures one low-cardinality event for each non-health HTTP request. */
+function boundedNumber(
+  raw: string | undefined,
+  fallback: number,
+  min: number,
+  max: number,
+): number {
+  const parsed = Number(raw);
+  return Number.isFinite(parsed) && parsed >= min && parsed <= max
+    ? parsed
+    : fallback;
+}
+
+/** Captures request health plus an optional business confirmation event. */
 export class PostHogRequestInterceptor implements NestInterceptor {
+  private readonly slowRequestThresholdMs = boundedNumber(
+    process.env.POSTHOG_SLOW_REQUEST_MS,
+    2000,
+    250,
+    30000,
+  );
+  private readonly successfulRequestSampleRate = boundedNumber(
+    process.env.POSTHOG_LOG_SUCCESS_SAMPLE_RATE,
+    0.02,
+    0,
+    1,
+  );
+
   constructor(
     private readonly posthog: PostHogService,
     private readonly source: string,
@@ -102,6 +251,7 @@ export class PostHogRequestInterceptor implements NestInterceptor {
       finalize(() => {
         const statusCode = failedStatus ?? response.statusCode ?? 200;
         const requestContext = getPostHogRequestContext(request, this.source);
+        const durationMs = Math.round(performance.now() - startedAt);
         this.posthog.capture(
           'api_request_completed',
           requestContext.distinctId,
@@ -109,9 +259,48 @@ export class PostHogRequestInterceptor implements NestInterceptor {
             ...requestContext.properties,
             status_code: statusCode,
             success: statusCode < 400,
-            duration_ms: Math.round(performance.now() - startedAt),
+            duration_ms: durationMs,
           },
         );
+        const isSlow = durationMs > this.slowRequestThresholdMs;
+        if (
+          statusCode >= 400 ||
+          isSlow ||
+          Math.random() < this.successfulRequestSampleRate
+        ) {
+          const sessionId = requestContext.properties.$session_id;
+          this.posthog.log(
+            'backend http request completed',
+            statusCode >= 500
+              ? 'error'
+              : statusCode >= 400 || isSlow
+                ? 'warn'
+                : 'info',
+            {
+              event: 'http.request.completed',
+              source: this.source,
+              posthogDistinctId: requestContext.distinctId,
+              sessionId: typeof sessionId === 'string' ? sessionId : undefined,
+              'http.request.method': request.method,
+              'http.route': requestContext.properties.request_route as string,
+              'http.response.status_code': statusCode,
+              duration_ms: durationMs,
+              outcome: statusCode < 400 ? 'success' : 'failure',
+            },
+          );
+        }
+        const domainEvent = getPostHogDomainEvent(request, statusCode);
+        if (domainEvent) {
+          this.posthog.capture(
+            domainEvent.eventName,
+            requestContext.distinctId,
+            {
+              ...requestContext.properties,
+              ...domainEvent.properties,
+              status_code: statusCode,
+            },
+          );
+        }
       }),
     );
   }

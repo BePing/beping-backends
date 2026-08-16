@@ -67,6 +67,13 @@ export class ChallengeOrchestratorService {
       orderBy: { season: { challenge: { displayOrder: 'asc' } } },
     });
     if (weeks.length === 0) {
+      this.posthog.log('challenge job completed', 'info', {
+        event: 'challenge.job.completed',
+        source: 'challenge-worker',
+        job,
+        outcome: 'skipped',
+        reason: 'no_championship_week',
+      });
       return [{ status: 'SKIPPED_NO_CHAMPIONSHIP_WEEK' }];
     }
 
@@ -119,6 +126,19 @@ export class ChallengeOrchestratorService {
           `challenge:${base.challengeSlug}`,
           { job, ...completed },
         );
+        this.posthog.log('challenge job completed', 'info', {
+          event: 'challenge.job.completed',
+          source: 'challenge-worker',
+          job,
+          challenge_slug: base.challengeSlug,
+          season: base.season,
+          week: base.week,
+          outcome: 'success',
+          duration_ms: completed.durationMs,
+          total_players: completed.totalPlayers,
+          published: completed.published,
+          press_sent: completed.pressSent,
+        });
         results.push(completed);
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
@@ -140,6 +160,18 @@ export class ChallengeOrchestratorService {
             ...failed,
           },
         );
+        this.posthog.log('challenge job completed', 'error', {
+          event: 'challenge.job.completed',
+          source: 'challenge-worker',
+          job,
+          challenge_slug: base.challengeSlug,
+          season: base.season,
+          week: base.week,
+          outcome: 'failure',
+          duration_ms: failed.durationMs,
+          error_type:
+            error instanceof Error ? error.constructor.name : 'UnknownError',
+        });
         results.push(failed);
       }
     }
