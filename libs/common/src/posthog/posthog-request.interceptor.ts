@@ -45,6 +45,11 @@ function sanitizedPath(request: PostHogHttpRequest): string {
     .replace(/\/\d+(?=\/|$)/g, '/:id');
 }
 
+function isObservabilityProbe(request: PostHogHttpRequest): boolean {
+  const path = sanitizedPath(request).replace(/\/+/g, '/');
+  return /^\/(?:v\d+\/)?(?:health|metrics)(?:\/|$)/.test(path);
+}
+
 function record(value: unknown): Record<string, unknown> {
   return value !== null && typeof value === 'object' && !Array.isArray(value)
     ? (value as Record<string, unknown>)
@@ -208,7 +213,7 @@ function boundedNumber(
     : fallback;
 }
 
-/** Captures request health plus an optional business confirmation event. */
+/** Emits sampled request logs plus an optional business confirmation event. */
 export class PostHogRequestInterceptor implements NestInterceptor {
   private readonly slowRequestThresholdMs = boundedNumber(
     process.env.POSTHOG_SLOW_REQUEST_MS,
@@ -234,8 +239,7 @@ export class PostHogRequestInterceptor implements NestInterceptor {
     const http = context.switchToHttp();
     const request = http.getRequest<PostHogHttpRequest>();
     const response = http.getResponse<{ statusCode?: number }>();
-    const path = request.path ?? request.url ?? '';
-    if (path.startsWith('/health') || path.startsWith('/metrics')) {
+    if (isObservabilityProbe(request)) {
       return next.handle();
     }
 
@@ -252,16 +256,6 @@ export class PostHogRequestInterceptor implements NestInterceptor {
         const statusCode = failedStatus ?? response.statusCode ?? 200;
         const requestContext = getPostHogRequestContext(request, this.source);
         const durationMs = Math.round(performance.now() - startedAt);
-        this.posthog.capture(
-          'api_request_completed',
-          requestContext.distinctId,
-          {
-            ...requestContext.properties,
-            status_code: statusCode,
-            success: statusCode < 400,
-            duration_ms: durationMs,
-          },
-        );
         const isSlow = durationMs > this.slowRequestThresholdMs;
         if (
           statusCode >= 400 ||

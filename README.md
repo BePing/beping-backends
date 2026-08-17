@@ -32,8 +32,10 @@ token) and required in development so missing instrumentation is visible:
 
 ### PostHog observability
 
-Backend product events, error tracking and OTLP Logs use `POSTHOG_API_KEY`.
-Logs are enabled automatically in production and are sent to
+Backend business events, error tracking and OTLP Logs use `POSTHOG_API_KEY`.
+Generic HTTP completions are not sent as product analytics events: request
+telemetry belongs in Logs, while only server-confirmed user actions are kept as
+product events. Logs are enabled automatically in production and are sent to
 `<POSTHOG_HOST>/i/v1/logs`; set `POSTHOG_LOGS_ENDPOINT` only when the ingestion
 proxy needs a different route.
 
@@ -49,7 +51,9 @@ Optional controls:
 Request logs contain one structured completion record with normalized route,
 method, status and latency. Mobile correlation headers become
 `posthogDistinctId` and `sessionId`; bodies, credentials and raw URLs are never
-included. Workers emit one completion log per import/challenge run.
+included. Health and metrics probes are excluded, including versioned paths
+such as `/v1/health/ready`. Workers emit one completion log per
+import/challenge run.
 
 ## Running the app
 

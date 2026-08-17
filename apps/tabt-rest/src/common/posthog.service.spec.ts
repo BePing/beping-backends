@@ -44,7 +44,7 @@ describe('PostHogService', () => {
     it('capture is a safe no-op', () => {
       const service = new PostHogService();
       expect(() =>
-        service.capture('api_request_completed', 'user-1'),
+        service.capture('captain_lineup_saved_confirmed', 'user-1'),
       ).not.toThrow();
     });
 
@@ -98,14 +98,16 @@ describe('PostHogService', () => {
       const service = new PostHogService();
       const client = PostHogMock.mock.results[0].value;
 
-      service.capture('api_request_completed', 'user-1', { status_code: 200 });
+      service.capture('captain_lineup_saved_confirmed', 'user-1', {
+        match_id: 'match-1',
+      });
 
       expect(client.capture).toHaveBeenCalledWith({
-        event: 'api_request_completed',
+        event: 'captain_lineup_saved_confirmed',
         distinctId: 'user-1',
         properties: {
           $process_person_profile: false,
-          status_code: 200,
+          match_id: 'match-1',
         },
       });
     });

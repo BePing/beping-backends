@@ -57,7 +57,7 @@ describe('PostHog request analytics', () => {
     });
   });
 
-  it('captures a completed request with duration and status', async () => {
+  it('does not turn successful reads into product analytics events', async () => {
     const posthog = { capture: jest.fn(), log: jest.fn() };
     const interceptor = new PostHogRequestInterceptor(
       posthog as unknown as PostHogService,
@@ -65,23 +65,19 @@ describe('PostHog request analytics', () => {
     );
     const context = httpContext(request, { statusCode: 200 });
     const handler: CallHandler = { handle: () => of({ ok: true }) };
+    const random = jest.spyOn(Math, 'random').mockReturnValue(1);
 
-    await lastValueFrom(interceptor.intercept(context, handler));
+    try {
+      await lastValueFrom(interceptor.intercept(context, handler));
+    } finally {
+      random.mockRestore();
+    }
 
-    expect(posthog.capture).toHaveBeenCalledWith(
-      'api_request_completed',
-      'mobile-user-1',
-      expect.objectContaining({
-        source: 'tabt-rest',
-        request_route: '/v1/members/:id',
-        status_code: 200,
-        success: true,
-        duration_ms: expect.any(Number),
-      }),
-    );
+    expect(posthog.capture).not.toHaveBeenCalled();
+    expect(posthog.log).not.toHaveBeenCalled();
   });
 
-  it('captures failed requests with the exception status', async () => {
+  it('logs failed requests without creating generic product events', async () => {
     const posthog = { capture: jest.fn(), log: jest.fn() };
     const interceptor = new PostHogRequestInterceptor(
       posthog as unknown as PostHogService,
@@ -96,12 +92,7 @@ describe('PostHog request analytics', () => {
       lastValueFrom(interceptor.intercept(context, handler)),
     ).rejects.toBeInstanceOf(HttpException);
 
-    expect(posthog.capture).toHaveBeenCalledWith(
-      'api_request_completed',
-      'mobile-user-1',
-      expect.objectContaining({ status_code: 503, success: false }),
-    );
-    expect(posthog.capture).toHaveBeenCalledTimes(1);
+    expect(posthog.capture).not.toHaveBeenCalled();
     expect(posthog.log).toHaveBeenCalledWith(
       'backend http request completed',
       'error',
@@ -112,6 +103,33 @@ describe('PostHog request analytics', () => {
         'http.response.status_code': 503,
       }),
     );
+  });
+
+  it.each([
+    '/health',
+    '/health/ready',
+    '/v1/health',
+    '/v1/health/live',
+    '/metrics',
+    '/v1/metrics',
+  ])('bypasses observability probe route %s', async (path) => {
+    const posthog = { capture: jest.fn(), log: jest.fn() };
+    const interceptor = new PostHogRequestInterceptor(
+      posthog as unknown as PostHogService,
+      'tabt-rest',
+    );
+    const handler: CallHandler = { handle: jest.fn(() => of({ ok: true })) };
+
+    await lastValueFrom(
+      interceptor.intercept(
+        httpContext({ method: 'GET', path }, { statusCode: 200 }),
+        handler,
+      ),
+    );
+
+    expect(handler.handle).toHaveBeenCalledTimes(1);
+    expect(posthog.capture).not.toHaveBeenCalled();
+    expect(posthog.log).not.toHaveBeenCalled();
   });
 
   it('maps successful Captain writes without copying sensitive fields', () => {
@@ -172,7 +190,7 @@ describe('PostHog request analytics', () => {
     );
 
     expect(posthog.capture).toHaveBeenNthCalledWith(
-      2,
+      1,
       'captain_lineup_saved_confirmed',
       'mobile-user-1',
       expect.objectContaining({
