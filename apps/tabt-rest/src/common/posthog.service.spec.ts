@@ -112,6 +112,20 @@ describe('PostHogService', () => {
       });
     });
 
+    it('keeps technical logs out of product analytics events', () => {
+      process.env.POSTHOG_API_KEY = 'phc_test';
+      process.env.POSTHOG_LOGS_ENABLED = 'false';
+      const service = new PostHogService();
+      const client = PostHogMock.mock.results[0].value;
+
+      service.log('backend http request completed', 'info', {
+        event: 'http.request.completed',
+        'http.response.status_code': 200,
+      });
+
+      expect(client.capture).not.toHaveBeenCalled();
+    });
+
     it('uses a stable anonymous id when exception context has no id', () => {
       process.env.POSTHOG_API_KEY = 'phc_test';
       const service = new PostHogService();
