@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.8.2](https://github.com/BePing/beping-backends/compare/tabt-rest-v2.8.1...tabt-rest-v2.8.2) (2026-08-18)
+
+
+### Bug Fixes
+
+* **api:** keep technical logs out of product analytics ([217d444](https://github.com/BePing/beping-backends/commit/217d444252adf2a459ff66e833ee2eecae8a819c))
+
 ## [2.8.1](https://github.com/BePing/beping-backends/compare/tabt-rest-v2.8.0...tabt-rest-v2.8.1) (2026-08-16)
 
 
