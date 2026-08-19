@@ -8,18 +8,21 @@ describe('validateApiEnvironment', () => {
         THROTTLE_TTL: 60_000,
         THROTTLE_LIMIT: 300,
         TRUST_PROXY_HOPS: 0,
+        TABT_REQUEST_TIMEOUT_MS: 10_000,
         AFTT_HEAD2HEAD_TIMEOUT_MS: 5000,
         AFTT_MATCH_DETAILS_TIMEOUT_MS: 5000,
       }),
     );
   });
 
-  it.each(['PORT', 'THROTTLE_TTL', 'THROTTLE_LIMIT'])(
-    'rejects an invalid %s',
-    (key) => {
-      expect(() => validateApiEnvironment({ [key]: 'invalid' })).toThrow(key);
-    },
-  );
+  it.each([
+    'PORT',
+    'THROTTLE_TTL',
+    'THROTTLE_LIMIT',
+    'TABT_REQUEST_TIMEOUT_MS',
+  ])('rejects an invalid %s', (key) => {
+    expect(() => validateApiEnvironment({ [key]: 'invalid' })).toThrow(key);
+  });
 
   it('requires core dependencies in production', () => {
     expect(() => validateApiEnvironment({ NODE_ENV: 'production' })).toThrow(

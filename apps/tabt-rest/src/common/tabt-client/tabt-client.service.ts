@@ -1,4 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import {
   GetClubsInput,
   GetClubsOutput,
@@ -43,6 +44,7 @@ export class TabtClientService {
     private readonly cacheService: CacheService,
     private readonly credentialsService: CredentialsService,
     private readonly databaseContextService: DatabaseContextService,
+    private readonly configService: ConfigService,
   ) {}
 
   private enrichBodyAndQueryWithCache<T>(
@@ -62,7 +64,11 @@ export class TabtClientService {
       try {
         return await operation(
           enrichedInput,
-          null,
+          {
+            timeout: this.configService.getOrThrow<number>(
+              'TABT_REQUEST_TIMEOUT_MS',
+            ),
+          },
           this.credentialsService.extraHeaders,
         );
       } catch (e) {
