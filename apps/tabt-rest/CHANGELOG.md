@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.8.3](https://github.com/BePing/beping-backends/compare/tabt-rest-v2.8.2...tabt-rest-v2.8.3) (2026-08-19)
+
+
+### Bug Fixes
+
+* bound TabT SOAP request duration ([5d36e30](https://github.com/BePing/beping-backends/commit/5d36e30fa07821ada0f700114fb8971e7f09a029))
+
 ## [2.8.2](https://github.com/BePing/beping-backends/compare/tabt-rest-v2.8.1...tabt-rest-v2.8.2) (2026-08-18)
 
 

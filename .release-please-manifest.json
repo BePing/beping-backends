@@ -1,5 +1,5 @@
 {
-  "apps/tabt-rest": "2.8.2",
+  "apps/tabt-rest": "2.8.3",
   "apps/data-aftt-importer": "2.3.1",
   "apps/app-notifications": "2.5.2",
   "apps/challenge-worker": "2.0.0"
