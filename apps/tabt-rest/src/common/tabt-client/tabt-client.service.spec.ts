@@ -30,6 +30,7 @@ import {
 } from '../../entity/tabt-soap/TabTAPI_Port';
 import { HeaderKeys } from '../context/context.constants';
 import { TabtException } from '../filter/tabt-exception';
+import { ConfigService } from '@nestjs/config';
 
 jest.mock('../context/database-context.service');
 jest.mock('./credentials.service');
@@ -55,6 +56,12 @@ describe('TabtClientService', () => {
         },
         DatabaseContextService,
         CredentialsService,
+        {
+          provide: ConfigService,
+          useValue: {
+            getOrThrow: jest.fn().mockReturnValue(10_000),
+          },
+        },
         {
           provide: TabtClientSwitchingService,
           useValue: {
@@ -226,7 +233,7 @@ describe('TabtClientService', () => {
       expect(operationSpy).toHaveBeenCalledTimes(1);
       expect(operationSpy).toHaveBeenCalledWith(
         enrichedInput,
-        null,
+        { timeout: 10_000 },
         expect.anything(),
       );
     });
@@ -279,7 +286,7 @@ describe('TabtClientService', () => {
       expect(operationSpy).toHaveBeenCalledTimes(1);
       expect(operationSpy).toHaveBeenCalledWith(
         enrichedInput,
-        null,
+        { timeout: 10_000 },
         expect.anything(),
       );
     });
@@ -329,7 +336,7 @@ describe('TabtClientService', () => {
       expect(operationSpy).toHaveBeenCalledTimes(1);
       expect(operationSpy).toHaveBeenCalledWith(
         enrichedInput,
-        null,
+        { timeout: 10_000 },
         expect.anything(),
       );
     });
@@ -370,7 +377,7 @@ describe('TabtClientService', () => {
       expect(operationSpy).toHaveBeenCalledTimes(1);
       expect(operationSpy).toHaveBeenCalledWith(
         enrichedInput,
-        null,
+        { timeout: 10_000 },
         expect.anything(),
       );
     });
@@ -410,7 +417,7 @@ describe('TabtClientService', () => {
       expect(operationSpy).toHaveBeenCalledTimes(1);
       expect(operationSpy).toHaveBeenCalledWith(
         enrichedInput,
-        null,
+        { timeout: 10_000 },
         expect.anything(),
       );
     });
@@ -487,7 +494,7 @@ describe('TabtClientService', () => {
       expect(operationSpy).toHaveBeenCalledTimes(1);
       expect(operationSpy).toHaveBeenCalledWith(
         enrichedInput,
-        null,
+        { timeout: 10_000 },
         expect.anything(),
       );
     });
@@ -528,7 +535,7 @@ describe('TabtClientService', () => {
       expect(operationSpy).toHaveBeenCalledTimes(1);
       expect(operationSpy).toHaveBeenCalledWith(
         enrichedInput,
-        null,
+        { timeout: 10_000 },
         expect.anything(),
       );
     });
@@ -569,7 +576,7 @@ describe('TabtClientService', () => {
       expect(operationSpy).toHaveBeenCalledTimes(1);
       expect(operationSpy).toHaveBeenCalledWith(
         enrichedInput,
-        null,
+        { timeout: 10_000 },
         expect.anything(),
       );
     });
@@ -610,7 +617,7 @@ describe('TabtClientService', () => {
       expect(operationSpy).toHaveBeenCalledTimes(1);
       expect(operationSpy).toHaveBeenCalledWith(
         enrichedInput,
-        null,
+        { timeout: 10_000 },
         expect.anything(),
       );
     });
