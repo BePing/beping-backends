@@ -75,7 +75,7 @@ jobs:
       # Recent QEMU: node under emulated arm64 SIGILLs with the runner's
       # stock binfmt (pnpm install then hangs forever, see run 30735188672).
       - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3
+        uses: docker/setup-qemu-action@v4
         with:
           image: tonistiigi/binfmt:latest
 
@@ -132,7 +132,7 @@ jobs:
         uses: actions/checkout@v7
 
       - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3
+        uses: docker/setup-qemu-action@v4
         with:
           image: tonistiigi/binfmt:latest
 
