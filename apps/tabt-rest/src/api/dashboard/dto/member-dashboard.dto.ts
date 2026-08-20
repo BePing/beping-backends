@@ -332,6 +332,14 @@ export class RankingTableDTOV1 {
       'Ranking thresholds where key is ranking letter (A, B0, B2, etc.) and value is the maximum position for that ranking',
   })
   thresholds: Record<string, number>;
+
+  @ApiPropertyOptional({
+    type: 'object',
+    additionalProperties: { type: 'number' },
+    description:
+      'Numeric points held by the player at each ranking-letter threshold',
+  })
+  pointThresholds?: Record<string, number>;
 }
 
 export class MultiCategoryMemberDashboardDTOV1 {

@@ -1,13 +1,22 @@
 import { Injectable, OnModuleInit, OnModuleDestroy } from '@nestjs/common';
 import { PlayerCategoryDTO } from '../../common/dto/player-category.dto';
-import { PrismaService } from '@app/common';
-import { estimateLetterRanking, getRankingEstimationTable } from '@app/common';
+import {
+  estimateLetterRanking,
+  getRankingEstimationTable,
+  PlayerCategory,
+  PrismaService,
+} from '@app/common';
 
 interface MemberCountCache {
   [PlayerCategoryDTO.SENIOR_MEN]: number | null;
   [PlayerCategoryDTO.SENIOR_WOMEN]: number | null;
   lastUpdated: Date | null;
 }
+
+type PointThresholdCache = Record<
+  PlayerCategoryDTO.SENIOR_MEN | PlayerCategoryDTO.SENIOR_WOMEN,
+  Record<string, number> | null
+>;
 
 @Injectable()
 export class RankingDistributionService
@@ -17,6 +26,11 @@ export class RankingDistributionService
     [PlayerCategoryDTO.SENIOR_MEN]: null,
     [PlayerCategoryDTO.SENIOR_WOMEN]: null,
     lastUpdated: null,
+  };
+
+  private pointThresholdCache: PointThresholdCache = {
+    [PlayerCategoryDTO.SENIOR_MEN]: null,
+    [PlayerCategoryDTO.SENIOR_WOMEN]: null,
   };
 
   private refreshTimer: NodeJS.Timeout | null = null;
@@ -116,6 +130,8 @@ export class RankingDistributionService
       this.memberCountCache[PlayerCategoryDTO.SENIOR_MEN] = menCount;
       this.memberCountCache[PlayerCategoryDTO.SENIOR_WOMEN] = womenCount;
       this.memberCountCache.lastUpdated = new Date();
+      this.pointThresholdCache[PlayerCategoryDTO.SENIOR_MEN] = null;
+      this.pointThresholdCache[PlayerCategoryDTO.SENIOR_WOMEN] = null;
 
       console.log(
         `Member count cache refreshed: Men=${menCount}, Women=${womenCount}`,
@@ -154,6 +170,55 @@ export class RankingDistributionService
       totalPlayers,
       category === PlayerCategoryDTO.SENIOR_MEN ? 'SENIOR_MEN' : 'SENIOR_WOMEN',
     );
+  }
+
+  async getRankingPointThresholds(
+    thresholds: Record<string, number>,
+    category: PlayerCategoryDTO,
+  ): Promise<Record<string, number>> {
+    const cached = this.pointThresholdCache[category];
+    if (cached !== null) return cached;
+
+    const playerCategory =
+      category === PlayerCategoryDTO.SENIOR_MEN
+        ? PlayerCategory.SENIOR_MEN
+        : PlayerCategory.SENIOR_WOMEN;
+    const latest = await this.prismaService.numericPoints.findFirst({
+      where: { member: { playerCategory } },
+      orderBy: { date: 'desc' },
+      select: { date: true },
+    });
+    if (!latest) return {};
+
+    const positions = [...new Set(Object.values(thresholds))];
+    const pointsAtThresholds = await this.prismaService.numericPoints.findMany({
+      where: {
+        date: latest.date,
+        member: { playerCategory },
+        OR: [
+          { ranking: { in: positions } },
+          { ranking: null, rankingWI: { in: positions } },
+        ],
+      },
+      select: { points: true, ranking: true, rankingWI: true },
+    });
+    const pointsByPosition = new Map<number, number>();
+    for (const entry of pointsAtThresholds) {
+      const position = entry.ranking ?? entry.rankingWI;
+      if (position === null) continue;
+      if (entry.ranking !== null || !pointsByPosition.has(position)) {
+        pointsByPosition.set(position, entry.points);
+      }
+    }
+    const pointThresholds = Object.fromEntries(
+      Object.entries(thresholds).flatMap(([letter, position]) => {
+        const points = pointsByPosition.get(position);
+        return points === undefined ? [] : [[letter, points]];
+      }),
+    );
+
+    this.pointThresholdCache[category] = pointThresholds;
+    return pointThresholds;
   }
 
   async getLetterRankingEstimationFromNumericPoints(

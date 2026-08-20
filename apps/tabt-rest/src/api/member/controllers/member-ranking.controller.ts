@@ -37,11 +37,17 @@ export class MemberRankingController {
       totalPlayers,
       category,
     );
+    const pointThresholds =
+      await this.rankingDistributionService.getRankingPointThresholds(
+        thresholds,
+        category,
+      );
 
     return {
       totalPlayers,
       category,
       thresholds,
+      pointThresholds,
     };
   }
 }
