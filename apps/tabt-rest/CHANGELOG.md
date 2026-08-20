@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.9.0](https://github.com/BePing/beping-backends/compare/tabt-rest-v2.8.3...tabt-rest-v2.9.0) (2026-08-20)
+
+
+### Features
+
+* expose ranking point thresholds ([6bfb1b6](https://github.com/BePing/beping-backends/commit/6bfb1b6f917a0cd01bef0f47d8ba7dd169b35f4b))
+
 ## [2.8.3](https://github.com/BePing/beping-backends/compare/tabt-rest-v2.8.2...tabt-rest-v2.8.3) (2026-08-19)
 
 
